@@ -1,0 +1,11 @@
+Model Information:
+* title:	U469
+* source:	https://sketchfab.com/3d-models/u469-b5a9f983a5a143f2a6994e083ef2b867
+* author:	buh (https://sketchfab.com/buh-late)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "U469" (https://sketchfab.com/3d-models/u469-b5a9f983a5a143f2a6994e083ef2b867) by buh (https://sketchfab.com/buh-late) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

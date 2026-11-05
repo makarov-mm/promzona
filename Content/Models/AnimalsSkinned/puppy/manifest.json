@@ -1,0 +1,123 @@
+{
+  "name": "puppy",
+  "kind": "Dog",
+  "height": 0.48,
+  "sourceFile": "dog_puppy.glb",
+  "sourceSha256": "8e9fccb399e9ce944e869f287b7c5ef8f6f4154e9e5b00dc27377fc909c544ba",
+  "sourceTriangles": 14844,
+  "joints": [
+    "GLTF_created_0_rootJoint",
+    "DogMAINSHJnt_44",
+    "DogROOTSHJnt_43",
+    "Dog_Spine_01SHJnt_26",
+    "Dog_Spine_02SHJnt_25",
+    "Dog_Spine_03SHJnt_24",
+    "Dog_Spine_04SHJnt_23",
+    "Dog_Spine_TopSHJnt_22",
+    "Dog_l_Clavicle_01_01SHJnt_5",
+    "Dog_l_FrontLeg_HipSHJnt_4",
+    "Dog_l_FrontLeg_KneeSHJnt_3",
+    "Dog_l_FrontLeg_AnkleSHJnt_2",
+    "Dog_l_FrontLeg_BallSHJnt_1",
+    "Dog_l_FrontLeg_ToeSHJnt_0",
+    "Dog_r_Clavicle_01_01SHJnt_11",
+    "Dog_r_FrontLeg_HipSHJnt_10",
+    "Dog_r_FrontLeg_KneeSHJnt_9",
+    "Dog_r_FrontLeg_AnkleSHJnt_8",
+    "Wolf_r_FrontLeg_BallSHJnt_7",
+    "Wolf_r_FrontLeg_ToeSHJnt_6",
+    "Dog_Neck_01SHJnt_21",
+    "Dog_Neck_02SHJnt_20",
+    "Dog_Neck_TopSHJnt_19",
+    "Dog_Head_JawSHJnt_12",
+    "Dog_l_Ear_01_01SHJnt_15",
+    "Wolf_l_Ear_01_02SHJnt_14",
+    "Wolf_l_Ear_01_03SHJnt_13",
+    "Dog_r_Ear_01_01SHJnt_18",
+    "Dog_r_Ear_01_02SHJnt_17",
+    "Dog_r_Ear_01_03SHJnt_16",
+    "Dog_l_HindLeg_HipSHJnt_32",
+    "Dog_l_HindLeg_Knee1SHJnt_31",
+    "Wolf_l_HindLeg_Knee2SHJnt_30",
+    "Wolf_l_HindLeg_AnkleSHJnt_29",
+    "Wolf_l_HindLeg_BallSHJnt_28",
+    "Wolf_l_HindLeg_ToeSHJnt_27",
+    "Dog_r_HindLeg_HipSHJnt_38",
+    "Dog_r_HindLeg_Knee1SHJnt_37",
+    "Dog_r_HindLeg_Knee2SHJnt_36",
+    "Dog_r_HindLeg_AnkleSHJnt_35",
+    "Dog_r_HindLeg_BallSHJnt_34",
+    "Wolf_r_HindLeg_ToeSHJnt_33",
+    "Dog_Tail_01_02SHJnt_42",
+    "Dog_Tail_01_03SHJnt_41",
+    "Dog_Tail_01_04SHJnt_40",
+    "Dog_Tail_01_05SHJnt_39"
+  ],
+  "lods": [
+    [
+      {
+        "file": "lod0-part0.cityskin",
+        "material": 0,
+        "triangles": 10000
+      }
+    ],
+    [
+      {
+        "file": "lod1-part0.cityskin",
+        "material": 0,
+        "triangles": 1699
+      }
+    ],
+    [
+      {
+        "file": "lod2-part0.cityskin",
+        "material": 0,
+        "triangles": 419
+      }
+    ]
+  ],
+  "materials": [
+    {
+      "name": "material",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 1,
+      "normalStrength": 0.20000000298023224,
+      "colorMap": "00-color.png",
+      "normalMap": "01-normal.png",
+      "finishMap": "02-finish.png"
+    }
+  ],
+  "clips": {
+    "idle": {
+      "start": 0,
+      "seconds": 8.708333333333334
+    },
+    "walk": {
+      "start": 64,
+      "stride": 0.85
+    },
+    "run": {
+      "start": 128,
+      "stride": 1.5
+    },
+    "fly": {
+      "start": 192,
+      "seconds": 0.19
+    }
+  },
+  "adaptations": "Normalized scale/axes; three LODs; four-weight GPU skinning; authored walk/run/flight cycles; 1024px texture cap.",
+  "sourceAsset": {
+    "extras": {
+      "author": "kenchoo (https://sketchfab.com/kenchoo)",
+      "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
+      "source": "https://sketchfab.com/3d-models/dog-puppy-72331763040e4314b154f84348fe0957",
+      "title": "Dog Puppy"
+    },
+    "generator": "Sketchfab-15.99.0",
+    "version": "2.0"
+  }
+}

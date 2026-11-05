@@ -1,0 +1,236 @@
+PROMZONA 0.20.0 — external asset credits
+========================================
+The following downloaded models have been adapted for this game. Original source
+and author credits are reproduced below. Each prepared model folder also contains
+the exact SOURCE-LICENSE.txt supplied with its archive.
+Changes: metre/axis normalization, reduced LOD geometry, resized texture maps,
+rigid wheel/front-door segmentation on road vehicles, scene placement and collision proxies.
+The high-detail VAZ has separately assigned glazing and reworked normals/LOD budgets.
+The tyre scan has its original scanned ground removed.
+The GAZ-52 uses its supplied Sketchfab Standard licence; it is not a CC asset.
+The remaining fifteen models carry CC BY 4.0 attribution licences.
+Original ZIP downloads are not overwritten. Do not distribute extracted assets
+as an asset pack; review each supplied licence for downstream reuse.
+
+
+--- luaz ---
+Original archive SHA256: e622e55243821cf7d30d82f3f22527e3a69f1218af0387761f379008e9f07258
+Model Information:
+* title:	LUAZ
+* source:	https://sketchfab.com/3d-models/luaz-172d9676de3541808f422eee16f47e72
+* author:	aaadragon (https://sketchfab.com/aaadragon)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "LUAZ" (https://sketchfab.com/3d-models/luaz-172d9676de3541808f422eee16f47e72) by aaadragon (https://sketchfab.com/aaadragon) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+--- azlh-2140_sl_moskvich ---
+Original archive SHA256: 91cba1c70228157d4d35da25626c83a2d2a2ba75d4f754e8e2bf5f90397c2f54
+Model Information:
+* title:	AZLH-2140 SL Moskvich
+* source:	https://sketchfab.com/3d-models/azlh-2140-sl-moskvich-72d8d3694c34453ebc1b99ced63f0ab3
+* author:	zhe_kan (https://sketchfab.com/zhe_kan)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "AZLH-2140 SL Moskvich" (https://sketchfab.com/3d-models/azlh-2140-sl-moskvich-72d8d3694c34453ebc1b99ced63f0ab3) by zhe_kan (https://sketchfab.com/zhe_kan) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+--- tires_decor ---
+Original archive SHA256: 8bc36832295f3289554baebbd62a28bf9dae129d9d44b80b6159b408c8b6b9da
+Model Information:
+* title:	TIRES DECOR
+* source:	https://sketchfab.com/3d-models/tires-decor-91f62134df8647389816f3874c9437c8
+* author:	vostok63m (https://sketchfab.com/vostok63m)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "TIRES DECOR" (https://sketchfab.com/3d-models/tires-decor-91f62134df8647389816f3874c9437c8) by vostok63m (https://sketchfab.com/vostok63m) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+--- u469 ---
+Original archive SHA256: 4ad43d04b77ef5464cf44370e5459745e349c6f683f083415fdd3a3f4f053242
+Model Information:
+* title:	U469
+* source:	https://sketchfab.com/3d-models/u469-b5a9f983a5a143f2a6994e083ef2b867
+* author:	buh (https://sketchfab.com/buh-late)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "U469" (https://sketchfab.com/3d-models/u469-b5a9f983a5a143f2a6994e083ef2b867) by buh (https://sketchfab.com/buh-late) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+--- gaz-52_truck_old_version ---
+Original archive SHA256: e615e4f39d1b93a443d6067ae4464484642ea3575dc8eb8f9fa25b6946649209
+Model Information:
+* title:	Gaz-52 truck, old version
+* source:	https://sketchfab.com/3d-models/gaz-52-truck-old-version-1321d97f84024db4b9cac9e6ff9b6381
+* author:	trivial.cat (https://sketchfab.com/trivial.cat)
+
+Model License:
+* license type:	SKETCHFAB Standard (https://sketchfab.com/licenses)
+* requirements:	Under basic restrictions, use worldwide, on all types of media, commercially or not, and in all types of derivative works
+
+
+--- maz_500 ---
+Original archive SHA256: 7de6e362b6869cf5be91ce5d87bce07db2a0477327b360403d332090e1d166c7
+Model Information:
+* title:	Maz 500
+* source:	https://sketchfab.com/3d-models/maz-500-b737cc71f2754f368b80ddd215f39b89
+* author:	own.guest (https://sketchfab.com/own.guest)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Maz 500" (https://sketchfab.com/3d-models/maz-500-b737cc71f2754f368b80ddd215f39b89) by own.guest (https://sketchfab.com/own.guest) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+--- ziu_9 ---
+Original archive SHA256: c3d8212e2aa4d5005877e93b74a064af1bbc49618923ab269dac96a57179d8f4
+Model Information:
+* title:	Ziu 9
+* source:	https://sketchfab.com/3d-models/ziu-9-3160207c7edc4f81989a64c9b693f2a6
+* author:	Randonavt (https://sketchfab.com/Randonavt)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Ziu 9" (https://sketchfab.com/3d-models/ziu-9-3160207c7edc4f81989a64c9b693f2a6) by Randonavt (https://sketchfab.com/Randonavt) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+--- pirozhok_scan_retopo_free_scan ---
+Original archive SHA256: 0d0bb9d21ec6b3ec236413400b0f837ba73c6fe59f8a128efc106d2d375e39f4
+Model Information:
+* title:	Pirozhok Scan Retopo (Free Scan)
+* source:	https://sketchfab.com/3d-models/pirozhok-scan-retopo-free-scan-07bc48134b364d4f8a43d288b3a0282d
+* author:	Renafox (https://sketchfab.com/kryik1023)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Pirozhok Scan Retopo (Free Scan)" (https://sketchfab.com/3d-models/pirozhok-scan-retopo-free-scan-07bc48134b364d4f8a43d288b3a0282d) by Renafox (https://sketchfab.com/kryik1023) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+--- soviet_kiosk__3d_model ---
+Original archive SHA256: 0bc448aaaf3275b8d5feb2d8d4794f17cfd200dea8c76db74179a1280f2b7132
+Model Information:
+* title:	Soviet Kiosk – 3D Model
+* source:	https://sketchfab.com/3d-models/soviet-kiosk-3d-model-3b85ae768ecd43f394991a1f0027c72c
+* author:	dimmeyster (https://sketchfab.com/dimmeyster)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Soviet Kiosk – 3D Model" (https://sketchfab.com/3d-models/soviet-kiosk-3d-model-3b85ae768ecd43f394991a1f0027c72c) by dimmeyster (https://sketchfab.com/dimmeyster) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+--- ukrainer_79_-_low_poly_model ---
+Original archive SHA256: e00a653b93cc49aba7db2db2ee844151bd2971a3119000626e2c86f69d847f07
+Model Information:
+* title:	Ukrainer '79 - Low poly model
+* source:	https://sketchfab.com/3d-models/ukrainer-79-low-poly-model-7129af29b710479ca62cd5376fbc4aa4
+* author:	Daniel Zhabotinsky (https://sketchfab.com/DanielZhabotinsky)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Ukrainer '79 - Low poly model" (https://sketchfab.com/3d-models/ukrainer-79-low-poly-model-7129af29b710479ca62cd5376fbc4aa4) by Daniel Zhabotinsky (https://sketchfab.com/DanielZhabotinsky) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+--- free_zuk_3d_model ---
+Original archive SHA256: 2b492e5d51a6da5c9e9dfd7a463a6e7a4c05f5509b96f0c22dd83086819647ee
+Model Information:
+* title:	(FREE) Żuk 3D model
+* source:	https://sketchfab.com/3d-models/free-zuk-3d-model-bb4OJb5V4L0hgYjM3vtGvPB7ZMt
+* author:	Karol Miklas (https://sketchfab.com/karolmiklas)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "(FREE) Żuk 3D model" (https://sketchfab.com/3d-models/free-zuk-3d-model-bb4OJb5V4L0hgYjM3vtGvPB7ZMt) by Karol Miklas (https://sketchfab.com/karolmiklas) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+--- free_soviet_tram_x-series ---
+Original archive SHA256: 5c1bff47e83a0b5f216517039d23b49918f3c2bda54b1aa1c871e1d954e33168
+Model Information:
+* title:	[Free] Soviet tram x-series
+* source:	https://sketchfab.com/3d-models/free-soviet-tram-x-series-dd4aeab12b4b4c3891156d7662b79cc2
+* author:	Net Med (https://sketchfab.com/net_3d)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "[Free] Soviet tram x-series" (https://sketchfab.com/3d-models/free-soviet-tram-x-series-dd4aeab12b4b4c3891156d7662b79cc2) by Net Med (https://sketchfab.com/net_3d) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+--- soviet_gasoline_pump_free ---
+Original archive SHA256: d996436535b70c32f60c2103c0da669c556279520f23a4811f5f690bb43eacf9
+Model Information:
+* title:	Soviet Gasoline Pump Free
+* source:	https://sketchfab.com/3d-models/soviet-gasoline-pump-free-69ef024f045c40d682ec9fe6aa4a79cc
+* author:	Kozlov Maksim (https://sketchfab.com/kozlovchik)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Soviet Gasoline Pump Free" (https://sketchfab.com/3d-models/soviet-gasoline-pump-free-69ef024f045c40d682ec9fe6aa4a79cc) by Kozlov Maksim (https://sketchfab.com/kozlovchik) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+--- 1970_soviet_car_vaz_2101 ---
+Original archive SHA256: 0aa0ec99d1e2acfd8e58232278c435fb32850e1abde073dc5c8d37e44a0547d1
+Model Information:
+* title:	1970 soviet car Vaz 2101
+* source:	https://sketchfab.com/3d-models/1970-soviet-car-vaz-2101-44b069c58bed4e28a08a4c8a6c86d457
+* author:	barmatunishka (https://sketchfab.com/barmatunishka)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "1970 soviet car Vaz 2101" (https://sketchfab.com/3d-models/1970-soviet-car-vaz-2101-44b069c58bed4e28a08a4c8a6c86d457) by barmatunishka (https://sketchfab.com/barmatunishka) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+--- outdated_soviet_bus_stop ---
+Original archive SHA256: 0d78e57aa326dd46c475c6fc07eac9deaeed9c7d87f8796a3740ed60069bf287
+Model Information:
+* title:	Outdated Soviet Bus Stop
+* source:	https://sketchfab.com/3d-models/outdated-soviet-bus-stop-1cc322c7d98f4f7794a326fa65809fb8
+* author:	Ottto3d (https://sketchfab.com/Ottto3ds)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Outdated Soviet Bus Stop" (https://sketchfab.com/3d-models/outdated-soviet-bus-stop-1cc322c7d98f4f7794a326fa65809fb8) by Ottto3d (https://sketchfab.com/Ottto3ds) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+
+--- soviet_soda_machine ---
+Original archive SHA256: 9f8d32956e023ef25dafa0e6a2df4066ea74a49e34f842cd4c63d1206421de1a
+Model Information:
+* title:	Soviet soda machine
+* source:	https://sketchfab.com/3d-models/soviet-soda-machine-0625e8970f47475b9aae5ce60fd0af76
+* author:	Silvestr (https://sketchfab.com/igorsutin8)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Soviet soda machine" (https://sketchfab.com/3d-models/soviet-soda-machine-0625e8970f47475b9aae5ce60fd0af76) by Silvestr (https://sketchfab.com/igorsutin8) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

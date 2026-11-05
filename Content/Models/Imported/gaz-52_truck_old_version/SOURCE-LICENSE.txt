@@ -1,0 +1,8 @@
+Model Information:
+* title:	Gaz-52 truck, old version
+* source:	https://sketchfab.com/3d-models/gaz-52-truck-old-version-1321d97f84024db4b9cac9e6ff9b6381
+* author:	trivial.cat (https://sketchfab.com/trivial.cat)
+
+Model License:
+* license type:	SKETCHFAB Standard (https://sketchfab.com/licenses)
+* requirements:	Under basic restrictions, use worldwide, on all types of media, commercially or not, and in all types of derivative works

@@ -1,0 +1,256 @@
+{
+  "name": "promzona_tank",
+  "kind": "vehicle",
+  "sourceTriangles": 17080,
+  "size": [
+    3.4100000858306885,
+    2.450000286102295,
+    6.180000066757202
+  ],
+  "materials": [
+    {
+      "name": "olive",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 0.62,
+      "metal": 0.3,
+      "glass": false,
+      "colorMap": "0-color.png",
+      "normalMap": "0-normal.png"
+    },
+    {
+      "name": "track",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 0.82,
+      "metal": 0.45,
+      "glass": false,
+      "colorMap": "1-color.png",
+      "normalMap": "1-normal.png"
+    },
+    {
+      "name": "steel",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 0.39,
+      "metal": 0.8,
+      "glass": false,
+      "colorMap": "2-color.png",
+      "normalMap": "2-normal.png"
+    },
+    {
+      "name": "glass",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 0.14,
+      "metal": 0.5,
+      "glass": true,
+      "colorMap": "3-color.png",
+      "normalMap": "3-normal.png"
+    },
+    {
+      "name": "cream",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 0.58,
+      "metal": 0.3,
+      "glass": false,
+      "colorMap": "4-color.png",
+      "normalMap": "4-normal.png"
+    },
+    {
+      "name": "orange",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 0.6,
+      "metal": 0.25,
+      "glass": false,
+      "colorMap": "5-color.png",
+      "normalMap": "5-normal.png"
+    }
+  ],
+  "wheels": [],
+  "hinges": [
+    [
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0
+    ]
+  ],
+  "lods": [
+    [
+      {
+        "file": "lod0-m0-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 2208
+      },
+      {
+        "file": "lod0-m1-p0.glb",
+        "material": 1,
+        "part": 0,
+        "triangles": 1296
+      },
+      {
+        "file": "lod0-m2-p0.glb",
+        "material": 2,
+        "part": 0,
+        "triangles": 12720
+      },
+      {
+        "file": "lod0-m4-p0.glb",
+        "material": 4,
+        "part": 0,
+        "triangles": 104
+      },
+      {
+        "file": "lod0-m0-p100.glb",
+        "material": 0,
+        "part": 100,
+        "triangles": 436
+      },
+      {
+        "file": "lod0-m2-p100.glb",
+        "material": 2,
+        "part": 100,
+        "triangles": 156
+      },
+      {
+        "file": "lod0-m1-p100.glb",
+        "material": 1,
+        "part": 100,
+        "triangles": 52
+      },
+      {
+        "file": "lod0-m3-p100.glb",
+        "material": 3,
+        "part": 100,
+        "triangles": 108
+      }
+    ],
+    [
+      {
+        "file": "lod1-m0-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 1424
+      },
+      {
+        "file": "lod1-m1-p0.glb",
+        "material": 1,
+        "part": 0,
+        "triangles": 352
+      },
+      {
+        "file": "lod1-m2-p0.glb",
+        "material": 2,
+        "part": 0,
+        "triangles": 5648
+      },
+      {
+        "file": "lod1-m4-p0.glb",
+        "material": 4,
+        "part": 0,
+        "triangles": 84
+      },
+      {
+        "file": "lod1-m0-p100.glb",
+        "material": 0,
+        "part": 100,
+        "triangles": 436
+      },
+      {
+        "file": "lod1-m2-p100.glb",
+        "material": 2,
+        "part": 100,
+        "triangles": 88
+      },
+      {
+        "file": "lod1-m1-p100.glb",
+        "material": 1,
+        "part": 100,
+        "triangles": 52
+      },
+      {
+        "file": "lod1-m3-p100.glb",
+        "material": 3,
+        "part": 100,
+        "triangles": 36
+      }
+    ],
+    [
+      {
+        "file": "lod2-m0-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 1008
+      },
+      {
+        "file": "lod2-m1-p0.glb",
+        "material": 1,
+        "part": 0,
+        "triangles": 368
+      },
+      {
+        "file": "lod2-m2-p0.glb",
+        "material": 2,
+        "part": 0,
+        "triangles": 990
+      },
+      {
+        "file": "lod2-m4-p0.glb",
+        "material": 4,
+        "part": 0,
+        "triangles": 30
+      },
+      {
+        "file": "lod2-m0-p100.glb",
+        "material": 0,
+        "part": 100,
+        "triangles": 355
+      },
+      {
+        "file": "lod2-m2-p100.glb",
+        "material": 2,
+        "part": 100,
+        "triangles": 35
+      },
+      {
+        "file": "lod2-m1-p100.glb",
+        "material": 1,
+        "part": 100,
+        "triangles": 18
+      },
+      {
+        "file": "lod2-m3-p100.glb",
+        "material": 3,
+        "part": 100,
+        "triangles": 12
+      }
+    ]
+  ],
+  "author": "Original procedural PROMZONA asset; editable Blender source supplied"
+}

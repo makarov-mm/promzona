@@ -1,0 +1,1397 @@
+{
+  "name": "ziu_9",
+  "kind": "depot",
+  "sourceTriangles": 176713,
+  "size": [
+    2.9621989727020264,
+    3.3600255846977234,
+    11.899999141693115
+  ],
+  "materials": [
+    {
+      "name": "base_colour.002",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.9683475494384766,
+      "colorMap": "00-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "silver",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "01-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "silver_0",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "02-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "silver_1",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "03-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "electricity_convertor",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.9371210932731628,
+      "colorMap": "04-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "silver_2",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "05-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "silver_3",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "06-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "glass.001",
+      "color": [
+        0.800000011920929,
+        0.800000011920929,
+        0.800000011920929,
+        1.0
+      ],
+      "metal": 0.0,
+      "roughness": 0.7470178008079529,
+      "alpha": 0.1029374971985817,
+      "glass": true
+    },
+    {
+      "name": "rubber",
+      "color": [
+        0.029556799679994583,
+        0.029556799679994583,
+        0.029556799679994583,
+        1.0
+      ],
+      "metal": 0.0,
+      "roughness": 0.9940886497497559,
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "headlights",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.7883399128913879,
+      "colorMap": "07-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "screen",
+      "color": [
+        0.800000011920929,
+        0.800000011920929,
+        0.800000011920929,
+        1.0
+      ],
+      "metal": 0.0,
+      "roughness": 0.8040408492088318,
+      "alpha": 0.40051496028900146,
+      "glass": false
+    },
+    {
+      "name": "silver_4",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "08-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "headlights_0",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.7883399128913879,
+      "colorMap": "09-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "silver_5",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "10-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "silver_6",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "11-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "base_colour.001",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.907681941986084,
+      "colorMap": "12-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "silver_7",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "13-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "tire_pattern",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8399999737739563,
+      "colorMap": "14-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "voltmeter",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8614359498023987,
+      "colorMap": "15-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "silver_8",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "16-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "tire_pattern_0",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8399999737739563,
+      "colorMap": "17-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "voltmeter_0",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8614359498023987,
+      "colorMap": "18-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "silver_9",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "19-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "silver_10",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "20-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "voltmeter_1",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8614359498023987,
+      "colorMap": "21-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "voltmeter_2",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8614359498023987,
+      "colorMap": "22-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "voltmeter_3",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8614359498023987,
+      "colorMap": "23-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "interior_lampshades",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.7737258076667786,
+      "colorMap": "24-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "interior_lampshades_0",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.7737258076667786,
+      "colorMap": "25-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "voltmeter_4",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8614359498023987,
+      "colorMap": "26-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "mirror",
+      "color": [
+        0.5209959745407104,
+        0.520995020866394,
+        0.5209959745407104,
+        1.0
+      ],
+      "metal": 0.0,
+      "roughness": 0.8526402711868286,
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "interior_lampshades_1",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.7737258076667786,
+      "colorMap": "27-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "interior_lampshades_2",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.7737258076667786,
+      "colorMap": "26-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "lambrekens",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.9200000166893005,
+      "colorMap": "28-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "lambrekens_0",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.9200000166893005,
+      "colorMap": "29-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "tire_pattern_1",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8399999737739563,
+      "colorMap": "30-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "tire_pattern_2",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8399999737739563,
+      "colorMap": "31-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "silver_11",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "32-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "voltmeter_5",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8614359498023987,
+      "colorMap": "33-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "speedometer_arrow__0",
+      "color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "metal": 0.0,
+      "roughness": 0.6000000238418579,
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "silver_12",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "34-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "tire_pattern_3",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8399999737739563,
+      "colorMap": "35-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "tire_pattern_4",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8399999737739563,
+      "colorMap": "36-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "voltmeter_6",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8614359498023987,
+      "colorMap": "37-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "silver_13",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "38-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "silver_14",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "12-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "silver_15",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "35-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "voltmeter_7",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8614359498023987,
+      "colorMap": "39-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "Material.093",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8868629336357117,
+      "colorMap": "40-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "voltmeter_8",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8614359498023987,
+      "colorMap": "41-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "base_colour.007",
+      "color": [
+        0.7529429793357849,
+        0.6104959845542908,
+        0.32314300537109375,
+        1.0
+      ],
+      "metal": 0.0,
+      "roughness": 0.8613563179969788,
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "Material.040",
+      "color": [
+        0.029556799679994583,
+        0.029556799679994583,
+        0.029556799679994583,
+        1.0
+      ],
+      "metal": 0.0,
+      "roughness": 0.9933909177780151,
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "silver_16",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 0.8211145401000977,
+      "colorMap": "42-color.png",
+      "alpha": 1.0,
+      "glass": false
+    }
+  ],
+  "wheels": [],
+  "hinges": [
+    [
+      -1.3922335171699523,
+      1.5360065052537748,
+      4.429749488830566
+    ],
+    [
+      1.3922335171699523,
+      1.912192788928054,
+      -4.548272609710693
+    ]
+  ],
+  "lods": [
+    [
+      {
+        "file": "lod0-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 1183
+      },
+      {
+        "file": "lod0-m2-p0.glb",
+        "material": 1,
+        "part": 0,
+        "triangles": 5818
+      },
+      {
+        "file": "lod0-m3-p0.glb",
+        "material": 2,
+        "part": 0,
+        "triangles": 706
+      },
+      {
+        "file": "lod0-m4-p0.glb",
+        "material": 3,
+        "part": 0,
+        "triangles": 27
+      },
+      {
+        "file": "lod0-m5-p0.glb",
+        "material": 4,
+        "part": 0,
+        "triangles": 629
+      },
+      {
+        "file": "lod0-m6-p0.glb",
+        "material": 5,
+        "part": 0,
+        "triangles": 10
+      },
+      {
+        "file": "lod0-m7-p0.glb",
+        "material": 6,
+        "part": 0,
+        "triangles": 1561
+      },
+      {
+        "file": "lod0-m8-p0.glb",
+        "material": 7,
+        "part": 0,
+        "triangles": 433
+      },
+      {
+        "file": "lod0-m9-p0.glb",
+        "material": 8,
+        "part": 0,
+        "triangles": 693
+      },
+      {
+        "file": "lod0-m10-p0.glb",
+        "material": 9,
+        "part": 0,
+        "triangles": 42
+      },
+      {
+        "file": "lod0-m11-p0.glb",
+        "material": 10,
+        "part": 0,
+        "triangles": 19
+      },
+      {
+        "file": "lod0-m12-p0.glb",
+        "material": 11,
+        "part": 0,
+        "triangles": 80
+      },
+      {
+        "file": "lod0-m13-p0.glb",
+        "material": 12,
+        "part": 0,
+        "triangles": 27
+      },
+      {
+        "file": "lod0-m14-p0.glb",
+        "material": 13,
+        "part": 0,
+        "triangles": 139
+      },
+      {
+        "file": "lod0-m15-p0.glb",
+        "material": 14,
+        "part": 0,
+        "triangles": 3212
+      },
+      {
+        "file": "lod0-m16-p0.glb",
+        "material": 15,
+        "part": 0,
+        "triangles": 809
+      },
+      {
+        "file": "lod0-m17-p0.glb",
+        "material": 16,
+        "part": 0,
+        "triangles": 98
+      },
+      {
+        "file": "lod0-m18-p0.glb",
+        "material": 17,
+        "part": 0,
+        "triangles": 31
+      },
+      {
+        "file": "lod0-m19-p0.glb",
+        "material": 18,
+        "part": 0,
+        "triangles": 298
+      },
+      {
+        "file": "lod0-m21-p0.glb",
+        "material": 20,
+        "part": 0,
+        "triangles": 880
+      },
+      {
+        "file": "lod0-m22-p0.glb",
+        "material": 21,
+        "part": 0,
+        "triangles": 27
+      },
+      {
+        "file": "lod0-m23-p0.glb",
+        "material": 22,
+        "part": 0,
+        "triangles": 39
+      },
+      {
+        "file": "lod0-m24-p0.glb",
+        "material": 23,
+        "part": 0,
+        "triangles": 19
+      },
+      {
+        "file": "lod0-m25-p0.glb",
+        "material": 24,
+        "part": 0,
+        "triangles": 2
+      },
+      {
+        "file": "lod0-m26-p0.glb",
+        "material": 25,
+        "part": 0,
+        "triangles": 2
+      },
+      {
+        "file": "lod0-m27-p0.glb",
+        "material": 26,
+        "part": 0,
+        "triangles": 2
+      },
+      {
+        "file": "lod0-m28-p0.glb",
+        "material": 27,
+        "part": 0,
+        "triangles": 81
+      },
+      {
+        "file": "lod0-m29-p0.glb",
+        "material": 28,
+        "part": 0,
+        "triangles": 41
+      },
+      {
+        "file": "lod0-m30-p0.glb",
+        "material": 29,
+        "part": 0,
+        "triangles": 6
+      },
+      {
+        "file": "lod0-m31-p0.glb",
+        "material": 30,
+        "part": 0,
+        "triangles": 13
+      },
+      {
+        "file": "lod0-m32-p0.glb",
+        "material": 31,
+        "part": 0,
+        "triangles": 22
+      },
+      {
+        "file": "lod0-m33-p0.glb",
+        "material": 32,
+        "part": 0,
+        "triangles": 17
+      },
+      {
+        "file": "lod0-m34-p0.glb",
+        "material": 33,
+        "part": 0,
+        "triangles": 3
+      },
+      {
+        "file": "lod0-m35-p0.glb",
+        "material": 34,
+        "part": 0,
+        "triangles": 22
+      },
+      {
+        "file": "lod0-m36-p0.glb",
+        "material": 35,
+        "part": 0,
+        "triangles": 42
+      },
+      {
+        "file": "lod0-m37-p0.glb",
+        "material": 36,
+        "part": 0,
+        "triangles": 568
+      },
+      {
+        "file": "lod0-m38-p0.glb",
+        "material": 37,
+        "part": 0,
+        "triangles": 12
+      },
+      {
+        "file": "lod0-m39-p0.glb",
+        "material": 38,
+        "part": 0,
+        "triangles": 16
+      },
+      {
+        "file": "lod0-m40-p0.glb",
+        "material": 39,
+        "part": 0,
+        "triangles": 231
+      },
+      {
+        "file": "lod0-m42-p0.glb",
+        "material": 41,
+        "part": 0,
+        "triangles": 9
+      },
+      {
+        "file": "lod0-m43-p0.glb",
+        "material": 42,
+        "part": 0,
+        "triangles": 24
+      },
+      {
+        "file": "lod0-m44-p0.glb",
+        "material": 43,
+        "part": 0,
+        "triangles": 44
+      },
+      {
+        "file": "lod0-m45-p0.glb",
+        "material": 44,
+        "part": 0,
+        "triangles": 16
+      },
+      {
+        "file": "lod0-m46-p0.glb",
+        "material": 45,
+        "part": 0,
+        "triangles": 25
+      },
+      {
+        "file": "lod0-m47-p0.glb",
+        "material": 46,
+        "part": 0,
+        "triangles": 118
+      },
+      {
+        "file": "lod0-m48-p0.glb",
+        "material": 47,
+        "part": 0,
+        "triangles": 62
+      },
+      {
+        "file": "lod0-m49-p0.glb",
+        "material": 48,
+        "part": 0,
+        "triangles": 4
+      },
+      {
+        "file": "lod0-m50-p0.glb",
+        "material": 49,
+        "part": 0,
+        "triangles": 172
+      },
+      {
+        "file": "lod0-m51-p0.glb",
+        "material": 50,
+        "part": 0,
+        "triangles": 769
+      },
+      {
+        "file": "lod0-m52-p0.glb",
+        "material": 51,
+        "part": 0,
+        "triangles": 38
+      },
+      {
+        "file": "lod0-m53-p0.glb",
+        "material": 52,
+        "part": 0,
+        "triangles": 4
+      }
+    ],
+    [
+      {
+        "file": "lod1-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 401
+      },
+      {
+        "file": "lod1-m2-p0.glb",
+        "material": 1,
+        "part": 0,
+        "triangles": 1978
+      },
+      {
+        "file": "lod1-m3-p0.glb",
+        "material": 2,
+        "part": 0,
+        "triangles": 240
+      },
+      {
+        "file": "lod1-m4-p0.glb",
+        "material": 3,
+        "part": 0,
+        "triangles": 27
+      },
+      {
+        "file": "lod1-m5-p0.glb",
+        "material": 4,
+        "part": 0,
+        "triangles": 212
+      },
+      {
+        "file": "lod1-m6-p0.glb",
+        "material": 5,
+        "part": 0,
+        "triangles": 10
+      },
+      {
+        "file": "lod1-m7-p0.glb",
+        "material": 6,
+        "part": 0,
+        "triangles": 530
+      },
+      {
+        "file": "lod1-m8-p0.glb",
+        "material": 7,
+        "part": 0,
+        "triangles": 147
+      },
+      {
+        "file": "lod1-m9-p0.glb",
+        "material": 8,
+        "part": 0,
+        "triangles": 235
+      },
+      {
+        "file": "lod1-m10-p0.glb",
+        "material": 9,
+        "part": 0,
+        "triangles": 42
+      },
+      {
+        "file": "lod1-m11-p0.glb",
+        "material": 10,
+        "part": 0,
+        "triangles": 19
+      },
+      {
+        "file": "lod1-m12-p0.glb",
+        "material": 11,
+        "part": 0,
+        "triangles": 80
+      },
+      {
+        "file": "lod1-m13-p0.glb",
+        "material": 12,
+        "part": 0,
+        "triangles": 27
+      },
+      {
+        "file": "lod1-m14-p0.glb",
+        "material": 13,
+        "part": 0,
+        "triangles": 139
+      },
+      {
+        "file": "lod1-m15-p0.glb",
+        "material": 14,
+        "part": 0,
+        "triangles": 1477
+      },
+      {
+        "file": "lod1-m16-p0.glb",
+        "material": 15,
+        "part": 0,
+        "triangles": 275
+      },
+      {
+        "file": "lod1-m17-p0.glb",
+        "material": 16,
+        "part": 0,
+        "triangles": 98
+      },
+      {
+        "file": "lod1-m18-p0.glb",
+        "material": 17,
+        "part": 0,
+        "triangles": 31
+      },
+      {
+        "file": "lod1-m19-p0.glb",
+        "material": 18,
+        "part": 0,
+        "triangles": 120
+      },
+      {
+        "file": "lod1-m21-p0.glb",
+        "material": 20,
+        "part": 0,
+        "triangles": 298
+      },
+      {
+        "file": "lod1-m22-p0.glb",
+        "material": 21,
+        "part": 0,
+        "triangles": 27
+      },
+      {
+        "file": "lod1-m23-p0.glb",
+        "material": 22,
+        "part": 0,
+        "triangles": 39
+      },
+      {
+        "file": "lod1-m24-p0.glb",
+        "material": 23,
+        "part": 0,
+        "triangles": 19
+      },
+      {
+        "file": "lod0-m25-p0.glb",
+        "material": 24,
+        "part": 0,
+        "triangles": 2
+      },
+      {
+        "file": "lod0-m26-p0.glb",
+        "material": 25,
+        "part": 0,
+        "triangles": 2
+      },
+      {
+        "file": "lod0-m27-p0.glb",
+        "material": 26,
+        "part": 0,
+        "triangles": 2
+      },
+      {
+        "file": "lod1-m28-p0.glb",
+        "material": 27,
+        "part": 0,
+        "triangles": 81
+      },
+      {
+        "file": "lod1-m29-p0.glb",
+        "material": 28,
+        "part": 0,
+        "triangles": 41
+      },
+      {
+        "file": "lod1-m30-p0.glb",
+        "material": 29,
+        "part": 0,
+        "triangles": 6
+      },
+      {
+        "file": "lod1-m31-p0.glb",
+        "material": 30,
+        "part": 0,
+        "triangles": 13
+      },
+      {
+        "file": "lod1-m32-p0.glb",
+        "material": 31,
+        "part": 0,
+        "triangles": 22
+      },
+      {
+        "file": "lod1-m33-p0.glb",
+        "material": 32,
+        "part": 0,
+        "triangles": 17
+      },
+      {
+        "file": "lod0-m34-p0.glb",
+        "material": 33,
+        "part": 0,
+        "triangles": 3
+      },
+      {
+        "file": "lod1-m35-p0.glb",
+        "material": 34,
+        "part": 0,
+        "triangles": 22
+      },
+      {
+        "file": "lod0-m36-p0.glb",
+        "material": 35,
+        "part": 0,
+        "triangles": 42
+      },
+      {
+        "file": "lod1-m37-p0.glb",
+        "material": 36,
+        "part": 0,
+        "triangles": 193
+      },
+      {
+        "file": "lod0-m38-p0.glb",
+        "material": 37,
+        "part": 0,
+        "triangles": 12
+      },
+      {
+        "file": "lod1-m39-p0.glb",
+        "material": 38,
+        "part": 0,
+        "triangles": 16
+      },
+      {
+        "file": "lod1-m40-p0.glb",
+        "material": 39,
+        "part": 0,
+        "triangles": 119
+      },
+      {
+        "file": "lod1-m42-p0.glb",
+        "material": 41,
+        "part": 0,
+        "triangles": 9
+      },
+      {
+        "file": "lod1-m43-p0.glb",
+        "material": 42,
+        "part": 0,
+        "triangles": 24
+      },
+      {
+        "file": "lod1-m44-p0.glb",
+        "material": 43,
+        "part": 0,
+        "triangles": 44
+      },
+      {
+        "file": "lod1-m45-p0.glb",
+        "material": 44,
+        "part": 0,
+        "triangles": 16
+      },
+      {
+        "file": "lod1-m46-p0.glb",
+        "material": 45,
+        "part": 0,
+        "triangles": 25
+      },
+      {
+        "file": "lod1-m47-p0.glb",
+        "material": 46,
+        "part": 0,
+        "triangles": 118
+      },
+      {
+        "file": "lod1-m48-p0.glb",
+        "material": 47,
+        "part": 0,
+        "triangles": 62
+      },
+      {
+        "file": "lod1-m49-p0.glb",
+        "material": 48,
+        "part": 0,
+        "triangles": 4
+      },
+      {
+        "file": "lod1-m50-p0.glb",
+        "material": 49,
+        "part": 0,
+        "triangles": 172
+      },
+      {
+        "file": "lod1-m51-p0.glb",
+        "material": 50,
+        "part": 0,
+        "triangles": 260
+      },
+      {
+        "file": "lod1-m52-p0.glb",
+        "material": 51,
+        "part": 0,
+        "triangles": 38
+      },
+      {
+        "file": "lod1-m53-p0.glb",
+        "material": 52,
+        "part": 0,
+        "triangles": 4
+      }
+    ],
+    [
+      {
+        "file": "lod2-m0-p0.glb",
+        "material": -1,
+        "part": 0,
+        "triangles": 1600
+      }
+    ]
+  ],
+  "farUvTopDown": true,
+  "sourceArchiveSha256": "c3d8212e2aa4d5005877e93b74a064af1bbc49618923ab269dac96a57179d8f4",
+  "adaptations": "Normalized metres and axes; bounded LODs; material texture resampling; rigid wheel and front-door segmentation.",
+  "farSurfaceAlpha": true,
+  "motionRepair": {
+    "version": 1,
+    "returnedBodyTriangles": 0,
+    "farTriangles": 1600
+  },
+  "cabinFrames": "Rebuilt thin rectangular vent frames; removed decimation fans across windows.",
+  "middleRepair": "Welded near topology; retained small panels and apertures; planar dissolve before collapse."
+}

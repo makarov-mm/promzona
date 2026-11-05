@@ -1,0 +1,234 @@
+{
+  "name": "1970_soviet_car_vaz_2101",
+  "kind": "vehicle",
+  "sourceTriangles": 4412090,
+  "size": [
+    1.6284139156341553,
+    1.3288532495498657,
+    4.170000076293945
+  ],
+  "materials": [
+    {
+      "name": "Material",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 1,
+      "roughness": 1,
+      "colorMap": "00-color.png",
+      "normalMap": "01-normal.png",
+      "finishMap": "02-finish.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "separated glazing",
+      "color": [
+        0.1,
+        0.16,
+        0.2,
+        1
+      ],
+      "metal": 0.2,
+      "roughness": 0.24,
+      "glass": true
+    }
+  ],
+  "wheels": [
+    {
+      "pivot": [
+        -0.5998389422893524,
+        0.3010703921318054,
+        -1.0278587937355042
+      ],
+      "radius": 0.30107027292251587,
+      "front": false
+    },
+    {
+      "pivot": [
+        0.6491579711437225,
+        0.3010703921318054,
+        -1.0278587937355042
+      ],
+      "radius": 0.30107027292251587,
+      "front": false
+    },
+    {
+      "pivot": [
+        -0.5998386442661285,
+        0.3010704070329666,
+        1.4496058821678162
+      ],
+      "radius": 0.3010702580213547,
+      "front": true
+    },
+    {
+      "pivot": [
+        0.6491576731204987,
+        0.3010703921318054,
+        1.4496058821678162
+      ],
+      "radius": 0.30107027292251587,
+      "front": true
+    }
+  ],
+  "hinges": [
+    [
+      -0.765354540348053,
+      0.767098845666181,
+      0.9040399789810181
+    ],
+    [
+      0.765354540348053,
+      0.7688704560167136,
+      0.9040399789810181
+    ]
+  ],
+  "lods": [
+    [
+      {
+        "file": "lod0-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 9037
+      },
+      {
+        "file": "lod0-m1-p1.glb",
+        "material": 0,
+        "part": 1,
+        "triangles": 767
+      },
+      {
+        "file": "lod0-m1-p2.glb",
+        "material": 0,
+        "part": 2,
+        "triangles": 728
+      },
+      {
+        "file": "lod0-m1-p3.glb",
+        "material": 0,
+        "part": 3,
+        "triangles": 7158
+      },
+      {
+        "file": "lod0-m1-p4.glb",
+        "material": 0,
+        "part": 4,
+        "triangles": 7162
+      },
+      {
+        "file": "lod0-m1-p5.glb",
+        "material": 0,
+        "part": 5,
+        "triangles": 7140
+      },
+      {
+        "file": "lod0-m1-p6.glb",
+        "material": 0,
+        "part": 6,
+        "triangles": 7161
+      },
+      {
+        "file": "lod0-m2-p0.glb",
+        "material": 1,
+        "part": 0,
+        "triangles": 190
+      },
+      {
+        "file": "lod0-m2-p1.glb",
+        "material": 1,
+        "part": 1,
+        "triangles": 10
+      },
+      {
+        "file": "lod0-m2-p2.glb",
+        "material": 1,
+        "part": 2,
+        "triangles": 8
+      }
+    ],
+    [
+      {
+        "file": "lod1-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 3025
+      },
+      {
+        "file": "lod1-m1-p1.glb",
+        "material": 0,
+        "part": 1,
+        "triangles": 208
+      },
+      {
+        "file": "lod1-m1-p2.glb",
+        "material": 0,
+        "part": 2,
+        "triangles": 219
+      },
+      {
+        "file": "lod1-m1-p3.glb",
+        "material": 0,
+        "part": 3,
+        "triangles": 1125
+      },
+      {
+        "file": "lod1-m1-p4.glb",
+        "material": 0,
+        "part": 4,
+        "triangles": 1184
+      },
+      {
+        "file": "lod1-m1-p5.glb",
+        "material": 0,
+        "part": 5,
+        "triangles": 1090
+      },
+      {
+        "file": "lod1-m1-p6.glb",
+        "material": 0,
+        "part": 6,
+        "triangles": 1189
+      },
+      {
+        "file": "lod1-m2-p0.glb",
+        "material": 1,
+        "part": 0,
+        "triangles": 72
+      },
+      {
+        "file": "lod1-m2-p1.glb",
+        "material": 1,
+        "part": 1,
+        "triangles": 4
+      },
+      {
+        "file": "lod1-m2-p2.glb",
+        "material": 1,
+        "part": 2,
+        "triangles": 4
+      }
+    ],
+    [
+      {
+        "file": "lod2-m0-p0.glb",
+        "material": -1,
+        "part": 0,
+        "triangles": 1600
+      }
+    ]
+  ],
+  "farUvTopDown": true,
+  "sourceArchiveSha256": "0aa0ec99d1e2acfd8e58232278c435fb32850e1abde073dc5c8d37e44a0547d1",
+  "adaptations": "Normalized metres and axes; bounded LODs; material texture resampling; rigid wheel and front-door segmentation.",
+  "mediumClusteringMetres": 0.027800000508626303,
+  "farSurfaceAlpha": true,
+  "motionRepair": {
+    "version": 1,
+    "returnedBodyTriangles": 68,
+    "farTriangles": 1600
+  }
+}

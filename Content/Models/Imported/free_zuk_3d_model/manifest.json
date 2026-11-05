@@ -1,0 +1,185 @@
+{
+  "name": "free_zuk_3d_model",
+  "kind": "vehicle",
+  "sourceTriangles": 11771,
+  "size": [
+    2.0263004302978516,
+    2.0478001534938812,
+    4.309999465942383
+  ],
+  "materials": [
+    {
+      "name": "material",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 1,
+      "roughness": 1,
+      "colorMap": "00-color.png",
+      "normalMap": "01-normal.png",
+      "finishMap": "02-finish.png",
+      "alpha": 1.0,
+      "glass": false
+    }
+  ],
+  "wheels": [
+    {
+      "pivot": [
+        -0.8206516742706299,
+        0.49,
+        -1.2929998397827147
+      ],
+      "radius": 0.49,
+      "front": false
+    },
+    {
+      "pivot": [
+        0.8206516742706299,
+        0.49,
+        -1.2929998397827147
+      ],
+      "radius": 0.49,
+      "front": false
+    },
+    {
+      "pivot": [
+        -0.8206516742706299,
+        0.49,
+        1.2929998397827147
+      ],
+      "radius": 0.49,
+      "front": true
+    },
+    {
+      "pivot": [
+        0.8206516742706299,
+        0.49,
+        1.2929998397827147
+      ],
+      "radius": 0.49,
+      "front": true
+    }
+  ],
+  "hinges": [
+    [
+      -0.9523612022399902,
+      1.0239000767469406,
+      1.5515998077392577
+    ],
+    [
+      0.9523612022399902,
+      1.0239000767469406,
+      1.5515998077392577
+    ]
+  ],
+  "lods": [
+    [
+      {
+        "file": "lod0-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 7937
+      },
+      {
+        "file": "lod0-m1-p1.glb",
+        "material": 0,
+        "part": 1,
+        "triangles": 286
+      },
+      {
+        "file": "lod0-m1-p2.glb",
+        "material": 0,
+        "part": 2,
+        "triangles": 290
+      },
+      {
+        "file": "lod0-m1-p3.glb",
+        "material": 0,
+        "part": 3,
+        "triangles": 969
+      },
+      {
+        "file": "lod0-m1-p4.glb",
+        "material": 0,
+        "part": 4,
+        "triangles": 969
+      },
+      {
+        "file": "lod0-m1-p5.glb",
+        "material": 0,
+        "part": 5,
+        "triangles": 958
+      },
+      {
+        "file": "lod0-m1-p6.glb",
+        "material": 0,
+        "part": 6,
+        "triangles": 958
+      }
+    ],
+    [
+      {
+        "file": "lod1-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 3635
+      },
+      {
+        "file": "lod1-m1-p1.glb",
+        "material": 0,
+        "part": 1,
+        "triangles": 157
+      },
+      {
+        "file": "lod1-m1-p2.glb",
+        "material": 0,
+        "part": 2,
+        "triangles": 160
+      },
+      {
+        "file": "lod1-m1-p3.glb",
+        "material": 0,
+        "part": 3,
+        "triangles": 371
+      },
+      {
+        "file": "lod1-m1-p4.glb",
+        "material": 0,
+        "part": 4,
+        "triangles": 371
+      },
+      {
+        "file": "lod1-m1-p5.glb",
+        "material": 0,
+        "part": 5,
+        "triangles": 357
+      },
+      {
+        "file": "lod1-m1-p6.glb",
+        "material": 0,
+        "part": 6,
+        "triangles": 357
+      }
+    ],
+    [
+      {
+        "file": "lod2-m0-p0.glb",
+        "material": -1,
+        "part": 0,
+        "triangles": 1600
+      }
+    ]
+  ],
+  "farUvTopDown": true,
+  "sourceArchiveSha256": "2b492e5d51a6da5c9e9dfd7a463a6e7a4c05f5509b96f0c22dd83086819647ee",
+  "adaptations": "Normalized metres and axes; bounded LODs; material texture resampling; rigid wheel and front-door segmentation.",
+  "farSurfaceAlpha": true,
+  "motionRepair": {
+    "version": 1,
+    "returnedBodyTriangles": 233,
+    "farTriangles": 1600
+  }
+}

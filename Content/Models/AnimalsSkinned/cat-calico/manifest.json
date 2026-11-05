@@ -1,0 +1,154 @@
+{
+  "name": "cat-calico",
+  "kind": "Cat",
+  "height": 0.38,
+  "sourceFile": "cat.glb",
+  "sourceSha256": "8e99de05386064bec8fcde43e8b59c2468d5d78953fc45ddf91159c68b0cbf1b",
+  "sourceTriangles": 3239,
+  "joints": [
+    "GLTF_created_0_rootJoint",
+    "Position_25",
+    "root_24",
+    "Torso_13",
+    "Neck_6",
+    "Head_5",
+    "Jaw_0",
+    "Ear_R1_2",
+    "Ear_R2_1",
+    "Ear_L1_4",
+    "Ear_L2_3",
+    "Thigh_FR_9",
+    "Knee_FR_8",
+    "Foot_FR_7",
+    "Thigh_FL_12",
+    "Knee_FL_11",
+    "Foot_FL_10",
+    "Pelvis_23",
+    "Thigh_BL_16",
+    "Knee_BL_15",
+    "Foot_BL_14",
+    "Thigh_BR_19",
+    "Knee_BR_18",
+    "Foot_BR_17",
+    "Tail_1_22",
+    "Tail_2_21",
+    "Tail_3_20"
+  ],
+  "lods": [
+    [
+      {
+        "file": "lod0-part0.cityskin",
+        "material": 0,
+        "triangles": 282
+      },
+      {
+        "file": "lod0-part1.cityskin",
+        "material": 1,
+        "triangles": 1979
+      },
+      {
+        "file": "lod0-part2.cityskin",
+        "material": 2,
+        "triangles": 978
+      }
+    ],
+    [
+      {
+        "file": "lod1-part0.cityskin",
+        "material": 0,
+        "triangles": 148
+      },
+      {
+        "file": "lod1-part1.cityskin",
+        "material": 1,
+        "triangles": 1038
+      },
+      {
+        "file": "lod1-part2.cityskin",
+        "material": 2,
+        "triangles": 513
+      }
+    ],
+    [
+      {
+        "file": "lod2-part0.cityskin",
+        "material": 0,
+        "triangles": 36
+      },
+      {
+        "file": "lod2-part1.cityskin",
+        "material": 1,
+        "triangles": 256
+      },
+      {
+        "file": "lod2-part2.cityskin",
+        "material": 2,
+        "triangles": 126
+      }
+    ]
+  ],
+  "materials": [
+    {
+      "name": "Tail",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 1.0,
+      "normalStrength": 1,
+      "colorMap": "00-color.png"
+    },
+    {
+      "name": "Body_Eye",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 1.0,
+      "normalStrength": 1,
+      "colorMap": "01-color.png"
+    },
+    {
+      "name": "Head",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 1.0,
+      "normalStrength": 1,
+      "colorMap": "02-color.png"
+    }
+  ],
+  "clips": {
+    "idle": {
+      "start": 0,
+      "seconds": 3.3333333333333335
+    },
+    "walk": {
+      "start": 64,
+      "stride": 0.55
+    },
+    "run": {
+      "start": 128,
+      "stride": 0.95
+    },
+    "fly": {
+      "start": 192,
+      "seconds": 0.19
+    }
+  },
+  "adaptations": "Normalized scale/axes; three LODs; four-weight GPU skinning; authored walk/run/flight cycles; 1024px texture cap.",
+  "sourceAsset": {
+    "extras": {
+      "author": "photon (that one larry) (https://sketchfab.com/Professor_E12)",
+      "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
+      "source": "https://sketchfab.com/3d-models/cat-74321b8d6b6b4c168db849ee6c8b3d6a",
+      "title": "Cat"
+    },
+    "generator": "Sketchfab-0.7.0",
+    "version": "2.0"
+  }
+}

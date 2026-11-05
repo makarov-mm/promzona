@@ -1,0 +1,16 @@
+{
+  "Cat": [
+    "cat.glb"
+  ],
+  "Dog": [
+    "dog-small.glb",
+    "dog.glb",
+    "dog-hound.glb"
+  ],
+  "Pigeon": [
+    "pigeon.glb"
+  ],
+  "Bird": [
+    "pigeon.glb"
+  ]
+}

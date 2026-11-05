@@ -1,0 +1,156 @@
+[
+  {
+    "color": "Ads/ad_1.png"
+  },
+  {
+    "color": "Ads/ad_2.png"
+  },
+  {
+    "color": "Ads/ad_3.png"
+  },
+  {
+    "color": "Ads/ad_4.png"
+  },
+  {
+    "color": "Ads/ad_5.png"
+  },
+  {
+    "color": "Ads/ad_6.png"
+  },
+  {
+    "color": "Ads/ad_7.png"
+  },
+  {
+    "color": "Ads/ad_8.png"
+  },
+  {
+    "color": "Ads/ad_9.png"
+  },
+  {
+    "color": "Ads/ad_10.png"
+  },
+  {
+    "color": "Facades/blue_plaster_weathered_diff.jpg",
+    "height": "Facades/blue_plaster_weathered_disp.jpg",
+    "normal": "PBR/blue_plaster_weathered_nor_gl.jpg",
+    "orm": "PBR/blue_plaster_weathered_arm.jpg"
+  },
+  {
+    "color": "Facades/red_plaster_weathered_diff.jpg",
+    "height": "Facades/red_plaster_weathered_disp.jpg",
+    "normal": "PBR/red_plaster_weathered_nor_gl.jpg",
+    "orm": "PBR/red_plaster_weathered_arm.jpg"
+  },
+  {
+    "color": "Facades/damaged_plaster_diff.jpg",
+    "height": "Facades/damaged_plaster_disp.jpg",
+    "normal": "PBR/damaged_plaster_nor_gl.jpg",
+    "orm": "PBR/damaged_plaster_arm.jpg"
+  },
+  {
+    "color": "Facades/precast_concrete_wall_diff.jpg",
+    "height": "Facades/precast_concrete_wall_disp.jpg",
+    "normal": "PBR/precast_concrete_wall_nor_gl.jpg",
+    "orm": "PBR/precast_concrete_wall_arm.jpg"
+  },
+  {
+    "color": "Facades/red_brick_plaster_patch_02_diff.jpg",
+    "height": "Facades/red_brick_plaster_patch_02_disp.jpg",
+    "normal": "PBR/red_brick_plaster_patch_02_nor_gl.jpg",
+    "orm": "PBR/red_brick_plaster_patch_02_arm.jpg"
+  },
+  {
+    "color": "Facades/rough_plaster_brick_02_diff.jpg",
+    "height": "Facades/rough_plaster_brick_02_disp.jpg",
+    "normal": "PBR/rough_plaster_brick_02_nor_gl.jpg",
+    "orm": "PBR/rough_plaster_brick_02_arm.jpg"
+  },
+  {
+    "color": "Facades/yellow_plaster_diff.jpg",
+    "height": "Facades/yellow_plaster_disp.jpg",
+    "normal": "PBR/yellow_plaster_nor_gl.jpg",
+    "orm": "PBR/yellow_plaster_arm.jpg"
+  },
+  {
+    "color": "Facades/worn_cracked_plaster_diff.jpg",
+    "height": "Facades/worn_cracked_plaster_disp.jpg",
+    "normal": "PBR/worn_cracked_plaster_nor_gl.jpg",
+    "orm": "PBR/worn_cracked_plaster_arm.jpg"
+  },
+  {
+    "color": "Facades/rusty_corrugated_iron_diff.jpg",
+    "height": "Facades/rusty_corrugated_iron_disp.jpg",
+    "normal": "PBR/rusty_corrugated_iron_nor_gl.jpg",
+    "orm": "PBR/rusty_corrugated_iron_arm.jpg"
+  },
+  {
+    "color": "Facades/worn_corrugated_iron_diff.jpg",
+    "height": "Facades/worn_corrugated_iron_disp.jpg",
+    "normal": "PBR/worn_corrugated_iron_nor_gl.jpg",
+    "orm": "PBR/worn_corrugated_iron_arm.jpg"
+  },
+  {
+    "color": "Facades/concrete_wall_006_diff.jpg",
+    "height": "Facades/concrete_wall_006_disp.jpg",
+    "normal": "PBR/concrete_wall_006_nor_gl.jpg",
+    "orm": "PBR/concrete_wall_006_arm.jpg"
+  },
+  {
+    "color": "Facades/brick_wall_003_diff.jpg",
+    "height": "Facades/brick_wall_003_disp.jpg",
+    "normal": "PBR/brick_wall_003_nor_gl.jpg",
+    "orm": "PBR/brick_wall_003_arm.jpg"
+  },
+  {
+    "color": "Interiors/rug_red.png"
+  },
+  {
+    "color": "Interiors/rug_green.png"
+  },
+  {
+    "color": "Interiors/rug_brown.png"
+  },
+  {
+    "color": "Road/pothole_1.png"
+  },
+  {
+    "color": "Road/pothole_2.png"
+  },
+  {
+    "color": "Road/pothole_3.png"
+  },
+  {
+    "color": "Road/manhole_1.png"
+  },
+  {
+    "color": "Road/manhole_2.png"
+  },
+  {
+    "color": "Props/dumpster.png",
+    "height": null
+  },
+  {
+    "color": "Services/pal-laich.png"
+  },
+  {
+    "color": "Services/yaga.png"
+  },
+  {
+    "color": "Services/lada.png"
+  },
+  {
+    "color": "Services/shawarma.png"
+  },
+  {
+    "color": "Editorial/antiwar-1.png"
+  },
+  {
+    "color": "Editorial/antiwar-2.png"
+  },
+  {
+    "color": "Editorial/antiwar-3.png"
+  },
+  {
+    "color": "Editorial/antiwar-4.png"
+  }
+]

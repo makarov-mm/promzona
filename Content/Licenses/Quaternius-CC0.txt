@@ -1,0 +1,12 @@
+Quaternius assets, retrieved 27 October 2026.
+Source model pages explicitly identify Quaternius and CC0.
+Each source URL and SHA256 is in Quaternius-assets.json.
+Vehicle collection: https://poly.pizza/bundle/Cars-Bundle-FE5IWe6OMk
+Author: https://quaternius.com/
+License deed: https://creativecommons.org/publicdomain/zero/1.0/
+Legal code: https://creativecommons.org/publicdomain/zero/1.0/legalcode
+
+Modifications for this game: unit/axis normalization; flattened materials and
+editable palette textures; pre-skinned 16-frame walk/run cycles and a two-arm
+inverse-kinematic aiming pose. Original source GLBs are included separately.
+These are stylized authored low-poly assets, not scans of Soviet vehicles.

@@ -1,0 +1,16 @@
+Promzona 0.6 asset provenance
+
+Poly Haven: 12 material pairs, CC0. Individual asset URLs, download URLs and hashes:
+polyhaven.json. License: https://docs.polyhaven.com/en/license
+Kenney Blocky Characters (18 figures, modified into articulated rigid parts):
+https://kenney.nl/assets/blocky-characters — CC0; Kenney-people.txt.
+Kenney Car Kit (reference assets, not active vehicle bodies):
+https://kenney.nl/assets/car-kit — CC0; Kenney-car-kit.txt.
+Existing ambientCG facade derivatives: ../City/CREDITS.txt.
+Van, truck, ambulance, bus and animal meshes: authored for Promzona.
+Four active passenger/police models and two animated people: Quaternius CC0.
+Details and original hashes: Quaternius-assets.json / Quaternius-CC0.txt.
+Kenney blocky people remain as reference assets; runtime uses PeopleBaked.
+Ten fictional ads, three rugs, three potholes and two manholes: generated for this
+project; exact prompts and original-file hashes in Generated-art.json. No real-brand
+advertising was intentionally included. These are not claimed as downloaded CC0 art.

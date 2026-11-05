@@ -1,0 +1,127 @@
+{
+  "name": "metro_2033_train",
+  "kind": "depot",
+  "sourceTriangles": 16124,
+  "size": [
+    2.901407241821289,
+    3.788955122232437,
+    19.200000762939453
+  ],
+  "materials": [
+    {
+      "name": "veh_vagon_metro_01.dds",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0,
+      "roughness": 0.7,
+      "colorMap": "00-color.png",
+      "glass": false
+    },
+    {
+      "name": "veh_vagon_metro_02.dds",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0,
+      "roughness": 0.7,
+      "colorMap": "01-color.png",
+      "glass": false
+    },
+    {
+      "name": "veh_vagon_metro_03.dds",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0,
+      "roughness": 0.7,
+      "colorMap": "02-color.png",
+      "glass": false
+    }
+  ],
+  "wheels": [],
+  "hinges": [
+    [
+      -1.3636614036560057,
+      1.8944775611162186,
+      3.8400001525878906
+    ],
+    [
+      1.3636614036560057,
+      1.8944775611162186,
+      3.8400001525878906
+    ]
+  ],
+  "lods": [
+    [
+      {
+        "file": "lod0-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 2136
+      },
+      {
+        "file": "lod0-m2-p0.glb",
+        "material": 1,
+        "part": 0,
+        "triangles": 6696
+      },
+      {
+        "file": "lod0-m3-p0.glb",
+        "material": 2,
+        "part": 0,
+        "triangles": 7292
+      }
+    ],
+    [
+      {
+        "file": "lod1-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 662
+      },
+      {
+        "file": "lod1-m2-p0.glb",
+        "material": 1,
+        "part": 0,
+        "triangles": 2076
+      },
+      {
+        "file": "lod1-m3-p0.glb",
+        "material": 2,
+        "part": 0,
+        "triangles": 2260
+      }
+    ],
+    [
+      {
+        "file": "lod2-m0-p0.glb",
+        "material": -1,
+        "part": 0,
+        "triangles": 706
+      }
+    ]
+  ],
+  "farUvTopDown": true,
+  "sourceArchiveSha256": "724f2682ec6c68e3b77466ef32df700d3e2d324b16875fe03606068bb1cdf209",
+  "sourceAsset": {
+    "extras": {
+      "author": "Tulip (https://sketchfab.com/pedroribeiro.1104)",
+      "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
+      "source": "https://sketchfab.com/3d-models/metro-2033-train-2d17466538fd46378c7f3c81bd05cb73",
+      "title": "Metro 2033 Train"
+    },
+    "generator": "Sketchfab-15.83.0",
+    "version": "2.0"
+  },
+  "adaptations": "Normalized metres and axes; bounded LODs; material texture resampling; rigid wheel and front-door segmentation."
+}

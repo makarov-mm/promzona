@@ -1,0 +1,487 @@
+{
+  "name": "fsb_sedan",
+  "kind": "vehicle",
+  "sourceTriangles": 4680,
+  "size": [
+    2.119999885559082,
+    1.4798715114593506,
+    4.799999713897705
+  ],
+  "materials": [
+    {
+      "name": "paint",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 0.33,
+      "metal": 0.45,
+      "glass": false,
+      "colorMap": "0-color.png",
+      "normalMap": "0-normal.png"
+    },
+    {
+      "name": "rubber",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 0.86,
+      "metal": 0.05,
+      "glass": false,
+      "colorMap": "1-color.png",
+      "normalMap": "1-normal.png"
+    },
+    {
+      "name": "chrome",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 0.24,
+      "metal": 0.85,
+      "glass": false,
+      "colorMap": "2-color.png",
+      "normalMap": "2-normal.png"
+    },
+    {
+      "name": "glass",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 0.11,
+      "metal": 0.65,
+      "glass": true,
+      "colorMap": "3-color.png",
+      "normalMap": "3-normal.png"
+    },
+    {
+      "name": "blue",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 0.42,
+      "metal": 0.28,
+      "glass": false,
+      "colorMap": "4-color.png",
+      "normalMap": "4-normal.png"
+    },
+    {
+      "name": "white",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 0.46,
+      "metal": 0.1,
+      "glass": false,
+      "colorMap": "5-color.png",
+      "normalMap": "5-normal.png"
+    },
+    {
+      "name": "red",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 0.28,
+      "metal": 0.2,
+      "glass": false,
+      "colorMap": "6-color.png",
+      "normalMap": "6-normal.png"
+    },
+    {
+      "name": "amber",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 0.25,
+      "metal": 0.1,
+      "glass": false,
+      "colorMap": "7-color.png",
+      "normalMap": "7-normal.png"
+    }
+  ],
+  "wheels": [
+    {
+      "pivot": [
+        -0.83,
+        0.34,
+        -1.36
+      ],
+      "radius": 0.34,
+      "front": false
+    },
+    {
+      "pivot": [
+        -0.83,
+        0.34,
+        1.34
+      ],
+      "radius": 0.34,
+      "front": true
+    },
+    {
+      "pivot": [
+        0.83,
+        0.34,
+        -1.36
+      ],
+      "radius": 0.34,
+      "front": false
+    },
+    {
+      "pivot": [
+        0.83,
+        0.34,
+        1.34
+      ],
+      "radius": 0.34,
+      "front": true
+    }
+  ],
+  "hinges": [
+    [
+      -0.84,
+      0.87,
+      0.85
+    ],
+    [
+      0.84,
+      0.87,
+      0.85
+    ]
+  ],
+  "lods": [
+    [
+      {
+        "file": "lod0-m0-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 744
+      },
+      {
+        "file": "lod0-m3-p0.glb",
+        "material": 3,
+        "part": 0,
+        "triangles": 12
+      },
+      {
+        "file": "lod0-m0-p1.glb",
+        "material": 0,
+        "part": 1,
+        "triangles": 108
+      },
+      {
+        "file": "lod0-m2-p1.glb",
+        "material": 2,
+        "part": 1,
+        "triangles": 108
+      },
+      {
+        "file": "lod0-m1-p3.glb",
+        "material": 1,
+        "part": 3,
+        "triangles": 284
+      },
+      {
+        "file": "lod0-m2-p3.glb",
+        "material": 2,
+        "part": 3,
+        "triangles": 76
+      },
+      {
+        "file": "lod0-m1-p4.glb",
+        "material": 1,
+        "part": 4,
+        "triangles": 284
+      },
+      {
+        "file": "lod0-m2-p4.glb",
+        "material": 2,
+        "part": 4,
+        "triangles": 76
+      },
+      {
+        "file": "lod0-m5-p0.glb",
+        "material": 5,
+        "part": 0,
+        "triangles": 324
+      },
+      {
+        "file": "lod0-m6-p0.glb",
+        "material": 6,
+        "part": 0,
+        "triangles": 324
+      },
+      {
+        "file": "lod0-m7-p0.glb",
+        "material": 7,
+        "part": 0,
+        "triangles": 216
+      },
+      {
+        "file": "lod0-m0-p2.glb",
+        "material": 0,
+        "part": 2,
+        "triangles": 108
+      },
+      {
+        "file": "lod0-m2-p2.glb",
+        "material": 2,
+        "part": 2,
+        "triangles": 108
+      },
+      {
+        "file": "lod0-m1-p5.glb",
+        "material": 1,
+        "part": 5,
+        "triangles": 284
+      },
+      {
+        "file": "lod0-m2-p5.glb",
+        "material": 2,
+        "part": 5,
+        "triangles": 76
+      },
+      {
+        "file": "lod0-m1-p6.glb",
+        "material": 1,
+        "part": 6,
+        "triangles": 284
+      },
+      {
+        "file": "lod0-m2-p6.glb",
+        "material": 2,
+        "part": 6,
+        "triangles": 76
+      },
+      {
+        "file": "lod0-m2-p0.glb",
+        "material": 2,
+        "part": 0,
+        "triangles": 972
+      },
+      {
+        "file": "lod0-m1-p0.glb",
+        "material": 1,
+        "part": 0,
+        "triangles": 108
+      },
+      {
+        "file": "lod0-m4-p0.glb",
+        "material": 4,
+        "part": 0,
+        "triangles": 108
+      }
+    ],
+    [
+      {
+        "file": "lod1-m0-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 216
+      },
+      {
+        "file": "lod1-m3-p0.glb",
+        "material": 3,
+        "part": 0,
+        "triangles": 12
+      },
+      {
+        "file": "lod1-m0-p1.glb",
+        "material": 0,
+        "part": 1,
+        "triangles": 4
+      },
+      {
+        "file": "lod1-m2-p1.glb",
+        "material": 2,
+        "part": 1,
+        "triangles": 8
+      },
+      {
+        "file": "lod1-m1-p3.glb",
+        "material": 1,
+        "part": 3,
+        "triangles": 93
+      },
+      {
+        "file": "lod1-m2-p3.glb",
+        "material": 2,
+        "part": 3,
+        "triangles": 24
+      },
+      {
+        "file": "lod1-m1-p4.glb",
+        "material": 1,
+        "part": 4,
+        "triangles": 104
+      },
+      {
+        "file": "lod1-m2-p4.glb",
+        "material": 2,
+        "part": 4,
+        "triangles": 20
+      },
+      {
+        "file": "lod1-m5-p0.glb",
+        "material": 5,
+        "part": 0,
+        "triangles": 36
+      },
+      {
+        "file": "lod1-m6-p0.glb",
+        "material": 6,
+        "part": 0,
+        "triangles": 28
+      },
+      {
+        "file": "lod1-m7-p0.glb",
+        "material": 7,
+        "part": 0,
+        "triangles": 24
+      },
+      {
+        "file": "lod1-m0-p2.glb",
+        "material": 0,
+        "part": 2,
+        "triangles": 4
+      },
+      {
+        "file": "lod1-m2-p2.glb",
+        "material": 2,
+        "part": 2,
+        "triangles": 8
+      },
+      {
+        "file": "lod1-m1-p5.glb",
+        "material": 1,
+        "part": 5,
+        "triangles": 94
+      },
+      {
+        "file": "lod1-m2-p5.glb",
+        "material": 2,
+        "part": 5,
+        "triangles": 25
+      },
+      {
+        "file": "lod1-m1-p6.glb",
+        "material": 1,
+        "part": 6,
+        "triangles": 105
+      },
+      {
+        "file": "lod1-m2-p6.glb",
+        "material": 2,
+        "part": 6,
+        "triangles": 22
+      },
+      {
+        "file": "lod1-m2-p0.glb",
+        "material": 2,
+        "part": 0,
+        "triangles": 68
+      },
+      {
+        "file": "lod1-m1-p0.glb",
+        "material": 1,
+        "part": 0,
+        "triangles": 12
+      }
+    ],
+    [
+      {
+        "file": "lod2-m0-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 104
+      },
+      {
+        "file": "lod2-m3-p0.glb",
+        "material": 3,
+        "part": 0,
+        "triangles": 12
+      },
+      {
+        "file": "lod2-m0-p1.glb",
+        "material": 0,
+        "part": 1,
+        "triangles": 4
+      },
+      {
+        "file": "lod2-m1-p3.glb",
+        "material": 1,
+        "part": 3,
+        "triangles": 37
+      },
+      {
+        "file": "lod2-m2-p3.glb",
+        "material": 2,
+        "part": 3,
+        "triangles": 8
+      },
+      {
+        "file": "lod2-m1-p4.glb",
+        "material": 1,
+        "part": 4,
+        "triangles": 40
+      },
+      {
+        "file": "lod2-m2-p4.glb",
+        "material": 2,
+        "part": 4,
+        "triangles": 4
+      },
+      {
+        "file": "lod2-m5-p0.glb",
+        "material": 5,
+        "part": 0,
+        "triangles": 4
+      },
+      {
+        "file": "lod2-m0-p2.glb",
+        "material": 0,
+        "part": 2,
+        "triangles": 4
+      },
+      {
+        "file": "lod2-m1-p5.glb",
+        "material": 1,
+        "part": 5,
+        "triangles": 37
+      },
+      {
+        "file": "lod2-m2-p5.glb",
+        "material": 2,
+        "part": 5,
+        "triangles": 8
+      },
+      {
+        "file": "lod2-m1-p6.glb",
+        "material": 1,
+        "part": 6,
+        "triangles": 40
+      },
+      {
+        "file": "lod2-m2-p6.glb",
+        "material": 2,
+        "part": 6,
+        "triangles": 4
+      }
+    ]
+  ],
+  "author": "Original procedural PROMZONA asset; editable Blender source supplied"
+}

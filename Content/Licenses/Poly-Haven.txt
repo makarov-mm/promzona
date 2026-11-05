@@ -1,0 +1,4 @@
+Powered by Poly Haven
+https://polyhaven.com/
+All downloaded textures are CC0. https://docs.polyhaven.com/en/license
+Original files and checksums: polyhaven.json

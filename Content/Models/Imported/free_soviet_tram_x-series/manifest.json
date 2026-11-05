@@ -1,0 +1,76 @@
+{
+  "name": "free_soviet_tram_x-series",
+  "kind": "depot",
+  "sourceTriangles": 22193,
+  "size": [
+    2.532832384109497,
+    4.061132362054195,
+    10.399996757507324
+  ],
+  "materials": [
+    {
+      "name": "default",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.05,
+      "roughness": 0.68,
+      "colorMap": "00-color.png",
+      "normalMap": "01-normal.png",
+      "finishMap": "02-finish.png",
+      "alpha": 1.0,
+      "glass": false
+    }
+  ],
+  "wheels": [],
+  "hinges": [
+    [
+      -1.1904312205314636,
+      2.0305661810270976,
+      2.0799993515014648
+    ],
+    [
+      1.1904312205314636,
+      2.0305661810270976,
+      2.0799993515014648
+    ]
+  ],
+  "lods": [
+    [
+      {
+        "file": "lod0-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 18000
+      }
+    ],
+    [
+      {
+        "file": "lod1-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 5000
+      }
+    ],
+    [
+      {
+        "file": "lod2-m0-p0.glb",
+        "material": -1,
+        "part": 0,
+        "triangles": 1600
+      }
+    ]
+  ],
+  "farUvTopDown": true,
+  "sourceArchiveSha256": "5c1bff47e83a0b5f216517039d23b49918f3c2bda54b1aa1c871e1d954e33168",
+  "adaptations": "Normalized metres and axes; bounded LODs; material texture resampling; rigid wheel and front-door segmentation.",
+  "farSurfaceAlpha": true,
+  "motionRepair": {
+    "version": 1,
+    "returnedBodyTriangles": 0,
+    "farTriangles": 1600
+  }
+}

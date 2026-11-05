@@ -1,0 +1,11 @@
+Model Information:
+* title:	AZLH-2140 SL Moskvich
+* source:	https://sketchfab.com/3d-models/azlh-2140-sl-moskvich-72d8d3694c34453ebc1b99ced63f0ab3
+* author:	zhe_kan (https://sketchfab.com/zhe_kan)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "AZLH-2140 SL Moskvich" (https://sketchfab.com/3d-models/azlh-2140-sl-moskvich-72d8d3694c34453ebc1b99ced63f0ab3) by zhe_kan (https://sketchfab.com/zhe_kan) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

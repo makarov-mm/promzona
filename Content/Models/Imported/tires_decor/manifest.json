@@ -1,0 +1,146 @@
+{
+  "name": "tires_decor",
+  "kind": "scenery",
+  "sourceTriangles": 474172,
+  "size": [
+    2.475379228591919,
+    0.4799996903166175,
+    1.4964868426322937
+  ],
+  "materials": [
+    {
+      "name": "TextureAtlas_1001",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 1.0,
+      "colorMap": "00-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "TextureAtlas_1002",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 1.0,
+      "colorMap": "01-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "TextureAtlas_1003",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 1.0,
+      "colorMap": "02-color.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "TextureAtlas_1004",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 0.0,
+      "roughness": 1.0,
+      "colorMap": "03-color.png",
+      "alpha": 1.0,
+      "glass": false
+    }
+  ],
+  "wheels": [],
+  "hinges": [
+    [
+      -1.163428237438202,
+      0.23999984515830874,
+      0.2992973685264588
+    ],
+    [
+      1.163428237438202,
+      0.23999984515830874,
+      0.2992973685264588
+    ]
+  ],
+  "lods": [
+    [
+      {
+        "file": "lod0-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 1705
+      },
+      {
+        "file": "lod0-m2-p0.glb",
+        "material": 1,
+        "part": 0,
+        "triangles": 1130
+      },
+      {
+        "file": "lod0-m3-p0.glb",
+        "material": 2,
+        "part": 0,
+        "triangles": 3745
+      },
+      {
+        "file": "lod0-m4-p0.glb",
+        "material": 3,
+        "part": 0,
+        "triangles": 4073
+      }
+    ],
+    [
+      {
+        "file": "lod1-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 263
+      },
+      {
+        "file": "lod1-m2-p0.glb",
+        "material": 1,
+        "part": 0,
+        "triangles": 165
+      },
+      {
+        "file": "lod1-m3-p0.glb",
+        "material": 2,
+        "part": 0,
+        "triangles": 628
+      },
+      {
+        "file": "lod1-m4-p0.glb",
+        "material": 3,
+        "part": 0,
+        "triangles": 633
+      }
+    ],
+    [
+      {
+        "file": "lod2-m0-p0.glb",
+        "material": -1,
+        "part": 0,
+        "triangles": 377
+      }
+    ]
+  ],
+  "farUvTopDown": true,
+  "sourceArchiveSha256": "8bc36832295f3289554baebbd62a28bf9dae129d9d44b80b6159b408c8b6b9da",
+  "adaptations": "Normalized metres and axes; bounded LODs; material texture resampling; rigid wheel and front-door segmentation."
+}

@@ -1,0 +1,18 @@
+VAZ 2101 by Javkal
+https://sketchfab.com/3d-models/vaz-2101-95d34f63b5b14e2197fd41383776e031
+Author: https://sketchfab.com/Javkal
+License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+https://creativecommons.org/licenses/by/4.0/
+
+This work is based on "VAZ 2101" by Javkal, licensed under CC-BY-4.0.
+The downloaded vaz_2101.glb is preserved unchanged in this folder.
+SHA256: 23c948602ac3839e56e8abb3f019846aa5ea65c1cb5390ca268aa027d80a7c68
+
+PROMZONA adaptation, 2026-10-30: coordinates and scale normalized, rigid
+wheel pivots extracted, front doors and their windows partitioned, editable
+paint mask derived, glass/roughness/metalness maps extracted. No endorsement
+by the original author is implied. The original source has no normal map.
+Prepared files are in ../VAZ2101; the reproducible tool is
+../../Tools/bake-vaz2101.py (requires Python and NumPy).
+
+Keep this attribution and license link when redistributing the adapted model.

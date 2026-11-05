@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net11.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ApplicationManifest>../Makarov.Host/app.manifest</ApplicationManifest>
+    <AssemblyName>Promzona</AssemblyName>
+    <RootNamespace>Promzona</RootNamespace>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <Version>0.44.1</Version>
+    <ApplicationIcon>Content/PROMZONA.ico</ApplicationIcon>
+    <Product>PROMZONA</Product>
+    <Description>PROMZONA - an independent open-world driving game.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Shaders/PostProcess/Fullscreen.vert;Shaders/PostProcess/Occlusion.frag;Shaders/PostProcess/Compose.frag"
+                      LogicalName="Promzona.Shaders.PostProcess.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Shaders/Sky/Weather.vert;Shaders/Sky/Weather.frag"
+                      LogicalName="Promzona.Shaders.Sky.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="Shaders/Models/Imported.vert" LogicalName="Promzona.Shaders.Models.Imported.vert" />
+    <EmbeddedResource Include="Shaders/Geometry/*.vert;Shaders/Geometry/*.frag;Shaders/Geometry/*.glsl"
+                      LogicalName="Promzona.Shaders.Geometry.%(Filename)%(Extension)" />
+    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
+    <!-- Shared engine only: no Suite host or module projects. -->
+    <ProjectReference Include="../../Shared/MakarovPhysics.Experiments/MakarovPhysics.Experiments.csproj" />
+    <ProjectReference Include="../../Shared/MakarovPhysics.RigidBodies2D/MakarovPhysics.RigidBodies2D.csproj" />
+    <Compile Include="../Makarov.Host/ImeInputBridge.cs" Link="Platform/ImeInputBridge.cs" />
+
+    <Content Include="../../Languages/Main/en.xml;../../Languages/Main/ru.xml;../../Languages/Main/uk.xml" LinkBase="Languages/Main" CopyToOutputDirectory="Always" CopyToPublishDirectory="Always" />
+  </ItemGroup>
+  <!-- Original city/model assets and credited facade maps; no Suite catalogue. -->
+  <Import Project="RuntimeContent.props" />
+</Project>

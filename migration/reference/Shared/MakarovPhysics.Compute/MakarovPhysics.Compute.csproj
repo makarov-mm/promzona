@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The CUDA backends: managed wrappers over MakarovPhysics.Cuda.dll and
+       nothing else. They lived in MakarovPhysics.Renderer, which made every
+       compute model that wanted a GPU depend on the GRAPHICS library - and on
+       inspection not one of the seventeen used a single renderer type. Their
+       whole surface is System.Runtime.InteropServices and System.Text.
+
+       Referencing nothing is not an accident here, it is the point: a library
+       that references nothing is compiled for real by Tools/stubcheck.py
+       instead of being hand-stubbed, so seventeen stubs and their drift risk
+       disappear with the move (08.08). -->
+
+  <PropertyGroup>
+    <!-- NEUTRAL, not -windows: DllImport by name, which is not a platform.
+         A target framework is a claim about what the code needs, and this one
+         needed nothing from Windows. Saying otherwise kept the library out of
+         every project that is not a Windows project - including a test runner
+         that could execute these groups on Linux and on the Mac, which is the
+         reason this changed (09.08). -->
+    <TargetFramework>net11.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+</Project>

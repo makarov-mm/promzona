@@ -1,0 +1,11 @@
+Model Information:
+* title:	Ziu 9
+* source:	https://sketchfab.com/3d-models/ziu-9-3160207c7edc4f81989a64c9b693f2a6
+* author:	Randonavt (https://sketchfab.com/Randonavt)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Ziu 9" (https://sketchfab.com/3d-models/ziu-9-3160207c7edc4f81989a64c9b693f2a6) by Randonavt (https://sketchfab.com/Randonavt) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

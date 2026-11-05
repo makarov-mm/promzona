@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Language code="uk" name="Українська">
+  <App>
+    <Title>Комплекс фізичних програм 2</Title>
+    <Loading>
+      <Configuration>Читання конфігурації…</Configuration>
+      <Languages>Завантаження перекладів…</Languages>
+      <Modules>Завантаження модулів…</Modules>
+      <Textures>Завантаження текстур…</Textures>
+      <Start>Запуск…</Start>
+    </Loading>
+  </App>
+  <Carousel>
+    <Title>Оберіть дослід</Title>
+    <ToGrid>Таблицею</ToGrid>
+    <ToCylinder>Циліндром</ToCylinder>
+    <Hint>Коліщатко - обертання, клік - відкрити</Hint>
+    <UnderDevelopment>У розробці</UnderDevelopment>
+    <LoadError>Не вдалося завантажити модуль</LoadError>
+    <Categories>
+      <Mechanics>Механіка</Mechanics>
+      <ContinuumWaves>Суцільні середовища та хвилі</ContinuumWaves>
+      <FieldsEm>Поля та електромагнетизм</FieldsEm>
+      <ModernStat>Статистична та сучасна фізика</ModernStat>
+      <RigidMachines>Тверде тіло та механізми</RigidMachines>
+    </Categories>
+  </Carousel>
+  <Camera>
+    <Overview>Загальний вид</Overview>
+    <Close>Крупно</Close>
+    <Instrument>Прилад</Instrument>
+    <Oblique>Під кутом</Oblique>
+  </Camera>
+  <View>
+    <Setup>Установка</Setup>
+    <Particles>Частинки</Particles>
+    <Trails>Сліди</Trails>
+    <Field>Поле</Field>
+  </View>
+  <Toolbar>
+    <Start>Старт</Start>
+    <Pause>Пауза</Pause>
+    <Stop>Стоп</Stop>
+    <Step>Крок</Step>
+    <Reset>Скинути</Reset>
+    <Captions>Написи на сцені</Captions>
+    <Back>Назад</Back>
+  </Toolbar>
+  <Module>
+    <State>
+      <Running>Триває</Running>
+      <Paused>Пауза</Paused>
+      <Stopped>Зупинено</Stopped>
+    </State>
+    <Time>Час</Time>
+    <TimeScale>Масштаб часу</TimeScale>
+  </Module>
+  <Scene>
+    <FieldGrid>Сітка поля</FieldGrid>
+    <Vectors>Вектори</Vectors>
+    <Velocity>Швидкість</Velocity>
+    <Acceleration>Прискорення</Acceleration>
+    <SweptArea>Заметена площа</SweptArea>
+    <Forces>
+      <Weight>Сила тяжіння</Weight>
+      <Buoyancy>Сила Архімеда</Buoyancy>
+      <Spring>Сила пружини</Spring>
+      <Net>Рівнодійна</Net>
+    </Forces>
+    <Energy>
+      <Title>Енергія</Title>
+      <Kinetic>Кінетич.</Kinetic>
+      <Gravity>Тяжіння</Gravity>
+      <Elastic>Пружна</Elastic>
+      <Heat>Тепло</Heat>
+      <Work>Робота руки</Work>
+      <Total>Разом</Total>
+    </Energy>
+    <Save>Запам’ятати</Save>
+    <ClearSaved>Забути</ClearSaved>
+    <Replay>Відтворення</Replay>
+    <Scrub>Стрічка часу</Scrub>
+    <Sound>Звук</Sound>
+    <Task>
+      <Title>Завдання</Title>
+      <HitTarget>Влучи в мішень</HitTarget>
+      <Hit>влучення</Hit>
+      <Short>недоліт</Short>
+      <Long>переліт</Long>
+      <Target>Дальність мішені</Target>
+      <Balance>Урівноваж важіль</Balance>
+      <Date>Датуй зразок</Date>
+      <Dock>Приїхати і зупинитися</Dock>
+      <DockAt>Причал у точці</DockAt>
+      <Docked>причалив</Docked>
+    </Task>
+    <Perihelion>Вісь перигелію</Perihelion>
+    <Momentum>Імпульс</Momentum>
+  </Scene>
+  <Instruments>
+    <Title>Прилади</Title>
+    <Ruler>Лінійка</Ruler>
+    <Protractor>Транспортир</Protractor>
+    <Stopwatch>Секундомір</Stopwatch>
+    <Probe>Зонд</Probe>
+    <Start>Пуск</Start>
+    <Stop>Стоп</Stop>
+    <Lap>Відсічка</Lap>
+    <Reset>Скидання</Reset>
+    <Voltmeter>Вольтметр</Voltmeter>
+    <Clamp>Струмові кліщі</Clamp>
+    <Thermometer>Термометр</Thermometer>
+    <Gauge>Манометр</Gauge>
+  </Instruments>
+  <Settings>
+    <Language>Мова</Language>
+    <Expert>Панель експерта</Expert>
+  </Settings>
+  <Menu>
+    <About>Про програму</About>
+  </Menu>
+  <About>
+    <Version>Версія</Version>
+    <Line1>Інтерактивні симуляції для навчання та демонстрацій.</Line1>
+    <Line2>C#, вікно WinForms, власний OpenGL-рендер та інтерфейс. Без сторонніх бібліотек.</Line2>
+    <Controls>Керування</Controls>
+    <ControlsCarousel>Карусель: рух миші - обертання, клік по панелі - відкрити дослід.</ControlsCarousel>
+    <ControlsModule>Дослід: права кнопка - обертання камери, коліщатко - зум.</ControlsModule>
+    <ControlsKeys>Клавіші: пробіл - старт/пауза, S - крок, Esc - назад, F1 - це вікно.</ControlsKeys>
+    <Close>Закрити</Close>
+  </About>
+  <Crash>
+    <Title>Щось пішло не так</Title>
+    <ModuleFailed>Модуль {0} впав на етапі {1}</ModuleFailed>
+    <HardCrash>Попередній сеанс завершився аварійно</HardCrash>
+    <Copy>Скопіювати звіт</Copy>
+    <OpenLog>Відкрити теку логів</OpenLog>
+    <Continue>Продовжити</Continue>
+    <SafeMode>Вимкнути GPU-бекенди (CUDA / OpenCL) на цей сеанс</SafeMode>
+    <Send>Скопіюйте цей звіт і вставте його в обговорення гри в Steam або надішліть розробнику - цього достатньо, щоб знайти й виправити помилку.</Send>
+  </Crash>
+  <List>
+    <ToList>▸  Усі модулі</ToList>
+    <ToCarousel>← Карусель</ToCarousel>
+    <Search>Пошук</Search>
+    <Domain>Розділ</Domain>
+    <AllDomains>Усі розділи</AllDomains>
+    <Hint>Друкуйте для пошуку · ↑↓ вибір · Enter відкрити · Esc назад до каруселі</Hint>
+    <CountAll>модулів: {0}</CountAll>
+    <CountFiltered>{0} з {1} модулів</CountFiltered>
+  </List>
+  <Domain>
+    <Mechanics>Механіка</Mechanics>
+    <Continua>Суцільні середовища і хвилі</Continua>
+    <Fields>Поля та електромагнетизм</Fields>
+    <Modern>Статистична і сучасна фізика</Modern>
+    <Rigid>Тверді тіла і механізми</Rigid>
+    <Complex>Складні системи</Complex>
+  </Domain>
+  <Overlay>
+    <More>Докладніше</More>
+    <Less>Згорнути подробиці</Less>
+  </Overlay>
+  <Host>
+    <Search>
+      <Placeholder>Пошук за назвою, ID або темою…</Placeholder>
+      <Count>Знайдено: {0}</Count>
+      <Empty>Збігів немає</Empty>
+      <Keys>Стрілки / колесо: вибір · Enter: відкрити · Esc: очистити пошук</Keys>
+      <Ring1>Гравітація, орбіти й коливання</Ring1>
+      <Ring2>Механіка, машини й тіла</Ring2>
+      <Ring3>Рідини, хвилі та звук</Ring3>
+      <Ring4>Електрика, магнетизм і поля</Ring4>
+      <Ring5>Квантова фізика, тепло й статистика</Ring5>
+      <Ring6>Складність, хаос і зростання</Ring6>
+      <Ring7>Атомна та ядерна фізика</Ring7>
+      <Ring8>Керування, механізми та синхронізація</Ring8>
+      <Ring9>Світло, вода, тепло та шкільні задачі</Ring9>
+      <Ring10>Прилади, машини та фізичні процеси</Ring10>
+    </Search>
+  </Host>
+  <Cosmos>
+    <Panel>Панель</Panel>
+    <Experiment>Експеримент</Experiment>
+    <View>Вигляд</View>
+    <Measurements>Вимірювання</Measurements>
+    <Camera>Ракурс</Camera>
+    <Pole>З боку полюса</Pole>
+    <Equator>З боку екватора</Equator>
+    <Follow>За тілом</Follow>
+    <Cinematic>Обліт</Cinematic>
+    <Glow>Яскравість світіння</Glow>
+    <Stars>Фонові зорі</Stars>
+    <Constellations>Сузір’я</Constellations>
+    <Instruments>Картки вимірювань</Instruments>
+    <Mouse>Перетягування — обертання, колесо — масштаб. Налаштування вигляду не змінюють модель.</Mouse>
+  </Cosmos>
+  <KeyboardGuide>
+    <Title>Ручне керування</Title>
+    <Travel>Рух майданчиком</Travel>
+    <Hoist>Опустити / підняти</Hoist>
+    <Grip>Взяти / відпустити</Grip>
+    <Brake>Зупинити рух</Brake>
+    <Drive>Уперед / назад</Drive>
+    <Steer>Поворот ліворуч / праворуч</Steer>
+    <Lift>Опустити / підняти</Lift>
+    <Home>Початкове положення</Home>
+    <Jog>Змістити ціль</Jog>
+    <Push>Штовхнути</Push>
+    <Tilt>Нахил уперед / назад</Tilt>
+  </KeyboardGuide>
+  <ParticleCompute>
+    <Count>Частинки</Count>
+    <Backend>Обчислення</Backend>
+    <Auto>Авто</Auto>
+    <Timing>{0:N0} частинок · {1:0.00} мс</Timing>
+    <Recovery>GPU недоступний або сталася помилка; обчислення тривають на CPU.</Recovery>
+    <Tracers>Незалежні частинки; без взаємної гравітації.</Tracers>
+    <Interacting>Взаємна гравітація всіх зір.</Interacting>
+  </ParticleCompute>
+</Language>

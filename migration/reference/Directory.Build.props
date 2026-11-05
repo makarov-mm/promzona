@@ -1,0 +1,67 @@
+﻿<Project>
+
+  <!-- Common settings for every project in the solution.
+       .NET 11 (latest), C# - the latest language version (preview for SDK 11). -->
+  <PropertyGroup>
+    <LangVersion>preview</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Deterministic>true</Deterministic>
+    <Authors>Michael Makarov</Authors>
+    <Product>MakarovPhysics - Physics Programs Suite 2</Product>
+    <Copyright>© Michael Makarov</Copyright>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+
+    <!-- Four self-contained hosts (Physics, Math, Astronomy, Makarov.Host)
+         share one Build\ folder and each copies the SAME runtime-pack DLLs
+         into it. When MSBuild builds them in parallel, two copies of
+         System.Windows.Forms.Primitives.dll race for one destination and
+         the loser fails with MSB3021 "access denied" (08.09, MakarovMath).
+         The copy task retries transient locks instead of failing: ten tries,
+         half a second apart - the other host's copy is over long before.
+         A host STILL RUNNING from Build\ holds its DLLs for longer than
+         that and fails the same way; that one is closed by hand. -->
+    <CopyRetryCount>10</CopyRetryCount>
+    <CopyRetryDelayMilliseconds>500</CopyRetryDelayMilliseconds>
+
+    <!-- CS0649 is an ERROR here (27.08). Casimir declared three fields -
+         the bloom stack, the light ribbons and the vacuum sparkle - used
+         them all over its draw path and never created any of them. Being
+         null, each silently switched its feature off, and the module shipped
+         for months without half of what it draws. The compiler said so on
+         every single build; nobody reads warnings that are always there.
+         "A field is used but never assigned" has no legitimate case in this
+         tree, so it stops the build like any other broken thing.
+
+         CS8602 and CS8604 join it on 29.08, and the sentence they replace
+         said why they had not: "three modules trip it and each needs its own
+         look". Each got one. Engine and VacuumTube were dereferencing render
+         resources the method had not checked - VacuumTube's came from testing
+         a field a SECOND time inside an `&&`, which tells the compiler the
+         false branch is reachable with it null and throws away the guarantee
+         the real guard at the top already gave. OpticsLab's OIDN path reached
+         the frame texture through a door with no guard on it. CS8604 was the
+         CUDA force-lattice interop promising four non-null arrays while both
+         sides of it had agreed the previous week that any of them may be
+         null. Four warnings, four different causes, none of them noise - and
+         a warning that is always there is a warning nobody reads. -->
+    <WarningsAsErrors>$(WarningsAsErrors);CS0649;CS8602;CS8604</WarningsAsErrors>
+  </PropertyGroup>
+
+  <!-- Release ships CLEAN (17.08): the default portable PDBs put ~130 .pdb
+       files next to the binaries, and publish-release.ps1 copied the whole
+       Build\ into the package. Embedded symbols solve both ends at once -
+       no loose files anywhere, while user crash reports still carry file
+       and line numbers, which loose PDBs in a Steam depot would not have
+       provided anyway (nobody ships them). XML doc files are never
+       generated, so the only .xml in a package is the Languages content.
+       Debug keeps portable PDBs: that is what the debugger wants. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>embedded</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- Modules build into Build\Modules\ (see Directory.Build.props in Modules\) -->
+
+</Project>

@@ -1,0 +1,4 @@
+Plaster001: ambientCG, CC0 1.0 Universal. https://ambientcg.com/a/Plaster001
+License: https://docs.ambientcg.com/license/
+Existing repository 512px albedo/displacement derivatives reused unchanged.
+Facade layouts, signs, interiors, cars and city geometry are original procedural assets.

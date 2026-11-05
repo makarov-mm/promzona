@@ -1,0 +1,70 @@
+{
+  "name": "soviet_soda_machine",
+  "kind": "scenery",
+  "sourceTriangles": 1164,
+  "size": [
+    0.7363759875297546,
+    1.8499998562037945,
+    0.7435924410820007
+  ],
+  "materials": [
+    {
+      "name": "Material.003",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 1,
+      "roughness": 1,
+      "colorMap": "00-color.png",
+      "normalMap": "01-normal.png",
+      "finishMap": "02-finish.png",
+      "alpha": 1.0,
+      "glass": false
+    }
+  ],
+  "wheels": [],
+  "hinges": [
+    [
+      -0.3460967141389847,
+      0.9249999281018972,
+      0.14871848821640016
+    ],
+    [
+      0.3460967141389847,
+      0.9249999281018972,
+      0.14871848821640016
+    ]
+  ],
+  "lods": [
+    [
+      {
+        "file": "lod0-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 1164
+      }
+    ],
+    [
+      {
+        "file": "lod1-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 1164
+      }
+    ],
+    [
+      {
+        "file": "lod2-m0-p0.glb",
+        "material": -1,
+        "part": 0,
+        "triangles": 311
+      }
+    ]
+  ],
+  "farUvTopDown": true,
+  "sourceArchiveSha256": "9f8d32956e023ef25dafa0e6a2df4066ea74a49e34f842cd4c63d1206421de1a",
+  "adaptations": "Normalized metres and axes; bounded LODs; material texture resampling; rigid wheel and front-door segmentation."
+}

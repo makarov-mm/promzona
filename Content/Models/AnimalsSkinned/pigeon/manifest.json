@@ -1,0 +1,149 @@
+{
+  "name": "pigeon",
+  "kind": "Pigeon",
+  "height": 0.32,
+  "sourceFile": "pigeon_riged.glb",
+  "sourceSha256": "9411fda970a256642008f32df758c5f9ceb65ceff3df3b2dfd291f2c9abfddbb",
+  "sourceTriangles": 40132,
+  "joints": [
+    "_rootJoint",
+    "hip_01",
+    "pelvis_02",
+    "lThigh_03",
+    "lShin_04",
+    "lFoot_05",
+    "lToe_06",
+    "lBigToe_07",
+    "rThigh_08",
+    "rShin_09",
+    "rFoot_010",
+    "rToe_011",
+    "rBigToe_012",
+    "abdomen_013",
+    "abdomen2_014",
+    "chest_015",
+    "neck_016",
+    "head_017",
+    "rEye_018",
+    "lEye_019",
+    "upperJaw_020",
+    "lowerJaw_021",
+    "tongueBase_022",
+    "tongue01_023",
+    "tongue02_024",
+    "tongue03_025",
+    "tongue04_026",
+    "tongue05_027",
+    "tongueTip_028",
+    "rCollar_029",
+    "rShldr_030",
+    "rForeArm_031",
+    "rHand_032",
+    "rThumb1_033",
+    "rThumb2_034",
+    "rThumb3_035",
+    "rCarpal1_036",
+    "rIndex1_037",
+    "rIndex2_038",
+    "rIndex3_039",
+    "rMid1_040",
+    "rMid2_041",
+    "rMid3_042",
+    "rCarpal2_043",
+    "rRing1_044",
+    "rRing2_045",
+    "rRing3_046",
+    "rPinky1_047",
+    "rPinky2_048",
+    "rPinky3_049",
+    "lCollar_00",
+    "lShldr_050",
+    "lForeArm_051",
+    "lHand_052",
+    "lThumb1_053",
+    "lThumb2_054",
+    "lThumb3_055",
+    "lCarpal1_056",
+    "lIndex1_057",
+    "lIndex2_058",
+    "lIndex3_059",
+    "lMid1_060",
+    "lMid2_061",
+    "lMid3_062",
+    "lCarpal2_063",
+    "lRing1_064",
+    "lRing2_065",
+    "lRing3_066",
+    "lPinky1_067",
+    "lPinky2_068",
+    "lPinky3_069",
+    "rPectoral_070",
+    "lPectoral_071"
+  ],
+  "lods": [
+    [
+      {
+        "file": "lod0-part0.cityskin",
+        "material": 0,
+        "triangles": 7500
+      }
+    ],
+    [
+      {
+        "file": "lod1-part0.cityskin",
+        "material": 0,
+        "triangles": 1700
+      }
+    ],
+    [
+      {
+        "file": "lod2-part0.cityskin",
+        "material": 0,
+        "triangles": 420
+      }
+    ]
+  ],
+  "materials": [
+    {
+      "name": "material",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 0.6000000238418579,
+      "normalStrength": 1.0,
+      "colorMap": "00-color.png",
+      "normalMap": "01-normal.png"
+    }
+  ],
+  "clips": {
+    "idle": {
+      "start": 0,
+      "seconds": 3.3333333333333335
+    },
+    "walk": {
+      "start": 64,
+      "stride": 0.22
+    },
+    "run": {
+      "start": 128,
+      "stride": 0.25
+    },
+    "fly": {
+      "start": 192,
+      "seconds": 0.19
+    }
+  },
+  "adaptations": "Normalized scale/axes; three LODs; four-weight GPU skinning; authored walk/run/flight cycles; 1024px texture cap.",
+  "sourceAsset": {
+    "extras": {
+      "author": "Egordick117 (https://sketchfab.com/Egordick117)",
+      "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
+      "source": "https://sketchfab.com/3d-models/pigeon-riged-074f69e454074e8ca3a8b46e21acff21",
+      "title": "Pigeon Riged"
+    },
+    "generator": "Sketchfab-15.82.0",
+    "version": "2.0"
+  }
+}

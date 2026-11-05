@@ -1,0 +1,11 @@
+Model Information:
+* title:	[Free] Soviet tram x-series
+* source:	https://sketchfab.com/3d-models/free-soviet-tram-x-series-dd4aeab12b4b4c3891156d7662b79cc2
+* author:	Net Med (https://sketchfab.com/net_3d)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "[Free] Soviet tram x-series" (https://sketchfab.com/3d-models/free-soviet-tram-x-series-dd4aeab12b4b4c3891156d7662b79cc2) by Net Med (https://sketchfab.com/net_3d) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

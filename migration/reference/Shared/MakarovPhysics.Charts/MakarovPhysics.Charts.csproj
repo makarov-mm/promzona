@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net11.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MakarovPhysics.Base\MakarovPhysics.Base.csproj" />
+    <ProjectReference Include="..\MakarovPhysics.Renderer\MakarovPhysics.Renderer.csproj" />
+    <ProjectReference Include="..\MakarovPhysics.UI\MakarovPhysics.UI.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/Engine/">
+    <Project Path="../../Shared/MakarovPhysics.Base/MakarovPhysics.Base.csproj" />
+    <Project Path="../../Shared/MakarovPhysics.Charts/MakarovPhysics.Charts.csproj" />
+    <Project Path="../../Shared/MakarovPhysics.Compute/MakarovPhysics.Compute.csproj" />
+    <Project Path="../../Shared/MakarovPhysics.Experiments/MakarovPhysics.Experiments.csproj" />
+    <Project Path="../../Shared/MakarovPhysics.Numerics/MakarovPhysics.Numerics.csproj" />
+    <Project Path="../../Shared/MakarovPhysics.Renderer/MakarovPhysics.Renderer.csproj" />
+    <Project Path="../../Shared/MakarovPhysics.RigidBodies/MakarovPhysics.RigidBodies.csproj" />
+    <Project Path="../../Shared/MakarovPhysics.RigidBodies2D/MakarovPhysics.RigidBodies2D.csproj" />
+    <Project Path="../../Shared/MakarovPhysics.UI/MakarovPhysics.UI.csproj" />
+  </Folder>
+  <Project Path="Promzona.csproj" />
+</Solution>

@@ -1,0 +1,11 @@
+Model Information:
+* title:	Soviet soda machine
+* source:	https://sketchfab.com/3d-models/soviet-soda-machine-0625e8970f47475b9aae5ce60fd0af76
+* author:	Silvestr (https://sketchfab.com/igorsutin8)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Soviet soda machine" (https://sketchfab.com/3d-models/soviet-soda-machine-0625e8970f47475b9aae5ce60fd0af76) by Silvestr (https://sketchfab.com/igorsutin8) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

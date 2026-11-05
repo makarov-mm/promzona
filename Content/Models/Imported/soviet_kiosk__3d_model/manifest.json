@@ -1,0 +1,70 @@
+{
+  "name": "soviet_kiosk__3d_model",
+  "kind": "scenery",
+  "sourceTriangles": 19167,
+  "size": [
+    3.4200968742370605,
+    2.749999761581421,
+    2.2897363901138306
+  ],
+  "materials": [
+    {
+      "name": "material_0",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 1,
+      "roughness": 1,
+      "colorMap": "00-color.png",
+      "normalMap": "01-normal.png",
+      "finishMap": "02-finish.png",
+      "alpha": 1.0,
+      "glass": false
+    }
+  ],
+  "wheels": [],
+  "hinges": [
+    [
+      -1.6074455308914184,
+      1.3749998807907104,
+      0.45794727802276614
+    ],
+    [
+      1.6074455308914184,
+      1.3749998807907104,
+      0.45794727802276614
+    ]
+  ],
+  "lods": [
+    [
+      {
+        "file": "lod0-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 15000
+      }
+    ],
+    [
+      {
+        "file": "lod1-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 4999
+      }
+    ],
+    [
+      {
+        "file": "lod2-m0-p0.glb",
+        "material": -1,
+        "part": 0,
+        "triangles": 751
+      }
+    ]
+  ],
+  "farUvTopDown": true,
+  "sourceArchiveSha256": "0bc448aaaf3275b8d5feb2d8d4794f17cfd200dea8c76db74179a1280f2b7132",
+  "adaptations": "Normalized metres and axes; bounded LODs; material texture resampling; rigid wheel and front-door segmentation."
+}

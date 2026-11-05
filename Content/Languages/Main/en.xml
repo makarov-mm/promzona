@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Language code="en" name="English">
+  <App>
+    <Title>Physics Programs Suite 2</Title>
+    <Loading>
+      <Configuration>Reading configuration…</Configuration>
+      <Languages>Loading translations…</Languages>
+      <Modules>Loading modules…</Modules>
+      <Textures>Loading textures…</Textures>
+      <Start>Starting…</Start>
+    </Loading>
+  </App>
+  <Carousel>
+    <Title>Choose an experiment</Title>
+    <ToGrid>Grid view</ToGrid>
+    <ToCylinder>Cylinder view</ToCylinder>
+    <Hint>Mouse wheel - rotate, click - open</Hint>
+    <UnderDevelopment>In development</UnderDevelopment>
+    <LoadError>Failed to load module</LoadError>
+    <Categories>
+      <Mechanics>Mechanics</Mechanics>
+      <ContinuumWaves>Continua and waves</ContinuumWaves>
+      <FieldsEm>Fields and electromagnetism</FieldsEm>
+      <ModernStat>Statistical and modern physics</ModernStat>
+      <RigidMachines>Rigid bodies and mechanisms</RigidMachines>
+    </Categories>
+  </Carousel>
+  <Camera>
+    <Overview>Overview</Overview>
+    <Close>Close-up</Close>
+    <Instrument>Instrument</Instrument>
+    <Oblique>Oblique</Oblique>
+  </Camera>
+  <View>
+    <Setup>Setup</Setup>
+    <Particles>Particles</Particles>
+    <Trails>Trails</Trails>
+    <Field>Field</Field>
+  </View>
+  <Toolbar>
+    <Start>Start</Start>
+    <Pause>Pause</Pause>
+    <Stop>Stop</Stop>
+    <Step>Step</Step>
+    <Reset>Reset</Reset>
+    <Captions>Captions in the scene</Captions>
+    <Back>Back</Back>
+  </Toolbar>
+  <Module>
+    <State>
+      <Running>Running</Running>
+      <Paused>Paused</Paused>
+      <Stopped>Stopped</Stopped>
+    </State>
+    <Time>Time</Time>
+    <TimeScale>Time scale</TimeScale>
+  </Module>
+  <Scene>
+    <FieldGrid>Field grid</FieldGrid>
+    <Vectors>Vectors</Vectors>
+    <Velocity>Velocity</Velocity>
+    <Acceleration>Acceleration</Acceleration>
+    <SweptArea>Swept area</SweptArea>
+    <Forces>
+      <Weight>Weight</Weight>
+      <Buoyancy>Buoyancy</Buoyancy>
+      <Spring>Spring force</Spring>
+      <Net>Net force</Net>
+    </Forces>
+    <Energy>
+      <Title>Energy</Title>
+      <Kinetic>Kinetic</Kinetic>
+      <Gravity>Gravity</Gravity>
+      <Elastic>Elastic</Elastic>
+      <Heat>Heat</Heat>
+      <Work>Work in</Work>
+      <Total>Total</Total>
+    </Energy>
+    <Save>Save</Save>
+    <ClearSaved>Clear saved</ClearSaved>
+    <Replay>Replay</Replay>
+    <Scrub>Timeline</Scrub>
+    <Sound>Sound</Sound>
+    <Task>
+      <Title>Task</Title>
+      <HitTarget>Hit the target</HitTarget>
+      <Hit>on target</Hit>
+      <Short>short</Short>
+      <Long>long</Long>
+      <Target>Target range</Target>
+      <Balance>Balance the beam</Balance>
+      <Date>Date the sample</Date>
+      <Dock>Arrive and stop</Dock>
+      <DockAt>Dock at</DockAt>
+      <Docked>docked</Docked>
+    </Task>
+    <Perihelion>Perihelion axis</Perihelion>
+    <Momentum>Momentum</Momentum>
+  </Scene>
+  <Instruments>
+    <Title>Instruments</Title>
+    <Ruler>Ruler</Ruler>
+    <Protractor>Protractor</Protractor>
+    <Stopwatch>Stopwatch</Stopwatch>
+    <Probe>Probe</Probe>
+    <Start>Start</Start>
+    <Stop>Stop</Stop>
+    <Lap>Lap</Lap>
+    <Reset>Reset</Reset>
+    <Voltmeter>Voltmeter</Voltmeter>
+    <Clamp>Current clamp</Clamp>
+    <Thermometer>Thermometer</Thermometer>
+    <Gauge>Gauge</Gauge>
+  </Instruments>
+  <Settings>
+    <Language>Language</Language>
+    <Expert>Expert panel</Expert>
+  </Settings>
+  <Menu>
+    <About>About</About>
+  </Menu>
+  <About>
+    <Version>Version</Version>
+    <Line1>Interactive simulations for education and demonstration.</Line1>
+    <Line2>C#, a WinForms window, custom OpenGL renderer and UI. No third-party libraries.</Line2>
+    <Controls>Controls</Controls>
+    <ControlsCarousel>Carousel: move the mouse to rotate, click a panel to open an experiment.</ControlsCarousel>
+    <ControlsModule>Experiment: right mouse button - rotate the camera, wheel - zoom.</ControlsModule>
+    <ControlsKeys>Keys: Space - start/pause, S - step, Esc - back, F1 - this window.</ControlsKeys>
+    <Close>Close</Close>
+  </About>
+  <Crash>
+    <Title>Something went wrong</Title>
+    <ModuleFailed>Module {0} failed in {1}</ModuleFailed>
+    <HardCrash>The previous session ended without a clean exit</HardCrash>
+    <Copy>Copy report</Copy>
+    <OpenLog>Open log folder</OpenLog>
+    <Continue>Continue</Continue>
+    <SafeMode>Disable GPU backends (CUDA / OpenCL) for this session</SafeMode>
+    <Send>Please copy this report and paste it into the game's Steam discussions or send it to the developer - it is exactly what is needed to find and fix the bug.</Send>
+  </Crash>
+  <List>
+    <ToList>▸  All modules</ToList>
+    <ToCarousel>← Carousel</ToCarousel>
+    <Search>Search</Search>
+    <Domain>Domain</Domain>
+    <AllDomains>All domains</AllDomains>
+    <Hint>Type to search · ↑↓ to move · Enter to open · Esc back to the carousel</Hint>
+    <CountAll>{0} modules</CountAll>
+    <CountFiltered>{0} of {1} modules</CountFiltered>
+  </List>
+  <Domain>
+    <Mechanics>Mechanics</Mechanics>
+    <Continua>Continua and waves</Continua>
+    <Fields>Fields and electromagnetism</Fields>
+    <Modern>Statistical and modern physics</Modern>
+    <Rigid>Rigid bodies and mechanisms</Rigid>
+    <Complex>Complex systems</Complex>
+  </Domain>
+  <Overlay>
+    <More>More details</More>
+    <Less>Show less</Less>
+  </Overlay>
+  <Host>
+    <Search>
+      <Placeholder>Search by name, ID or theme…</Placeholder>
+      <Count>Found: {0}</Count>
+      <Empty>No matching experiments</Empty>
+      <Keys>Arrows / wheel: select · Enter: open · Esc: clear search</Keys>
+      <Ring1>Gravity, orbits and oscillations</Ring1>
+      <Ring2>Mechanics, machines and bodies</Ring2>
+      <Ring3>Fluids, waves and sound</Ring3>
+      <Ring4>Electricity, magnetism and fields</Ring4>
+      <Ring5>Quantum, heat and statistics</Ring5>
+      <Ring6>Complexity, chaos and growth</Ring6>
+      <Ring7>Atomic and nuclear physics</Ring7>
+      <Ring8>Control, mechanisms and synchronisation</Ring8>
+      <Ring9>Light, water, heat and school problems</Ring9>
+      <Ring10>Instruments, machines and physical processes</Ring10>
+    </Search>
+  </Host>
+  <Cosmos>
+    <Panel>Workspace</Panel>
+    <Experiment>Experiment</Experiment>
+    <View>Appearance</View>
+    <Measurements>Measurements</Measurements>
+    <Camera>Viewpoint</Camera>
+    <Pole>From the pole</Pole>
+    <Equator>From the equator</Equator>
+    <Follow>Follow the body</Follow>
+    <Cinematic>Cinematic orbit</Cinematic>
+    <Glow>Emission brightness</Glow>
+    <Stars>Background stars</Stars>
+    <Constellations>Constellations</Constellations>
+    <Instruments>Measurement cards</Instruments>
+    <Mouse>Drag to orbit · wheel to zoom. Display controls do not change the model.</Mouse>
+  </Cosmos>
+  <KeyboardGuide>
+    <Title>Manual controls</Title>
+    <Travel>Move across the floor</Travel>
+    <Hoist>Lower / raise</Hoist>
+    <Grip>Grab / release</Grip>
+    <Brake>Stop travel</Brake>
+    <Drive>Drive forward / reverse</Drive>
+    <Steer>Steer left / right</Steer>
+    <Lift>Lower / raise</Lift>
+    <Home>Home position</Home>
+    <Jog>Move target</Jog>
+    <Push>Push</Push>
+    <Tilt>Tilt forward / back</Tilt>
+  </KeyboardGuide>
+  <ParticleCompute>
+    <Count>Particles</Count>
+    <Backend>Compute on</Backend>
+    <Auto>Auto</Auto>
+    <Timing>{0:N0} particles · {1:0.00} ms</Timing>
+    <Recovery>GPU unavailable or failed; calculation continues on CPU.</Recovery>
+    <Tracers>Independent tracers; no mutual gravity.</Tracers>
+    <Interacting>Every star gravitates with every other star.</Interacting>
+  </ParticleCompute>
+</Language>

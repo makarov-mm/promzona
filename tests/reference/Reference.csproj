@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../migration/reference/Apps/Promzona/Game/VehicleDynamics.cs" Link="VehicleDynamics.cs" />
+    <Compile Include="../../migration/reference/Apps/Promzona/Game/DriveInput.cs" Link="DriveInput.cs" />
+    <Compile Include="../../migration/reference/Apps/Promzona/Game/CityPoint.cs" Link="CityPoint.cs" />
+    <Compile Include="../../migration/reference/Shared/MakarovPhysics.RigidBodies2D/Body2D.cs" Link="Body2D.cs" />
+    <Compile Include="../../migration/reference/Shared/MakarovPhysics.RigidBodies2D/Shape2D.cs" Link="Shape2D.cs" />
+  </ItemGroup>
+</Project>

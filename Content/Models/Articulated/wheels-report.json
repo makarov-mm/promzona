@@ -1,0 +1,94 @@
+{
+  "sedan": {
+    "wheels": 4,
+    "triangles": [
+      498,
+      498,
+      496,
+      496
+    ]
+  },
+  "van": {
+    "wheels": 4,
+    "triangles": [
+      328,
+      328,
+      392,
+      392
+    ]
+  },
+  "truck": {
+    "wheels": 6,
+    "triangles": [
+      324,
+      324,
+      376,
+      376,
+      376,
+      376
+    ]
+  },
+  "police": {
+    "wheels": 4,
+    "triangles": [
+      496,
+      496,
+      496,
+      496
+    ]
+  },
+  "ambulance": {
+    "wheels": 4,
+    "triangles": [
+      324,
+      324,
+      368,
+      368
+    ]
+  },
+  "bus": {
+    "wheels": 4,
+    "triangles": [
+      328,
+      328,
+      408,
+      408
+    ]
+  },
+  "sedan2": {
+    "wheels": 4,
+    "triangles": [
+      496,
+      496,
+      496,
+      496
+    ]
+  },
+  "suv": {
+    "wheels": 4,
+    "triangles": [
+      486,
+      486,
+      486,
+      496
+    ]
+  },
+  "bobik": {
+    "wheels": 4,
+    "triangles": [
+      108,
+      108,
+      108,
+      108
+    ]
+  },
+  "guardvan": {
+    "wheels": 4,
+    "triangles": [
+      88,
+      88,
+      100,
+      100
+    ]
+  }
+}

@@ -1,0 +1,298 @@
+{
+  "name": "u469",
+  "kind": "vehicle",
+  "sourceTriangles": 49200,
+  "size": [
+    1.91615891456604,
+    1.9208983182907104,
+    4.0109241008758545
+  ],
+  "materials": [
+    {
+      "name": "u469w",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 1,
+      "roughness": 1,
+      "colorMap": "00-color.png",
+      "normalMap": "01-normal.png",
+      "finishMap": "02-finish.png",
+      "alpha": 1.0,
+      "glass": false
+    },
+    {
+      "name": "glass",
+      "color": [
+        0.800000011920929,
+        0.800000011920929,
+        0.800000011920929,
+        1.0
+      ],
+      "metal": 1.0,
+      "roughness": 0.0,
+      "alpha": 1.0,
+      "glass": true
+    },
+    {
+      "name": "u469",
+      "color": [
+        1,
+        1,
+        1,
+        1
+      ],
+      "metal": 1,
+      "roughness": 1,
+      "colorMap": "03-color.png",
+      "normalMap": "04-normal.png",
+      "finishMap": "05-finish.png",
+      "alpha": 1.0,
+      "glass": false
+    }
+  ],
+  "wheels": [
+    {
+      "pivot": [
+        -0.7470653653144836,
+        0.3704257011413574,
+        -1.0165162086486816
+      ],
+      "radius": 0.3704257011413574,
+      "front": false
+    },
+    {
+      "pivot": [
+        0.7470653653144836,
+        0.3704257011413574,
+        -1.0165162086486816
+      ],
+      "radius": 0.3704257011413574,
+      "front": false
+    },
+    {
+      "pivot": [
+        -0.7470653653144836,
+        0.3704259991645813,
+        1.356915831565857
+      ],
+      "radius": 0.3704257011413574,
+      "front": true
+    },
+    {
+      "pivot": [
+        0.7470653653144836,
+        0.3704259991645813,
+        1.356915831565857
+      ],
+      "radius": 0.3704257011413574,
+      "front": true
+    }
+  ],
+  "hinges": [
+    [
+      -0.9005946898460387,
+      0.9604491591453552,
+      0.8021848201751709
+    ],
+    [
+      0.9005946898460387,
+      0.9604491591453552,
+      0.8021848201751709
+    ]
+  ],
+  "lods": [
+    [
+      {
+        "file": "lod0-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 1095
+      },
+      {
+        "file": "lod0-m1-p3.glb",
+        "material": 0,
+        "part": 3,
+        "triangles": 1095
+      },
+      {
+        "file": "lod0-m1-p4.glb",
+        "material": 0,
+        "part": 4,
+        "triangles": 1095
+      },
+      {
+        "file": "lod0-m1-p5.glb",
+        "material": 0,
+        "part": 5,
+        "triangles": 1095
+      },
+      {
+        "file": "lod0-m1-p6.glb",
+        "material": 0,
+        "part": 6,
+        "triangles": 1095
+      },
+      {
+        "file": "lod0-m2-p0.glb",
+        "material": 1,
+        "part": 0,
+        "triangles": 13
+      },
+      {
+        "file": "lod0-m2-p1.glb",
+        "material": 1,
+        "part": 1,
+        "triangles": 1
+      },
+      {
+        "file": "lod0-m2-p2.glb",
+        "material": 1,
+        "part": 2,
+        "triangles": 1
+      },
+      {
+        "file": "lod0-m3-p0.glb",
+        "material": 2,
+        "part": 0,
+        "triangles": 13153
+      },
+      {
+        "file": "lod0-m3-p1.glb",
+        "material": 2,
+        "part": 1,
+        "triangles": 754
+      },
+      {
+        "file": "lod0-m3-p2.glb",
+        "material": 2,
+        "part": 2,
+        "triangles": 751
+      },
+      {
+        "file": "lod0-m3-p3.glb",
+        "material": 2,
+        "part": 3,
+        "triangles": 100
+      },
+      {
+        "file": "lod0-m3-p4.glb",
+        "material": 2,
+        "part": 4,
+        "triangles": 101
+      },
+      {
+        "file": "lod0-m3-p5.glb",
+        "material": 2,
+        "part": 5,
+        "triangles": 98
+      },
+      {
+        "file": "lod0-m3-p6.glb",
+        "material": 2,
+        "part": 6,
+        "triangles": 99
+      }
+    ],
+    [
+      {
+        "file": "lod1-m1-p0.glb",
+        "material": 0,
+        "part": 0,
+        "triangles": 304
+      },
+      {
+        "file": "lod1-m1-p3.glb",
+        "material": 0,
+        "part": 3,
+        "triangles": 304
+      },
+      {
+        "file": "lod1-m1-p4.glb",
+        "material": 0,
+        "part": 4,
+        "triangles": 304
+      },
+      {
+        "file": "lod1-m1-p5.glb",
+        "material": 0,
+        "part": 5,
+        "triangles": 304
+      },
+      {
+        "file": "lod1-m1-p6.glb",
+        "material": 0,
+        "part": 6,
+        "triangles": 304
+      },
+      {
+        "file": "lod1-m2-p0.glb",
+        "material": 1,
+        "part": 0,
+        "triangles": 3
+      },
+      {
+        "file": "lod1-m3-p0.glb",
+        "material": 2,
+        "part": 0,
+        "triangles": 4088
+      },
+      {
+        "file": "lod1-m3-p1.glb",
+        "material": 2,
+        "part": 1,
+        "triangles": 243
+      },
+      {
+        "file": "lod1-m3-p2.glb",
+        "material": 2,
+        "part": 2,
+        "triangles": 247
+      },
+      {
+        "file": "lod1-m3-p3.glb",
+        "material": 2,
+        "part": 3,
+        "triangles": 28
+      },
+      {
+        "file": "lod1-m3-p4.glb",
+        "material": 2,
+        "part": 4,
+        "triangles": 29
+      },
+      {
+        "file": "lod1-m3-p5.glb",
+        "material": 2,
+        "part": 5,
+        "triangles": 34
+      },
+      {
+        "file": "lod1-m3-p6.glb",
+        "material": 2,
+        "part": 6,
+        "triangles": 35
+      }
+    ],
+    [
+      {
+        "file": "lod2-m0-p0.glb",
+        "material": -1,
+        "part": 0,
+        "triangles": 1600
+      }
+    ]
+  ],
+  "farUvTopDown": true,
+  "sourceArchiveSha256": "4ad43d04b77ef5464cf44370e5459745e349c6f683f083415fdd3a3f4f053242",
+  "adaptations": "Normalized metres and axes; bounded LODs; material texture resampling; rigid wheel and front-door segmentation.",
+  "farSurfaceAlpha": true,
+  "motionRepair": {
+    "version": 1,
+    "returnedBodyTriangles": 34,
+    "farTriangles": 1600
+  }
+}

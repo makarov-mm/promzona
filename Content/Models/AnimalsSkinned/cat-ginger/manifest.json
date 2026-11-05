@@ -1,0 +1,158 @@
+{
+  "name": "cat-ginger",
+  "kind": "Cat",
+  "height": 0.38,
+  "sourceFile": "bicolor_cat.glb",
+  "sourceSha256": "4b395ba943d647f4c490c982a70fa2175ef91569615773da7ef3429e427ed21a",
+  "sourceTriangles": 8646,
+  "joints": [
+    "GLTF_created_0_rootJoint",
+    "Wolf_MAINSHJnt_39",
+    "Wolf_ROOTSHJnt_38",
+    "Wolf_Spine_01SHJnt_21",
+    "Wolf_Spine_02SHJnt_20",
+    "Wolf_Spine_03SHJnt_19",
+    "Wolf_Spine_04SHJnt_18",
+    "Wolf_Spine_TopSHJnt_17",
+    "Wolf_l_Clavicle_01_01SHJnt_5",
+    "Wolf_l_FrontLeg_HipSHJnt_4",
+    "Wolf_l_FrontLeg_KneeSHJnt_3",
+    "Wolf_l_FrontLeg_AnkleSHJnt_2",
+    "Wolf_l_FrontLeg_BallSHJnt_1",
+    "Wolf_l_FrontLeg_ToeSHJnt_0",
+    "Wolf_r_Clavicle_01_01SHJnt_11",
+    "Wolf_r_FrontLeg_HipSHJnt_10",
+    "Wolf_r_FrontLeg_KneeSHJnt_9",
+    "Wolf_r_FrontLeg_AnkleSHJnt_8",
+    "Wolf_r_FrontLeg_BallSHJnt_7",
+    "Wolf_r_FrontLeg_ToeSHJnt_6",
+    "Wolf_Neck_01SHJnt_16",
+    "Wolf_Neck_02SHJnt_15",
+    "Wolf_Neck_TopSHJnt_14",
+    "Wolf_Head_JawSHJnt_12",
+    "Wolf_l_HindLeg_HipSHJnt_27",
+    "Wolf_l_HindLeg_Knee1SHJnt_26",
+    "Wolf_l_HindLeg_Knee2SHJnt_25",
+    "Wolf_l_HindLeg_AnkleSHJnt_24",
+    "Wolf_l_HindLeg_BallSHJnt_23",
+    "Wolf_l_HindLeg_ToeSHJnt_22",
+    "Wolf_r_HindLeg_HipSHJnt_33",
+    "Wolf_r_HindLeg_Knee1SHJnt_32",
+    "Wolf_r_HindLeg_Knee2SHJnt_31",
+    "Wolf_r_HindLeg_AnkleSHJnt_30",
+    "Wolf_r_HindLeg_BallSHJnt_29",
+    "Wolf_r_HindLeg_ToeSHJnt_28",
+    "Wolf_Tail_01_02SHJnt_37",
+    "Wolf_Tail_01_03SHJnt_36",
+    "Wolf_Tail_01_04SHJnt_35",
+    "Wolf_Tail_01_05SHJnt_34"
+  ],
+  "lods": [
+    [
+      {
+        "file": "lod0-part0.cityskin",
+        "material": 0,
+        "triangles": 2044
+      },
+      {
+        "file": "lod0-part1.cityskin",
+        "material": 1,
+        "triangles": 233
+      },
+      {
+        "file": "lod0-part2.cityskin",
+        "material": 0,
+        "triangles": 6221
+      }
+    ],
+    [
+      {
+        "file": "lod1-part0.cityskin",
+        "material": 0,
+        "triangles": 408
+      },
+      {
+        "file": "lod1-part1.cityskin",
+        "material": 1,
+        "triangles": 46
+      },
+      {
+        "file": "lod1-part2.cityskin",
+        "material": 0,
+        "triangles": 1244
+      }
+    ],
+    [
+      {
+        "file": "lod2-part0.cityskin",
+        "material": 0,
+        "triangles": 100
+      },
+      {
+        "file": "lod2-part1.cityskin",
+        "material": 1,
+        "triangles": 11
+      },
+      {
+        "file": "lod2-part2.cityskin",
+        "material": 0,
+        "triangles": 307
+      }
+    ]
+  ],
+  "materials": [
+    {
+      "name": "cat_diffuse",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 1,
+      "normalStrength": 1.0,
+      "colorMap": "00-color.png",
+      "normalMap": "01-normal.png",
+      "finishMap": "02-finish.png"
+    },
+    {
+      "name": "material",
+      "color": [
+        1,
+        1,
+        1
+      ],
+      "roughness": 0.0,
+      "normalStrength": 1,
+      "colorMap": "00-color.png"
+    }
+  ],
+  "clips": {
+    "idle": {
+      "start": 0,
+      "seconds": 8.708333333333334
+    },
+    "walk": {
+      "start": 64,
+      "stride": 0.55
+    },
+    "run": {
+      "start": 128,
+      "stride": 0.95
+    },
+    "fly": {
+      "start": 192,
+      "seconds": 0.19
+    }
+  },
+  "adaptations": "Normalized scale/axes; three LODs; four-weight GPU skinning; authored walk/run/flight cycles; 1024px texture cap.",
+  "sourceAsset": {
+    "extras": {
+      "author": "kenchoo (https://sketchfab.com/kenchoo)",
+      "license": "CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)",
+      "source": "https://sketchfab.com/3d-models/bicolor-cat-e623a618ca344a8393d7ba4d63ec23cf",
+      "title": "Bicolor Cat"
+    },
+    "generator": "Sketchfab-15.97.0",
+    "version": "2.0"
+  }
+}
