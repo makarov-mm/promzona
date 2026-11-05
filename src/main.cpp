@@ -1,5 +1,6 @@
 #include "promzona/renderer.hpp"
 #include "promzona/audio.hpp"
+#include "promzona/architecture.hpp"
 #include <atomic>
 #include <chrono>
 #include <fstream>
@@ -220,6 +221,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     bool smoke = false;
     int smokeFrames = 180;
     std::wstring scenario = L"day";
+    std::optional<View> facadeView;
     std::filesystem::path screenshot, content, logPath, smokeOutput;
     wchar_t executable[32768]{};
     GetModuleFileNameW(nullptr, executable, 32768);
@@ -254,7 +256,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     {
         if (scenario != L"day" && scenario != L"drive" && scenario != L"walk" && scenario != L"night" &&
             scenario != L"canal" && scenario != L"bridge" && scenario != L"overpass" &&
-            scenario != L"underpass" && scenario != L"tunnel" && scenario != L"portal")
+            scenario != L"underpass" && scenario != L"tunnel" && scenario != L"portal" &&
+            scenario != L"facade" && scenario != L"facade-night")
             throw std::runtime_error("Unknown smoke scenario");
         if (content.empty())
             content = std::filesystem::is_directory(exeDirectory / L"Content")
@@ -433,6 +436,34 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 world->clock.setHour(10);
                                 app.zoom = scenario == L"underpass" ? 12 : scenario == L"tunnel" ? 7 : 24;
                             }
+                            if (scenario == L"facade" || scenario == L"facade-night")
+                            {
+                                const Building *selected = nullptr;
+                                for (const auto &b : world->buildings)
+                                    if (b.height > 16 && (!selected || b.p.length2() < selected->p.length2()))
+                                        selected = &b;
+                                if (!selected)
+                                    throw std::runtime_error("No facade review building");
+                                auto plan = planBuilding(*selected, world->terrain.height(selected->p));
+                                Vec3 n = plan.windowsOnZ ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
+                                auto r = cross({0, 1, 0}, n);
+                                float depth = plan.windowsOnZ ? plan.halfDepth : plan.halfWidth;
+                                auto front = plan.origin + n * depth;
+                                View v;
+                                v.eye = front + n * 17 + r * 7 + Vec3{0, 6, 0};
+                                v.target = front + Vec3{0, 7.5f, 0};
+                                v.heading = std::atan2(v.target.x - v.eye.x, v.target.z - v.eye.z);
+                                facadeView = v;
+                                auto &c = world->cars[0];
+                                auto parking = front + n * 8;
+                                c.body.p = {parking.x, parking.z};
+                                c.body.v = {};
+                                c.body.roadLevel = 0;
+                                c.body.height = world->terrain.height(c.body.p) + .8;
+                                world->clock.setHour(scenario == L"facade-night" ? 22 : 10);
+                                world->rain = world->rainTarget = 0;
+                                world->weatherClock = 120;
+                            }
                             smokeStart = world->position();
                         }
                         renderer.overlay(nullptr, app.width, app.height, fps, false, false, L"", L"", .96f);
@@ -544,6 +575,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                 if (world && !app.loading)
                 {
                     auto view = camera(*world, app, dt);
+                    if (smoke && facadeView)
+                        view = *facadeView;
                     audio.update(*world, view.heading);
                     renderer.render(*world, view, app.width, app.height);
                 }
@@ -592,6 +625,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         throw std::runtime_error("Smoke save/load mismatch");
                     if (!screenshot.empty())
                         renderer.screenshot(screenshot, app.width, app.height);
+                    log << renderer.sceneryStats() << std::endl;
                     log << "SMOKE PASS frames=" << frames << " cars=" << world->cars.size()
                         << " people=" << world->people.size() << " moved=" << distance
                         << " simulation=" << world->time << " scenario=" << utf8(scenario)

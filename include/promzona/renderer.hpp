@@ -24,5 +24,6 @@ class Renderer
                  const std::wstring &command, const std::wstring &message, float progress = -1);
     void screenshot(const std::filesystem::path &file, int width, int height);
     std::string graphicsInfo() const;
+    std::string sceneryStats() const;
 };
 } // namespace pz

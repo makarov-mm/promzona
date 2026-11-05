@@ -10,6 +10,7 @@ uniform int uSkin;
 uniform float uPose, uPreviousPose, uPoseBlend;
 out vec3 vWorld, vNormal;
 out vec2 vUv;
+flat out vec4 vDetail;
 
 mat4 bone(int joint, int pose)
 {
@@ -50,5 +51,6 @@ void main()
     vWorld = world.xyz;
     vNormal = normalize(transpose(inverse(mat3(uModel))) * n);
     vUv = aUv;
+    vDetail = aJoints;
     gl_Position = uViewProjection * world;
 }

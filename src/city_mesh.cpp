@@ -1,4 +1,5 @@
 #include "promzona/city_mesh.hpp"
+#include "promzona/architecture.hpp"
 namespace pz
 {
 namespace
@@ -317,16 +318,7 @@ CityChunk cityChunk(const World &w, double x0, double z0, double size)
     {
         if (!owns(b.p))
             continue;
-        float x = float(b.p.x), z = float(b.p.z), y0 = float(w.terrain.height(b.p)), h = float(b.height),
-              wx = float(b.half.x), wz = float(b.half.z);
-        box(data[Facade + b.style], {x, y0 + h * .5f, z}, {wx, h * .5f, wz}, 4);
-        box(data[Pavement], {x, y0 + h + .13f, z}, {wx + .15f, .13f, wz + .15f});
-        for (float wy = 2; wy < h; wy += 3)
-            for (float xp = -wx + 1.1f; xp < wx - .8f; xp += 2.4f)
-            {
-                box(data[Glass], {x + xp, y0 + wy, z + wz + .04f}, {.55f, .7f, .03f});
-                box(data[Glass], {x + xp, y0 + wy, z - wz - .04f}, {.55f, .7f, .03f});
-            }
+        buildingCore(data, planBuilding(b, w.terrain.height(b.p)), b.style);
     }
     for (auto &b : l.furniture)
     {

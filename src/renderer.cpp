@@ -3,6 +3,8 @@
 #include "promzona/gl.hpp"
 #include "promzona/animation.hpp"
 #include "promzona/city_mesh.hpp"
+#include "promzona/architecture.hpp"
+#include "promzona/visibility.hpp"
 #include <cstring>
 #include <fstream>
 #include <iomanip>
@@ -160,7 +162,7 @@ void box(MeshData &m, Vec3 p, Vec3 half, float uv = 1)
 struct Renderer::Impl
 {
     std::filesystem::path root;
-    GLuint scene{}, ui{}, white{}, uiTexture{}, bones[2]{};
+    GLuint scene{}, ui{}, white{}, uiTexture{}, bones[2]{}, rug{};
     Mesh uiQuad, cube, skin[2];
     int poses[2]{};
     std::map<std::uint32_t, ActorMotion> actorMotion;
@@ -168,13 +170,14 @@ struct Renderer::Impl
     struct Batch
     {
         Mesh mesh;
-        GLuint color{}, normal{};
+        GLuint color{}, normal{}, orm{};
         Vec3 tint{1, 1, 1};
         float emissive{};
         Vec3 centre{};
         float radius{100000};
         int part{}, surface{};
         float alpha{1}, roughness{.7f}, metallic{};
+        bool detail{};
     };
     struct Model
     {
@@ -188,6 +191,7 @@ struct Renderer::Impl
         std::vector<Wheel> wheels;
     };
     std::vector<Batch> city;
+    size_t sceneryBytes{}, submittedBatches{}, submittedTriangles{}, submittedDetails{};
     std::array<Model, 4> cars;
     GLuint peopleTexture[2]{};
     int width{}, height{};
@@ -244,6 +248,7 @@ struct Renderer::Impl
             peopleTexture[i] = texture(root / (std::string("Textures/People/") + name + "-palette.png"));
         }
         const char *models[] = {"old_car_-_vaz_2107", "luaz", "azlh-2140_sl_moskvich", "militia_sedan"};
+        rug = texture(root / "Textures/Interiors/rug_red.png");
         for (int k = 0; k < 4; k++)
         {
             auto path = root / "Models/Imported" / models[k];
@@ -356,6 +361,8 @@ struct Renderer::Impl
         glBindTexture(GL_TEXTURE_2D, normal ? normal : white);
         ActiveTexture(TEXTURE0);
         Uniform1i(uniform("uHasNormal"), normal ? 1 : 0);
+        Uniform1i(uniform("uHasOrm"), 0);
+        Uniform1i(uniform("uDetail"), 0);
         Uniform1i(uniform("uSurface"), 0);
         Uniform3f(uniform("uTint"), tint.x, tint.y, tint.z);
         Uniform1f(uniform("uEmissive"), emissive);
@@ -371,6 +378,14 @@ struct Renderer::Impl
         Uniform1f(uniform("uAlpha"), b.alpha);
         Uniform1f(uniform("uRoughness"), b.roughness);
         Uniform1f(uniform("uMetallic"), b.metallic);
+        Uniform1i(uniform("uDetail"), b.detail ? 1 : 0);
+        Uniform1i(uniform("uHasOrm"), b.orm ? 1 : 0);
+        if (b.orm)
+        {
+            ActiveTexture(TEXTURE0 + 3);
+            glBindTexture(GL_TEXTURE_2D, b.orm);
+            ActiveTexture(TEXTURE0);
+        }
         b.mesh.draw();
     }
     void solid(Vec3 centre, Vec3 size, Vec3 color, float emissive = 0)
@@ -429,13 +444,24 @@ std::string Renderer::graphicsInfo() const
     return std::string(reinterpret_cast<const char *>(glGetString(GL_RENDERER))) + " / " +
            reinterpret_cast<const char *>(glGetString(GL_VERSION));
 }
+std::string Renderer::sceneryStats() const
+{
+    auto &r = *impl_;
+    return "Scenery batches=" + std::to_string(r.submittedBatches) + "/" + std::to_string(r.city.size()) +
+           " near=" + std::to_string(r.submittedDetails) +
+           " submitted_triangles=" + std::to_string(r.submittedTriangles) +
+           " resident_mesh_MiB=" + std::to_string(r.sceneryBytes / (1024 * 1024));
+}
 void Renderer::prepare(const World &world)
 {
     auto &r = *impl_;
     r.city.clear();
+    r.sceneryBytes = 0;
     r.actorMotion.clear();
     std::array<GLuint, 8> walls{};
     std::array<GLuint, 8> normals{};
+    std::array<GLuint, 8> orm{};
+    std::array<GLuint, 3> signs{};
     auto manifest = nlohmann::json::parse(readText(r.root / "Textures/manifest.json"));
     for (int i = 0; i < 8; i++)
     {
@@ -443,70 +469,130 @@ void Renderer::prepare(const World &world)
         walls[i] = r.texture(r.root / "Textures" / m.at("color").get<std::string>());
         if (m.contains("normal"))
             normals[i] = r.texture(r.root / "Textures" / m.at("normal").get<std::string>());
+        if (m.contains("orm"))
+            orm[i] = r.texture(r.root / "Textures" / m.at("orm").get<std::string>());
     }
+    for (int i = 0; i < 3; ++i)
+        signs[i] = r.texture(r.root / "Textures" / manifest[4 + i].at("color").get<std::string>());
+    auto uploadChunk = [&](const CityChunk &data, bool detail)
+    {
+        for (int i = 0; i < SurfaceCount; ++i)
+            if (!data[i].indices.empty())
+            {
+                Impl::Batch b;
+                b.mesh.upload(data[i]);
+                r.sceneryBytes +=
+                    data[i].vertices.size() * sizeof(Vertex) + data[i].indices.size() * sizeof(std::uint32_t);
+                b.detail = detail;
+                Vec3 low{1e9f, 1e9f, 1e9f}, high{-1e9f, -1e9f, -1e9f};
+                for (const auto &vertex : data[i].vertices)
+                {
+                    const auto &p = vertex.position;
+                    low = {std::min(low.x, p.x), std::min(low.y, p.y), std::min(low.z, p.z)};
+                    high = {std::max(high.x, p.x), std::max(high.y, p.y), std::max(high.z, p.z)};
+                }
+                b.centre = (low + high) * .5f;
+                b.radius = (high - low).length() * .5f;
+                if (i >= Facade && i < Paint)
+                {
+                    b.color = walls[i - Facade];
+                    b.normal = normals[i - Facade];
+                    b.orm = orm[i - Facade];
+                }
+                else
+                    b.color = r.white;
+                if (i == Grass)
+                {
+                    b.tint = {.32f, .40f, .24f};
+                    b.surface = 1;
+                }
+                if (i == Road)
+                {
+                    b.tint = {.26f, .28f, .29f};
+                    b.surface = 2;
+                    b.roughness = .86f;
+                }
+                if (i == Pavement)
+                {
+                    b.tint = {.55f, .55f, .49f};
+                    b.surface = 3;
+                }
+                if (i == Paint)
+                    b.tint = {.9f, .86f, .68f};
+                if (i == Glass)
+                {
+                    b.tint = {.23f, .34f, .40f};
+                    b.roughness = .15f;
+                    b.metallic = .35f;
+                }
+                if (i == Water)
+                {
+                    b.tint = {.12f, .30f, .34f};
+                    b.surface = 4;
+                    b.roughness = .12f;
+                }
+                if (i == Sand)
+                {
+                    b.tint = {.62f, .53f, .36f};
+                    b.surface = 5;
+                }
+                if (i == Metal)
+                {
+                    b.tint = {.22f, .28f, .25f};
+                    b.metallic = .65f;
+                }
+                if (i == Lamps)
+                {
+                    b.tint = {.95f, .79f, .48f};
+                    b.emissive = 1.8f;
+                }
+                if (i == Windows)
+                    b.surface = 6;
+                if (i == Frame)
+                    b.tint = {.65f, .66f, .60f};
+                if (i == Door)
+                {
+                    b.tint = {.19f, .28f, .25f};
+                    b.metallic = .25f;
+                }
+                if (i == Roof)
+                    b.tint = {.38f, .39f, .36f};
+                if (i == Foundation)
+                    b.tint = {.30f, .35f, .31f};
+                if (i >= Balcony && i < Roof)
+                {
+                    constexpr Vec3 paints[] = {{.27f, .39f, .33f}, {.48f, .39f, .28f}, {.51f, .54f, .49f}};
+                    b.tint = paints[i - Balcony];
+                    b.surface = 7;
+                    b.metallic = .15f;
+                }
+                if (i >= Sign)
+                    b.color = signs[i - Sign];
+                r.city.push_back(std::move(b));
+            }
+    };
     // Chunk ownership covers the whole island and coast, regardless of grid size.
     double low = -std::ceil(world.landEdge / 144) * 144, high = -low;
     for (double z = low; z < high; z += 144)
         for (double x = low; x < high; x += 144)
         {
             auto data = cityChunk(world, x, z);
-            for (int i = 0; i < SurfaceCount; ++i)
-                if (!data[i].indices.empty())
-                {
-                    Impl::Batch b;
-                    b.mesh.upload(data[i]);
-                    b.centre = {float(x + 72), 25, float(z + 72)};
-                    b.radius = 145;
-                    b.color = i >= Facade && i < Paint ? walls[i - Facade] : r.white;
-                    b.normal = i >= Facade && i < Paint ? normals[i - Facade] : 0;
-                    if (i == Grass)
-                    {
-                        b.tint = {.32f, .40f, .24f};
-                        b.surface = 1;
-                    }
-                    if (i == Road)
-                    {
-                        b.tint = {.26f, .28f, .29f};
-                        b.surface = 2;
-                        b.roughness = .86f;
-                    }
-                    if (i == Pavement)
-                    {
-                        b.tint = {.55f, .55f, .49f};
-                        b.surface = 3;
-                    }
-                    if (i == Paint)
-                        b.tint = {.9f, .86f, .68f};
-                    if (i == Glass)
-                    {
-                        b.tint = {.23f, .34f, .40f};
-                        b.roughness = .15f;
-                        b.metallic = .35f;
-                    }
-                    if (i == Water)
-                    {
-                        b.tint = {.12f, .30f, .34f};
-                        b.surface = 4;
-                        b.roughness = .12f;
-                    }
-                    if (i == Sand)
-                    {
-                        b.tint = {.62f, .53f, .36f};
-                        b.surface = 5;
-                    }
-                    if (i == Metal)
-                    {
-                        b.tint = {.22f, .28f, .25f};
-                        b.metallic = .65f;
-                    }
-                    if (i == Lamps)
-                    {
-                        b.tint = {.95f, .79f, .48f};
-                        b.emissive = 1.8f;
-                    }
-                    r.city.push_back(std::move(b));
-                }
+            uploadChunk(data, false);
         }
+    // Near architecture is baked separately in 72m cells. No per-window CPU work per frame.
+    std::map<std::pair<int, int>, std::vector<const Building *>> details;
+    for (const auto &b : world.buildings)
+    {
+        auto key = std::pair{int(std::floor(b.p.x / 72)), int(std::floor(b.p.z / 72))};
+        details[key].push_back(&b);
+    }
+    for (const auto &[key, buildings] : details)
+    {
+        CityChunk data;
+        for (const auto *b : buildings)
+            buildingDetails(data, planBuilding(*b, world.terrain.height(b->p)));
+        uploadChunk(data, true);
+    }
 }
 void Renderer::render(const World &world, const View &view, int w, int h)
 {
@@ -531,23 +617,37 @@ void Renderer::render(const World &world, const View &view, int w, int h)
               float(world.clock.sunHeight()), .3f);
     Uniform1f(r.uniform("uDay"), day);
     Uniform1f(r.uniform("uTime"), float(world.time));
+    Uniform1f(r.uniform("uHour"), float(world.clock.hour));
     Uniform1f(r.uniform("uRain"), rain);
     Uniform1i(r.uniform("uColor"), 0);
     Uniform1i(r.uniform("uNormal"), 1);
     Uniform1i(r.uniform("uBones"), 2);
+    Uniform1i(r.uniform("uOrm"), 3);
+    Uniform1i(r.uniform("uRug"), 4);
+    Uniform1f(r.uniform("uDetailStart"), buildingDetailStart);
+    Uniform1f(r.uniform("uDetailEnd"), buildingDetailEnd);
+    ActiveTexture(TEXTURE0 + 4);
+    glBindTexture(GL_TEXTURE_2D, r.rug);
+    ActiveTexture(TEXTURE0);
     Uniform1i(r.uniform("uSkin"), 0);
     Uniform1f(r.uniform("uAlpha"), 1);
+    Frustum frustum(vp);
     auto visible = [&](Vec3 p, float radius, float range)
     {
         auto delta = p - view.eye;
         float length = delta.length();
-        return length < range + radius &&
-               (dot(delta, (view.target - view.eye).unit()) > -radius &&
-                dot(delta.unit(), (view.target - view.eye).unit()) > .05f - radius / std::max(1.f, length));
+        return length < range + radius && frustum.sphere(p, radius);
     };
+    r.submittedBatches = r.submittedTriangles = r.submittedDetails = 0;
     for (auto &b : r.city)
-        if (visible(b.centre, b.radius, 1000))
+        if (visible(b.centre, b.radius, b.detail ? buildingDetailEnd : 1000))
+        {
+            ++r.submittedBatches;
+            r.submittedTriangles += size_t(b.mesh.count) / 3;
+            if (b.detail)
+                ++r.submittedDetails;
             r.draw(b, Mat4::identity());
+        }
     for (auto &c : world.cars)
     {
         Vec3 p{float(c.body.p.x), float(c.body.height - .8), float(c.body.p.z)};

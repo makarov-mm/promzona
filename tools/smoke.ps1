@@ -1,5 +1,6 @@
 [CmdletBinding()]
-param([ValidateSet('Debug','Release')][string]$Configuration = 'Release')
+param([ValidateSet('Debug','Release')][string]$Configuration = 'Release',
+      [string[]]$Scenarios = @('day','drive','walk','night','canal','bridge','overpass','underpass','portal','tunnel','facade','facade-night'))
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $runtime = Join-Path $root "artifacts/$Configuration"
@@ -10,7 +11,7 @@ if (-not (Test-Path -LiteralPath $exe) -or -not (Test-Path -LiteralPath (Join-Pa
 $output = Join-Path $root "build/smoke/$Configuration"
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 Add-Type -AssemblyName System.Drawing
-foreach ($scenario in @('day','drive','walk','night','canal','bridge','overpass','underpass','portal','tunnel')) {
+foreach ($scenario in $Scenarios) {
     $directory = Join-Path $output $scenario
     New-Item -ItemType Directory -Path $directory -Force | Out-Null
     $bmp = Join-Path $directory 'frame.bmp'
