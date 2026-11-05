@@ -3,6 +3,7 @@
 #include "combat.hpp"
 #include "layout.hpp"
 #include "road_levels.hpp"
+#include "vegetation.hpp"
 #include <filesystem>
 #include <functional>
 namespace pz
@@ -89,6 +90,7 @@ struct World
     Clock clock;
     Inventory inventory;
     std::vector<Building> buildings;
+    std::vector<TreePlant> trees;
     std::vector<Car> cars;
     std::vector<Person> people;
     std::vector<Pickup> pickups;

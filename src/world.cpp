@@ -436,6 +436,20 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
             {p, i % 4 == 0 ? WeaponId::bazooka : (i % 2 == 0 ? WeaponId::pistol : WeaponId::automatic),
              i % 3 == 0, 0});
     }
+    trees = planTrees(*this);
+    // Separate ID range preserves existing actors and v5 saves.
+    for (size_t k = 0; k < trees.size(); ++k)
+    {
+        const auto &t = trees[k];
+        Body body;
+        body.id = 0x40000000u + std::uint32_t(k);
+        body.p = {t.foot.x, t.foot.z};
+        body.circle = true;
+        body.radius = t.height * .018;
+        body.height = t.foot.y + 1.8;
+        body.verticalExtent = 3.6;
+        staticBodies.push_back(body);
+    }
     report(1);
 }
 void World::enterExit()

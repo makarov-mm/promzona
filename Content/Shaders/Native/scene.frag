@@ -8,8 +8,47 @@ uniform int uHasNormal, uHasOrm, uSkin, uSurface, uDetail;
 uniform vec3 uEye, uSun, uFog, uTint;
 uniform float uDay, uRain, uEmissive, uAlpha, uTime, uHour;
 uniform float uRoughness, uMetallic, uDetailStart, uDetailEnd;
+uniform sampler2D uShadow;
+uniform mat4 uShadowMatrix;
+uniform int uDepthPass, uTreeLod;
+uniform float uShadowStrength;
 const float PI = 3.14159265;
 float hash(float n) { return fract(sin(n * 12.9898 + 1.312) * 43758.5453); }
+float foliage(vec2 uv, float species) {
+    vec2 p = uv*2.-1.;
+    float mask = 0.;
+    // Three branching twigs per card. Broadleaf blades are roughly 5--10cm
+    // at close LOD; spruce uses narrow paired needles on the same branches.
+    for (int twig=-1; twig<=1; ++twig) {
+        float a = float(twig)*.48;
+        vec2 q = mat2(cos(a),-sin(a),sin(a),cos(a))*(p-vec2(0,-.8));
+        float stem = (1.-smoothstep(.012,.025,abs(q.x)))*step(0.,q.y)*step(q.y,1.55);
+        float row = floor(q.y*4.);
+        float taper = 1.-clamp(q.y/1.8,0.,1.)*.55;
+        float x = abs(q.x)/max(.2,taper);
+        float y = fract(q.y*4.)-.5;
+        vec2 leaf = vec2((x-.19)/.155,(y-x*.8)/.42);
+        if (species > 1.5) leaf = vec2((x-.18)/.18,(y-x*.8)/.15);
+        float blade = 1.-smoothstep(.85,1.,dot(leaf,leaf));
+        mask = max(mask,max(stem,blade*step(0.,row)*step(row,5.)));
+    }
+    return mask*step(abs(p.x),.98)*step(abs(p.y),.98);
+}
+float sunlight(vec3 normal) {
+    if (uShadowStrength <= 0.) return 1.;
+    vec4 clip = uShadowMatrix * vec4(vWorld + normal*.025,1.);
+    vec3 p = clip.xyz / clip.w * .5 + .5;
+    if (p.z <= 0. || p.z >= 1.) return 1.;
+    float edge = max(abs(p.x-.5),abs(p.y-.5))*2.;
+    if (edge >= 1.) return 1.;
+    float bias = .00010 + .00020*(1.-max(dot(normal,normalize(uSun)),0.));
+    vec2 texel = 1./vec2(textureSize(uShadow,0));
+    float occlusion = 0.;
+    for (int y=-1; y<=1; ++y)
+        for (int x=-1; x<=1; ++x)
+            occlusion += step(texture(uShadow,p.xy+vec2(x,y)*texel).r+bias,p.z);
+    return 1.-occlusion/9.*uShadowStrength*(1.-smoothstep(.8,1.,edge));
+}
 float rectangle(vec2 p, vec2 centre, vec2 halfSize) {
     vec2 edge = abs(p - centre) - halfSize;
     vec2 aa = max(fwidth(p), vec2(.001));
@@ -90,6 +129,12 @@ vec3 apartment(vec3 normal, vec3 view) {
 }
 void main() {
     float eyeDistance = length(uEye-vWorld);
+    if (uTreeLod >= 0) {
+        float noise = fract(52.9829189*fract(dot(floor(gl_FragCoord.xy),vec2(.06711056,.00583715))));
+        float farWeight = smoothstep(85.,115.,eyeDistance);
+        if ((uTreeLod == 0 && noise < farWeight) || (uTreeLod == 1 && noise >= farWeight)) discard;
+        if (noise < smoothstep(560.,620.,eyeDistance)) discard;
+    }
     if (uDetail != 0) {
         float coverage = 1.0-smoothstep(uDetailStart,uDetailEnd,eyeDistance);
         float noise = fract(52.9829189*fract(dot(floor(gl_FragCoord.xy),vec2(.06711056,.00583715))));
@@ -97,11 +142,32 @@ void main() {
     }
     vec4 tex = texture(uColor,vUv);
     if (tex.a < .05) discard;
+    if (uSurface == 9) {
+        if (foliage(vUv,vDetail.w) < .45) discard;
+    }
+    // Alpha-tested foliage casts its silhouette; skip the complete material shader.
+    if (uDepthPass != 0) { fragColor = vec4(0.); return; }
     vec3 n = normalize(vNormal);
     if (!gl_FrontFacing) n = -n;
     float phaseWidth = max(fwidth(vWorld.x*51.7),fwidth(vWorld.z*43.1));
     float fade = 1.0-smoothstep(1.0,PI,phaseWidth);
     float grain = sin(vWorld.x*51.7)*sin(vWorld.z*43.1);
+    if (uSurface == 8) {
+        float stripes = sin(vWorld.y*28.+sin(vWorld.x*43.+vWorld.z*37.)*2.);
+        if (vDetail.w < .5) {
+            float mark = smoothstep(.68,.9,stripes)*smoothstep(.2,.65,sin(vWorld.x*13.+vWorld.z*16.));
+            tex.rgb = mix(vec3(.69,.70,.62),vec3(.16,.16,.14),mark);
+        } else {
+            float cracks = sin((vWorld.x+vWorld.z)*54.+sin(vWorld.y*6.));
+            tex.rgb = vec3(.24,.19,.13)*(.85+.15*cracks);
+        }
+    }
+    if (uSurface == 9) {
+        vec3 leaf = vDetail.w < .5 ? vec3(.30,.40,.13) : vDetail.w < 1.5 ? vec3(.25,.35,.12) : vec3(.16,.28,.20);
+        tex.rgb = leaf*mix(.82,1.18,vDetail.z);
+        float vein = exp(-abs(vUv.x-.5)*90.);
+        tex.rgb *= 1.+.14*vein;
+    }
     if (uSurface == 1) tex.rgb *= .90+.10*sin(vWorld.x*.12)*sin(vWorld.z*.09)+.04*grain*fade;
     if (uSurface == 2) tex.rgb *= .90+.08*grain*fade;
     if (uSurface == 3) {
@@ -141,7 +207,9 @@ void main() {
     float golden = exp(-pow((uSun.y-.15)*4.0,2.0))*uDay;
     vec3 light = mix(vec3(1,.97,.91),vec3(1,.64,.34),golden*.55);
     vec3 sky = pow(uFog,vec3(2.2));
-    vec3 color = albedo*(.12+.28*uDay)*ao+(diffuse+specular)*light*nl*(.15+2.8*uDay);
+    float sunVisibility = sunlight(n);
+    vec3 color = albedo*(.12+.28*uDay)*ao+(diffuse+specular)*light*nl*(.15+2.8*uDay)*sunVisibility;
+    if (uSurface == 9) color += albedo*light*.42*uDay*max(dot(-n,l),0.)*sunVisibility;
     color += sky*f0*(.18+.45*(1.0-rough))*ao + albedo*uEmissive;
     if (uSurface == 6) color = apartment(n,v);
     if (uSurface == 4) color = mix(color,sky,.04+.70*pow(1.0-max(dot(n,v),0),5.0));

@@ -4,9 +4,14 @@ layout(location=1) in vec3 aNormal;
 layout(location=2) in vec2 aUv;
 layout(location=3) in vec4 aJoints;
 layout(location=4) in vec4 aWeights;
+layout(location=5) in vec4 aInstance;
+layout(location=6) in vec4 aVariation;
 uniform mat4 uModel, uViewProjection;
 uniform sampler2D uBones;
 uniform int uSkin;
+uniform int uSurface;
+uniform int uInstanced;
+uniform float uTime;
 uniform float uPose, uPreviousPose, uPoseBlend;
 out vec3 vWorld, vNormal;
 out vec2 vUv;
@@ -48,9 +53,24 @@ void main()
         n = mat3(skin) * n;
     }
     vec4 world = uModel * p;
+    vec4 detail = aJoints;
+    if (uInstanced != 0) {
+        mat3 rotation = mat3(aVariation.y,0,-aVariation.x, 0,1,0, aVariation.x,0,aVariation.y);
+        world.xyz = aInstance.xyz + rotation*p.xyz*aInstance.w;
+        n = rotation*n;
+        detail.y += aVariation.z;
+        detail.z = fract(detail.z+aVariation.w);
+    }
+    if (uSurface == 9) {
+        // Use exactly the same deformation in the colour and shadow passes.
+        float weight = aJoints.x * aJoints.x;
+        float sway = sin(uTime*.85 + detail.y + world.y*.3);
+        world.x += weight * (.12*sway + .025*sin(uTime*2.1+world.z));
+        world.z += weight * .065*cos(uTime*.73+detail.y+world.y*.2);
+    }
     vWorld = world.xyz;
     vNormal = normalize(transpose(inverse(mat3(uModel))) * n);
     vUv = aUv;
-    vDetail = aJoints;
+    vDetail = detail;
     gl_Position = uViewProjection * world;
 }

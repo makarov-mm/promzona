@@ -17,9 +17,9 @@ if(MSVC)
   endif()
   add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 endif()
-add_library(promzona_core src/core.cpp src/physics.cpp src/layout.cpp src/road_levels.cpp src/surfaces.cpp src/architecture.cpp src/city_mesh.cpp src/world.cpp src/combat.cpp src/animation.cpp src/save.cpp src/audio.cpp)
+add_library(promzona_core src/core.cpp src/physics.cpp src/layout.cpp src/road_levels.cpp src/surfaces.cpp src/architecture.cpp src/vegetation.cpp src/city_mesh.cpp src/world.cpp src/combat.cpp src/animation.cpp src/save.cpp src/audio.cpp)
 target_sources(promzona_core PRIVATE
-  include/promzona/animation.hpp include/promzona/audio.hpp include/promzona/architecture.hpp include/promzona/visibility.hpp
+  include/promzona/animation.hpp include/promzona/audio.hpp include/promzona/architecture.hpp include/promzona/visibility.hpp include/promzona/vegetation.hpp include/promzona/sun_shadow.hpp
   include/promzona/city_mesh.hpp include/promzona/combat.hpp
   include/promzona/core.hpp include/promzona/layout.hpp include/promzona/road_levels.hpp
   include/promzona/math.hpp include/promzona/physics.hpp include/promzona/world.hpp)
@@ -28,6 +28,9 @@ target_include_directories(promzona_core PUBLIC include PRIVATE third_party)
 option(BUILD_TESTING "Build PROMZONA native tests" ON)
 if(BUILD_TESTING)
   enable_testing()
+  add_executable(promzona_environment_tests tests/environment.cpp)
+  target_link_libraries(promzona_environment_tests PRIVATE promzona_core)
+  add_test(NAME native_environment COMMAND promzona_environment_tests)
   add_executable(promzona_architecture_tests tests/architecture.cpp)
   target_link_libraries(promzona_architecture_tests PRIVATE promzona_core)
   add_test(NAME native_architecture COMMAND promzona_architecture_tests)
@@ -50,7 +53,7 @@ if(BUILD_TESTING)
     "\"${CMAKE_SOURCE_DIR}/tests/vehicle-reference.txt\"")
   set_property(TARGET promzona_layout_tests PROPERTY VS_DEBUGGER_COMMAND_ARGUMENTS
     "\"${CMAKE_SOURCE_DIR}/tests/layout-reference.txt\"")
-  set_target_properties(promzona_architecture_tests promzona_level_tests promzona_tests promzona_traffic_tests promzona_layout_tests promzona_combat_tests
+  set_target_properties(promzona_environment_tests promzona_architecture_tests promzona_level_tests promzona_tests promzona_traffic_tests promzona_layout_tests promzona_combat_tests
     PROPERTIES FOLDER Tests VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 endif()
 if(WIN32)

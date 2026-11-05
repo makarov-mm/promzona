@@ -221,7 +221,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     bool smoke = false;
     int smokeFrames = 180;
     std::wstring scenario = L"day";
-    std::optional<View> facadeView;
+    std::optional<View> reviewView;
     std::filesystem::path screenshot, content, logPath, smokeOutput;
     wchar_t executable[32768]{};
     GetModuleFileNameW(nullptr, executable, 32768);
@@ -257,7 +257,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         if (scenario != L"day" && scenario != L"drive" && scenario != L"walk" && scenario != L"night" &&
             scenario != L"canal" && scenario != L"bridge" && scenario != L"overpass" &&
             scenario != L"underpass" && scenario != L"tunnel" && scenario != L"portal" &&
-            scenario != L"facade" && scenario != L"facade-night")
+            scenario != L"facade" && scenario != L"facade-night" && scenario != L"park" &&
+            scenario != L"park-unshadowed" && scenario != L"park-evening")
             throw std::runtime_error("Unknown smoke scenario");
         if (content.empty())
             content = std::filesystem::is_directory(exeDirectory / L"Content")
@@ -453,7 +454,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 v.eye = front + n * 17 + r * 7 + Vec3{0, 6, 0};
                                 v.target = front + Vec3{0, 7.5f, 0};
                                 v.heading = std::atan2(v.target.x - v.eye.x, v.target.z - v.eye.z);
-                                facadeView = v;
+                                reviewView = v;
                                 auto &c = world->cars[0];
                                 auto parking = front + n * 8;
                                 c.body.p = {parking.x, parking.z};
@@ -461,6 +462,31 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 c.body.roadLevel = 0;
                                 c.body.height = world->terrain.height(c.body.p) + .8;
                                 world->clock.setHour(scenario == L"facade-night" ? 22 : 10);
+                                world->rain = world->rainTarget = 0;
+                                world->weatherClock = 120;
+                            }
+                            if (scenario == L"park" || scenario == L"park-unshadowed" ||
+                                scenario == L"park-evening")
+                            {
+                                const TreePlant *selected = nullptr;
+                                for (const auto &t : world->trees)
+                                    if (t.kind == TreeKind::birch &&
+                                        (!selected || Vec2{t.foot.x, t.foot.z}.length2() <
+                                                          Vec2{selected->foot.x, selected->foot.z}.length2()))
+                                        selected = &t;
+                                if (!selected)
+                                    throw std::runtime_error("No tree review location");
+                                View v;
+                                v.target = selected->foot + Vec3{0, 4, 0};
+                                v.eye = selected->foot + Vec3{13, 7, 17};
+                                v.shadows = scenario != L"park-unshadowed";
+                                reviewView = v;
+                                auto &c = world->cars[0];
+                                c.body.p = {v.eye.x, v.eye.z};
+                                c.body.v = {};
+                                c.body.roadLevel = 0;
+                                c.body.height = world->terrain.height(c.body.p) + .8;
+                                world->clock.setHour(scenario == L"park-evening" ? 17.5 : 10);
                                 world->rain = world->rainTarget = 0;
                                 world->weatherClock = 120;
                             }
@@ -575,8 +601,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                 if (world && !app.loading)
                 {
                     auto view = camera(*world, app, dt);
-                    if (smoke && facadeView)
-                        view = *facadeView;
+                    if (smoke && reviewView)
+                        view = *reviewView;
                     audio.update(*world, view.heading);
                     renderer.render(*world, view, app.width, app.height);
                 }

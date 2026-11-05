@@ -9,6 +9,7 @@ struct View
     Vec3 eye{0, 12, -20}, target{};
     float distance{20};
     double heading{};
+    bool shadows{true};
 };
 class Renderer
 {

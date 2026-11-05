@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param([ValidateSet('Debug','Release')][string]$Configuration = 'Release',
-      [string[]]$Scenarios = @('day','drive','walk','night','canal','bridge','overpass','underpass','portal','tunnel','facade','facade-night'))
+      [string[]]$Scenarios = @('day','drive','walk','night','canal','bridge','overpass','underpass','portal','tunnel','facade','facade-night','park','park-unshadowed','park-evening'))
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $runtime = Join-Path $root "artifacts/$Configuration"

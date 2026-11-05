@@ -36,7 +36,14 @@ namespace pz::gl
     X(DeleteVertexArrays, void, GLsizei, const GLuint *) \
     X(VertexAttribPointer, void, GLuint, GLint, GLenum, GLboolean, GLsizei, const void *) \
     X(EnableVertexAttribArray, void, GLuint) \
+    X(VertexAttribDivisor, void, GLuint, GLuint) \
+    X(DrawElementsInstanced, void, GLenum, GLsizei, GLenum, const void *, GLsizei) \
     X(ActiveTexture, void, GLenum) \
+    X(GenFramebuffers, void, GLsizei, GLuint *) \
+    X(BindFramebuffer, void, GLenum, GLuint) \
+    X(FramebufferTexture2D, void, GLenum, GLenum, GLenum, GLuint, GLint) \
+    X(CheckFramebufferStatus, GLenum, GLenum) \
+    X(DeleteFramebuffers, void, GLsizei, const GLuint *) \
     X(GenerateMipmap, void, GLenum)
 #define PZ_GL_DECLARE(name, ret, ...) inline ret(APIENTRY *name)(__VA_ARGS__) = nullptr;
 PZ_GL_FUNCTIONS(PZ_GL_DECLARE)
@@ -54,5 +61,6 @@ inline void load()
 constexpr GLenum ARRAY_BUFFER = 0x8892, ELEMENT_ARRAY_BUFFER = 0x8893, STATIC_DRAW = 0x88e4,
                  DYNAMIC_DRAW = 0x88e8, VERTEX_SHADER = 0x8b31, FRAGMENT_SHADER = 0x8b30,
                  COMPILE_STATUS = 0x8b81, LINK_STATUS = 0x8b82, TEXTURE0 = 0x84c0, RGBA32F = 0x8814,
-                 CLAMP_TO_EDGE = 0x812f;
+                 CLAMP_TO_EDGE = 0x812f, FRAMEBUFFER = 0x8d40, DEPTH_ATTACHMENT = 0x8d00,
+                 FRAMEBUFFER_COMPLETE = 0x8cd5, DEPTH_COMPONENT24 = 0x81a6;
 } // namespace pz::gl
