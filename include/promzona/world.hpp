@@ -2,6 +2,7 @@
 #include "physics.hpp"
 #include "combat.hpp"
 #include "layout.hpp"
+#include "road_levels.hpp"
 #include <filesystem>
 #include <functional>
 namespace pz
@@ -84,6 +85,7 @@ struct World
     Random random;
     CityLayout layout;
     Terrain terrain;
+    std::vector<RoadLevel> roadLevels;
     Clock clock;
     Inventory inventory;
     std::vector<Building> buildings;
@@ -105,7 +107,21 @@ struct World
     void generate(std::uint32_t newSeed, std::function<void(float)> progress = {});
     void step(PlayerInput input, double dt);
     Vec2 position() const { return controlledCar >= 0 ? cars[controlledCar].body.p : player.p; }
-    double ground() const { return terrain.height(position()); }
+    double ground() const
+    {
+        return controlledCar >= 0 ? cars[controlledCar].body.height - .8 : player.height - .85;
+    }
+    const RoadLevel *levelById(int id) const;
+    const RoadLevel *levelAt(Vec2 p, double margin = 0) const;
+    const RoadLevel *levelEdge(int from, int to) const;
+    double surface(Vec2 p, int level) const;
+    int selectLevel(Vec2 p, int previous, double foot) const;
+    bool scenerySolid(Vec2 p, double y, double radius = .03) const;
+    bool openCut(Vec2 p, double margin = 0) const;
+    void supportCar(Car &car, Vec2 previousPosition, double dt);
+    void supportPerson(Body &body, Vec2 previousPosition, double dt);
+    void appendLevelContacts(std::uint32_t &id);
+    int chooseWalkNext(int n, int previous);
     void enterExit();
     void recover();
     void shoot(double heading, double pitch = 0);

@@ -181,7 +181,7 @@ View camera(const World &w, Application &a, double dt)
     auto p = w.position();
     double heading = w.controlledCar >= 0 ? w.cars[w.controlledCar].heading() : a.look;
     a.cameraYaw = wrap(a.cameraYaw + wrap(heading - a.cameraYaw) * (1 - std::exp(-dt * 3)));
-    float y = float(w.ground() + (w.controlledCar >= 0 ? w.cars[w.controlledCar].lift : 0));
+    float y = float(w.ground());
     View v;
     v.target = {float(p.x), y + 1.3f, float(p.z)};
     if (a.cameraMode == 1)
@@ -195,10 +195,10 @@ View camera(const World &w, Application &a, double dt)
     {
         float t = i / 80.f;
         auto q = v.target + (intended - v.target) * t;
-        bool blocked = q.y < w.terrain.height(q.x, q.z) + .6;
+        bool blocked = w.scenerySolid({q.x, q.z}, q.y, .6);
         for (auto &b : w.buildings)
             if (std::abs(q.x - b.p.x) < b.half.x + .6 && std::abs(q.z - b.p.z) < b.half.z + .6 &&
-                q.y < w.terrain.height(b.p) + b.height + .6)
+                q.y > w.terrain.height(b.p) - .6 && q.y < w.terrain.height(b.p) + b.height + .6)
             {
                 blocked = true;
                 break;
@@ -253,7 +253,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     try
     {
         if (scenario != L"day" && scenario != L"drive" && scenario != L"walk" && scenario != L"night" &&
-            scenario != L"canal" && scenario != L"bridge")
+            scenario != L"canal" && scenario != L"bridge" && scenario != L"overpass" &&
+            scenario != L"underpass" && scenario != L"tunnel" && scenario != L"portal")
             throw std::runtime_error("Unknown smoke scenario");
         if (content.empty())
             content = std::filesystem::is_directory(exeDirectory / L"Content")
@@ -413,6 +414,25 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 world->clock.setHour(10);
                                 app.cameraMode = scenario == L"canal" ? 1 : 0;
                             }
+                            if (scenario == L"overpass" || scenario == L"underpass" ||
+                                scenario == L"tunnel" || scenario == L"portal")
+                            {
+                                const auto &level =
+                                    world->roadLevels[scenario == L"tunnel" || scenario == L"portal" ? 1 : 0];
+                                auto &c = world->cars[0];
+                                double x = level.x + (scenario == L"portal"     ? -85
+                                                      : scenario == L"overpass" ? -36
+                                                      : scenario == L"tunnel"   ? -24
+                                                                                : 0);
+                                c.body.p = {x, level.centreZ(x) + 1.9};
+                                c.body.angle = -pi * .5;
+                                c.body.v = {};
+                                c.body.roadLevel = scenario == L"underpass" ? 0 : level.id;
+                                c.body.height = world->surface(c.body.p, c.body.roadLevel) + .8;
+                                c.lift = c.verticalVelocity = 0;
+                                world->clock.setHour(10);
+                                app.zoom = scenario == L"underpass" ? 12 : scenario == L"tunnel" ? 7 : 24;
+                            }
                             smokeStart = world->position();
                         }
                         renderer.overlay(nullptr, app.width, app.height, fps, false, false, L"", L"", .96f);
@@ -555,6 +575,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     if (scenario == L"walk" &&
                         (world->controlledCar >= 0 || world->inventory.ammo(WeaponId::automatic) >= 1000))
                         throw std::runtime_error("Smoke running/fire input failed");
+                    if (scenario == L"overpass" || scenario == L"underpass" || scenario == L"tunnel" ||
+                        scenario == L"portal")
+                    {
+                        auto &c = world->cars[0];
+                        int expected = scenario == L"underpass" ? 0 : scenario == L"overpass" ? 1 : 2;
+                        if (c.body.roadLevel != expected ||
+                            std::abs(world->ground() - world->surface(c.body.p, expected)) > .1)
+                            throw std::runtime_error("Smoke support level mismatch");
+                    }
                     world->save(app.saveFile);
                     World loaded;
                     loaded.load(app.saveFile);

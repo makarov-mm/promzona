@@ -93,7 +93,7 @@ AttackHit World::traceAttack(Vec2 from, Vec2 dir, double y, double slope, double
 {
     AttackHit hit{HitKind::none, -1, range};
     for (double at = .25; at <= range; at += .25)
-        if (terrain.height(from + dir * at) + .03 >= y + slope * at)
+        if (scenerySolid(from + dir * at, y + slope * at, .03))
         {
             hit = {HitKind::scenery, -1, at};
             break;
@@ -140,7 +140,7 @@ bool World::blastVisible(Vec2 from, double y, Vec2 to, double targetY) const
         if (rayPrism(from, dir, y, slope, b, distance) < distance - .01)
             return false;
     for (double at = .4; at < distance; at += .4)
-        if (terrain.height(from + dir * at) + .02 >= y + slope * at)
+        if (scenerySolid(from + dir * at, y + slope * at, .02))
             return false;
     return true;
 }
@@ -314,7 +314,7 @@ void World::shoot(double heading, double pitch)
     shotCooldown = w ? w->interval : .6;
     firing = true;
     auto start = position(), dir = forward(heading);
-    double y = controlledCar >= 0 ? cars[controlledCar].body.height + .3 : terrain.height(start) + 1.32;
+    double y = controlledCar >= 0 ? cars[controlledCar].body.height + .3 : player.height + .47;
     double slope = std::tan(clamp(pitch, -1.2, 1.2));
     reportCrime(w ? .055 : .015, w ? 60 : 5, false);
     if (w && w->id == WeaponId::flamethrower)

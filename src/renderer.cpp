@@ -550,7 +550,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             r.draw(b, Mat4::identity());
     for (auto &c : world.cars)
     {
-        Vec3 p{float(c.body.p.x), float(world.terrain.height(c.body.p) + c.lift), float(c.body.p.z)};
+        Vec3 p{float(c.body.p.x), float(c.body.height - .8), float(c.body.p.z)};
         if (!visible(p, 5, 400))
             continue;
         auto transform = Mat4::translate(p) * Mat4::yaw(float(c.heading())) *
@@ -592,7 +592,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     }
     auto person = [&](const Body &b, int style, double heading, double distance, bool dead, bool player)
     {
-        Vec3 p{float(b.p.x), float(world.terrain.height(b.p)), float(b.p.z)};
+        Vec3 p{float(b.p.x), float(b.height - .85), float(b.p.z)};
         if (!visible(p, 2, 130))
             return;
         int k = style % 2;
@@ -741,6 +741,13 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             if (p.x - sx > mx && p.x + sx < mx + ms && p.y - sz > my && p.y + sz < my + ms)
                 r.rect(p.x - sx, p.y - sz, sx * 2, sz * 2, RGB(161, 160, 135));
         }
+        for (const auto &level : world->roadLevels)
+            for (int k = 0; k < 288; ++k)
+            {
+                double x = level.x - RoadLevel::length + k;
+                auto p = map({x, level.centreZ(x)});
+                r.rect(p.x - 1, p.y - 3, 3, 6, level.tunnel ? RGB(119, 135, 146) : RGB(177, 168, 135));
+            }
         for (auto &c : world->cars)
         {
             auto p = map(c.body.p);

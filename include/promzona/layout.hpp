@@ -31,6 +31,7 @@ class CityLayout
     std::vector<bool> roads_, parks_;
 
   public:
+    void setRoad(int i, int j, int direction, bool value);
     static constexpr double spacing = 36, lane = 1.9, waterLevel = -2.8;
     std::vector<Building> buildings, furniture;
     void generate(std::int32_t seed, int nodes = 49, bool wide = true,

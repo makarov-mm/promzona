@@ -9,7 +9,8 @@ using nlohmann::json;
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Vec2, x, z)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Vec3, x, y, z)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Body, p, v, angle, w, invMass, invI, halfW, halfH, radius, friction,
-                                   restitution, height, verticalExtent, circle, sleeping, sleepTimer, id)
+                                   restitution, height, verticalExtent, circle, sleeping, sleepTimer, id,
+                                   roadLevel, verticalSpeed)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Person, body, target, node, next, dead, fear, heading, phase, distance,
                                    style, health, burnUntil, burnPlayerCaused)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Rocket, p, direction, height, slope, travel, ownerCar)
@@ -53,6 +54,7 @@ json carState(const Car &c)
     WRITE(routeTo);
     WRITE(previousNode);
     WRITE(routePhase);
+    WRITE(routeLevel);
 #undef WRITE
     j["route"] = c.route ? json(c.route->points()) : json(nullptr);
     return j;
@@ -91,6 +93,7 @@ void loadCar(const json &j, Car &c)
     READ(routeTo);
     READ(previousNode);
     READ(routePhase);
+    READ(routeLevel);
 #undef READ
     c.route.reset();
     if (!j.at("route").is_null())
@@ -121,7 +124,7 @@ void validateBody(const Body &b)
 // Independent versioned format. It never overwrites the managed game's saves.
 void World::save(const std::filesystem::path &path) const
 {
-    json j = {{"format", "promzona-cpp-4"},
+    json j = {{"format", "promzona-cpp-5"},
               {"seed", seed},
               {"hour", clock.hour},
               {"cycleMinutes", clock.cycleMinutes},
@@ -188,7 +191,7 @@ void World::load(const std::filesystem::path &path)
         throw std::runtime_error("Save exceeds size limit");
     std::ifstream in(path, std::ios::binary);
     auto j = json::parse(in);
-    if (j.at("format") != "promzona-cpp-4")
+    if (j.at("format") != "promzona-cpp-5")
         throw std::runtime_error("Unsupported save format");
     validateJson(j);
     World next;
@@ -239,6 +242,8 @@ void World::load(const std::filesystem::path &path)
     auto body = [&](const Body &b)
     {
         validateBody(b);
+        if (b.roadLevel != 0 && !next.levelById(b.roadLevel))
+            throw std::runtime_error("Invalid support level");
         if (!ids.insert(b.id).second)
             throw std::runtime_error("Duplicate body identity");
     };
@@ -249,11 +254,16 @@ void World::load(const std::filesystem::path &path)
     {
         body(c.body);
         auto node = [](int n) { return n >= 0 && n < World::nodes * World::nodes; };
-        if (!node(c.routeFrom) || !node(c.routeTo) || c.routePhase < 0 || c.routePhase > 1 || c.kind < 0 ||
+        if (!node(c.routeFrom) || !node(c.routeTo) || c.routePhase < 0 || c.routePhase > 2 || c.kind < 0 ||
             c.kind > 11 || c.mass <= 0 || c.mass > 100000 || c.wheelbase <= 0 || c.model > 1000 ||
             c.health > 1 || c.health < -.5 || c.lift < 0 || c.fireTime < 0 || c.safeDrivingTime < 0 ||
             c.impactCooldown < 0)
             throw std::runtime_error("Invalid saved vehicle");
+        if (c.routeLevel != 0 && !next.levelById(c.routeLevel))
+            throw std::runtime_error("Invalid route level");
+        if (c.routePhase == 2 && (!next.levelEdge(c.routeFrom, c.routeTo) ||
+                                  next.levelEdge(c.routeFrom, c.routeTo)->id != c.routeLevel))
+            throw std::runtime_error("Invalid level route");
         if (c.route && c.route->points().size() > 512)
             throw std::runtime_error("Invalid saved route");
         auto connected = next.neighbours(c.routeFrom);

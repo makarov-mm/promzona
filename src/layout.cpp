@@ -5,6 +5,15 @@
 
 namespace pz
 {
+void CityLayout::setRoad(int i, int j, int d, bool value)
+{
+    auto f = direction(d);
+    int x = i + int(f.x), z = j + int(f.z);
+    if (i < 0 || j < 0 || x < 0 || z < 0 || i >= nodes_ || j >= nodes_ || x >= nodes_ || z >= nodes_)
+        return;
+    roads_[(i + j * nodes_) * 4 + d] = value;
+    roads_[(x + z * nodes_) * 4 + (d + 2) % 4] = value;
+}
 namespace
 {
 int subtract(int a, int b)

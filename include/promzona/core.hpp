@@ -83,6 +83,8 @@ struct Body
     Vec2 p{}, v{};
     double angle{}, w{}, invMass{}, invI{}, halfW{.9}, halfH{2.1}, radius{.32};
     double friction{.45}, restitution{.15}, height{}, verticalExtent{1.6};
+    int roadLevel{};
+    double verticalSpeed{};
     bool circle{}, sleeping{};
     double sleepTimer{};
     std::uint32_t id{};
@@ -117,6 +119,7 @@ struct Car
         impactCooldown{};
     std::uint32_t model{}, id{};
     int routeFrom{}, routeTo{}, previousNode{-1}, routePhase{};
+    int routeLevel{};
     std::optional<Path> route;
     double heading() const { return -body.angle; }
     bool grounded() const { return lift < .12 && std::cos(roll) * std::cos(pitch) > .45; }

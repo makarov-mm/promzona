@@ -11,13 +11,45 @@ void check(bool value, const char *message)
     if (!value)
         throw std::runtime_error(message);
 }
-void pathClear(const World &w, const Path &path)
+void pathClear(const World &w, const Path &path, int level = 0)
 {
     for (double s = 0; s <= path.length(); s += .35)
     {
         auto p = path.sample(s).first;
-        check(w.layout.roadDistance(p) < w.layout.roadHalf(), "route stays on existing road");
-        check(w.terrain.height(p) > CityLayout::waterLevel, "route does not enter canal or ocean");
+        if (level)
+        {
+            auto road = w.levelById(level);
+            check(road && road->contains(p) && std::abs(p.z - road->centreZ(p.x)) < 4.3,
+                  "route stays on raised/sunken carriageway");
+        }
+        else
+        {
+            if (level)
+            {
+                auto road = w.levelById(level);
+                check(road && road->contains(p) && std::abs(p.z - road->centreZ(p.x)) < 4.3,
+                      "route stays on raised/sunken carriageway");
+            }
+            else
+            {
+                check(w.layout.roadDistance(p) < w.layout.roadHalf(), "route stays on existing road");
+                auto cutting = w.levelAt(p, .3);
+                if (cutting && cutting->open(p, .3) && std::abs(p.x - cutting->x) < RoadLevel::length - 12)
+                {
+                    std::cerr << "cut at " << p.x << "," << p.z << " level=" << cutting->id
+                              << " center=" << cutting->x << "," << cutting->z << '\n';
+                    check(false, "ordinary traffic never crosses an open cutting");
+                }
+            }
+            auto cutting = w.levelAt(p, .3);
+            if (cutting && cutting->open(p, .3) && std::abs(p.x - cutting->x) < RoadLevel::length - 12)
+            {
+                std::cerr << "cut at " << p.x << "," << p.z << " level=" << cutting->id
+                          << " center=" << cutting->x << "," << cutting->z << '\n';
+                check(false, "ordinary traffic never crosses an open cutting");
+            }
+        }
+        check(w.surface(p, level) > CityLayout::waterLevel, "route does not enter canal or ocean");
     }
 }
 } // namespace
@@ -31,7 +63,7 @@ int main()
         int deadEnds = 0;
         for (int n = 0; n < World::nodes * World::nodes; ++n)
         {
-            if (w.layout.degree(n) != 1)
+            if (w.neighbours(n).size() != 1)
                 continue;
             ++deadEnds;
             Car c;
@@ -43,7 +75,7 @@ int main()
             w.newRoute(c);
             check(c.routePhase == 1 && c.routeFrom == n, "dead end enters turnaround");
             check((start - c.route->sample(0).first).length() < 1e-8, "turnaround starts on incoming lane");
-            pathClear(w, *c.route);
+            pathClear(w, *c.route, c.routeLevel);
             auto end = c.route->sample(c.route->length());
             w.newRoute(c);
             auto next = c.route->sample(0);
@@ -59,7 +91,7 @@ int main()
         w.newRoute(c);
         for (int i = 0; i < 1000; ++i)
         {
-            pathClear(w, *c.route);
+            pathClear(w, *c.route, c.routeLevel);
             auto end = c.route->sample(c.route->length());
             w.newRoute(c);
             auto begin = c.route->sample(0);
@@ -136,7 +168,10 @@ int main()
             if (ai.routeFrom != oldNode || ai.routePhase != oldPhase)
                 ++transitions;
             distance += (ai.body.p - before).length();
-            maxError = std::max(maxError, w.layout.roadDistance(ai.body.p));
+            maxError = std::max(maxError,
+                                ai.routeLevel
+                                    ? std::abs(ai.body.p.z - w.levelById(ai.routeLevel)->centreZ(ai.body.p.x))
+                                    : w.layout.roadDistance(ai.body.p));
             check(std::isfinite(ai.body.p.x) && std::isfinite(ai.body.p.z), "finite local traffic");
         }
         std::cout << "Local traffic: transitions=" << transitions << " distance=" << distance

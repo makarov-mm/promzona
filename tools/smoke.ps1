@@ -10,7 +10,7 @@ if (-not (Test-Path -LiteralPath $exe) -or -not (Test-Path -LiteralPath (Join-Pa
 $output = Join-Path $root "build/smoke/$Configuration"
 New-Item -ItemType Directory -Path $output -Force | Out-Null
 Add-Type -AssemblyName System.Drawing
-foreach ($scenario in @('day','drive','walk','night','canal','bridge')) {
+foreach ($scenario in @('day','drive','walk','night','canal','bridge','overpass','underpass','portal','tunnel')) {
     $directory = Join-Path $output $scenario
     New-Item -ItemType Directory -Path $directory -Force | Out-Null
     $bmp = Join-Path $directory 'frame.bmp'

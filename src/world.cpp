@@ -160,28 +160,38 @@ double Terrain::bedHeight(double x, double z) const
 }
 std::vector<int> World::neighbours(int n) const
 {
-    return layout.neighbours(n);
+    auto out = layout.neighbours(n);
+    for (const auto &s : roadLevels)
+    {
+        if (s.leftNode == n)
+            out.push_back(s.rightNode);
+        if (s.rightNode == n)
+            out.push_back(s.leftNode);
+    }
+    return out;
 }
 int World::chooseNext(int n, int previous)
 {
     auto options = neighbours(n);
     if (options.size() > 1)
         std::erase(options, previous);
+    if (options.empty())
+        throw std::logic_error("Disconnected road node");
     return options[random.index(int(options.size()))];
 }
 bool World::intersectionClear(const Car &car) const
 {
-    if (car.routePhase != 0)
+    if (car.routePhase == 1)
         return true;
     int node = car.routeTo;
     auto f = (nodePoint(node) - nodePoint(car.routeFrom)).unit();
     int d = f.z > .5 ? 0 : f.x > .5 ? 1 : f.z < -.5 ? 2 : 3;
-    if (layout.degree(node) >= 3 && !CityLayout::green(node % nodes, node / nodes, d, time))
+    if (neighbours(node).size() >= 3 && !CityLayout::green(node % nodes, node / nodes, d, time))
         return false;
     // One crossing reservation per junction; released when the crossing path ends.
     for (auto &c : cars)
         if (&c != &car && !c.destroyed && c.routePhase == 1 && c.routeFrom == node &&
-            (c.body.p - nodePoint(node)).length() < 15)
+            std::abs(c.body.height - car.body.height) < 2 && (c.body.p - nodePoint(node)).length() < 15)
             return false;
     return true;
 }
@@ -189,10 +199,20 @@ void World::newRoute(Car &car)
 {
     if (car.routePhase == 1)
     {
-        auto f = (nodePoint(car.routeTo) - nodePoint(car.routeFrom)).unit();
-        car.route.emplace(nodePoint(car.routeFrom) + f * 9 + perpendicular(f) * CityLayout::lane,
-                          nodePoint(car.routeTo) - f * 11 + perpendicular(f) * CityLayout::lane);
-        car.routePhase = 0;
+        if (auto s = levelEdge(car.routeFrom, car.routeTo))
+        {
+            car.route = s->route(car.routeFrom == s->leftNode);
+            car.routePhase = 2;
+            car.routeLevel = s->id;
+        }
+        else
+        {
+            auto f = (nodePoint(car.routeTo) - nodePoint(car.routeFrom)).unit();
+            car.route.emplace(nodePoint(car.routeFrom) + f * 9 + perpendicular(f) * CityLayout::lane,
+                              nodePoint(car.routeTo) - f * 11 + perpendicular(f) * CityLayout::lane);
+            car.routePhase = 0;
+            car.routeLevel = 0;
+        }
     }
     else
     {
@@ -214,6 +234,7 @@ void World::newRoute(Car &car)
         car.routeFrom = from;
         car.routeTo = to;
         car.routePhase = 1;
+        car.routeLevel = 0;
     }
     car.routeDistance = 0;
 }
@@ -222,7 +243,7 @@ Vec2 World::pickupSite()
     for (int tries = 0; tries < 200; ++tries)
     {
         auto p = nodePoint(random.index(nodes * nodes)) + Vec2{10, 10};
-        if (!layout.urbanSite(p, .4))
+        if (!layout.urbanSite(p, .4) || levelAt(p, 1))
             continue;
         bool clear = true;
         for (auto &b : buildings)
@@ -276,9 +297,12 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
     };
     report(.02f);
     layout.generate(std::bit_cast<std::int32_t>(seed), nodes, true, [&](float p) { report(.02f + p * .8f); });
+    roadLevels = generateRoadLevels(layout, seed);
     buildings = layout.buildings;
     report(.4f);
     terrain.generate(seed, nodes, buildings, true, &layout);
+    for (auto &s : roadLevels)
+        s.bake(terrain);
     report(.55f);
     std::uint32_t id = 10;
     for (auto &b : buildings)
@@ -324,6 +348,7 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
                     staticBodies.push_back(body);
                 }
         }
+    appendLevelContacts(id);
     for (int i = 0; i < 260; i++)
     {
         Car car;
@@ -340,16 +365,20 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
         auto from = nodePoint(car.routeFrom), to = nodePoint(car.routeTo), f = (to - from).unit();
         car.body.angle = -std::atan2(f.x, f.z);
         car.body.p = from + f * 9 + perpendicular(f) * CityLayout::lane;
-        car.route.emplace(car.body.p, to - f * 11 + perpendicular(f) * CityLayout::lane);
+        car.routePhase = 1;
+        newRoute(car);
         car.routeDistance = random.next() * car.route->length();
         car.body.p = car.route->sample(car.routeDistance).first;
-        car.body.height = terrain.height(car.body.p) + .8;
+        car.body.roadLevel = car.routeLevel;
+        car.body.height = surface(car.body.p, car.body.roadLevel) + .8;
         cars.push_back(std::move(car));
     }
     auto centre = nodes / 2 * nodes + nodes / 2;
     cars[0].body.p = nodePoint(centre) + Vec2{-1.9, -12};
     cars[0].body.angle = 0;
     cars[0].model = 0;
+    cars[0].body.roadLevel = 0;
+    cars[0].body.height = terrain.height(cars[0].body.p) + .8;
     for (size_t k = 1; k < cars.size(); ++k)
         if ((cars[k].body.p - cars[0].body.p).length() < 8)
         {
@@ -357,6 +386,8 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
             c.body.p = c.route->sample(0).first;
             if ((c.body.p - cars[0].body.p).length() < 8)
             {
+                c.routeLevel = c.body.roadLevel = 0;
+                c.routePhase = 0;
                 c.routeFrom = 0;
                 c.routeTo = chooseNext(0, -1);
                 auto f = (nodePoint(c.routeTo) - nodePoint(0)).unit();
@@ -366,6 +397,7 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
                 c.body.angle = -std::atan2(f.x, f.z);
             }
             c.routeDistance = 0;
+            c.body.height = surface(c.body.p, c.body.roadLevel) + .8;
         }
     report(.7f);
     for (int i = 0; i < 720; i++)
@@ -378,7 +410,16 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
         p.body.invI = 0;
         p.body.verticalExtent = 1.7;
         p.node = random.index(nodes * nodes);
-        p.next = chooseNext(p.node, -1);
+        p.next = chooseWalkNext(p.node, -1);
+        // A cut can remove the sidewalk at a node. Start on an actual walkable
+        // edge; its reverse also provides an escape route at a dead end.
+        for (int attempt = 0; p.next == p.node && attempt < nodes * nodes; ++attempt)
+        {
+            p.node = (p.node + 1) % (nodes * nodes);
+            p.next = chooseWalkNext(p.node, -1);
+        }
+        if (p.next == p.node)
+            throw std::runtime_error("No connected sidewalk for pedestrian spawn");
         p.body.p = nodePoint(p.node) + Vec2{9.1, 9.1};
         p.target = nodePoint(p.next) + Vec2{9.1, 9.1};
         p.body.p += (p.target - p.body.p) * random.next();
@@ -404,9 +445,16 @@ void World::enterExit()
         auto &car = cars[controlledCar];
         if (car.body.v.length() > 4)
             return;
-        player.p = car.body.p + rotate({car.body.halfW + 1, 0}, car.body.angle);
+        auto side = rotate({car.body.halfW + 1, 0}, car.body.angle);
+        player.p = car.body.p + side;
+        if (scenerySolid(player.p, car.body.height, .35))
+            player.p = car.body.p - side;
+        if (scenerySolid(player.p, car.body.height, .35))
+            return;
         player.v = car.body.v;
-        player.height = terrain.height(player.p) + .85;
+        player.roadLevel = selectLevel(player.p, car.body.roadLevel, car.body.height - .8);
+        player.height = car.body.height + .05;
+        player.verticalSpeed = car.verticalVelocity;
         player.wake();
         controlledCar = -1;
         physics.clear();
@@ -418,7 +466,7 @@ void World::enterExit()
         for (size_t i = 0; i < cars.size(); i++)
         {
             double d = (cars[i].body.p - player.p).length();
-            if (d < best && !cars[i].destroyed)
+            if (d < best && !cars[i].destroyed && std::abs(player.height - cars[i].body.height) < 1.8)
             {
                 best = d;
                 index = int(i);
@@ -438,6 +486,8 @@ void World::recover()
     {
         auto &c = cars[controlledCar];
         c.body.p = p;
+        c.body.roadLevel = 0;
+        c.body.height = terrain.height(p) + .8;
         c.body.v = {};
         c.body.w = 0;
         c.body.angle = 0;
@@ -448,7 +498,12 @@ void World::recover()
         c.body.wake();
     }
     else
+    {
         player.p = p;
+        player.roadLevel = 0;
+        player.height = terrain.height(p) + .85;
+        player.verticalSpeed = 0;
+    }
     playerBurnUntil = 0;
 }
 void World::step(PlayerInput input, double dt)
@@ -478,6 +533,12 @@ void World::step(PlayerInput input, double dt)
                                  : input.lookPitch);
     combatStep(dt);
     auto focus = position();
+    std::vector<Vec2> previousCars, previousPeople;
+    for (auto &c : cars)
+        previousCars.push_back(c.body.p);
+    for (auto &p : people)
+        previousPeople.push_back(p.body.p);
+    auto previousPlayer = player.p;
     std::vector<Body *> bodies;
     bodies.reserve(600);
     for (auto &b : staticBodies)
@@ -489,25 +550,14 @@ void World::step(PlayerInput input, double dt)
         auto &b = car.body;
         car.impactCooldown = std::max(0., car.impactCooldown - dt);
         bool local = (b.p - focus).length2() < 110 * 110 || int(i) == controlledCar;
-        double ground = terrain.height(b.p);
-        car.terrainActive = true;
-        car.terrainGradient = terrain.gradient(b.p);
+        car.terrainActive = car.lift < .15;
+        car.terrainGradient = {
+            (surface(b.p + Vec2{.25, 0}, b.roadLevel) - surface(b.p - Vec2{.25, 0}, b.roadLevel)) * 2,
+            (surface(b.p + Vec2{0, .25}, b.roadLevel) - surface(b.p - Vec2{0, .25}, b.roadLevel)) * 2};
         auto f = forward(car.heading());
         car.wheelTravel += dot(b.v, f) * dt;
         car.terrainPitch = std::atan(dot(car.terrainGradient, f));
         car.terrainRoll = -std::atan(dot(car.terrainGradient, {f.z, -f.x}));
-        if (car.lift > 0 || car.verticalVelocity > 0)
-        {
-            car.verticalVelocity -= 9.81 * dt;
-            car.lift += car.verticalVelocity * dt;
-            if (car.lift <= 0)
-            {
-                car.lift = 0;
-                car.verticalVelocity = 0;
-                car.wreckSupported = true;
-            }
-        }
-        b.height = ground + car.lift + .8;
         if (int(i) == controlledCar)
             stepVehicle(car, input.car, dt, 1 - rain * .2);
         else if (car.destroyed)
@@ -530,7 +580,10 @@ void World::step(PlayerInput input, double dt)
             b.p = sample.first;
             b.angle = -sample.second;
             b.v = forward(sample.second) * (car.routeDistance >= car.route->length() ? 0 : 7);
-            b.height = terrain.height(b.p) + .8;
+            b.roadLevel = car.routeLevel;
+            b.height = surface(b.p, b.roadLevel) + .8;
+            car.lift = car.verticalVelocity = 0;
+            previousCars[i] = b.p;
             continue;
         }
         else
@@ -565,7 +618,8 @@ void World::step(PlayerInput input, double dt)
             if (!clear)
                 target = std::min(
                     target, std::sqrt(2 * 4 * std::max(0., car.route->length() - car.routeDistance - .35)));
-            if (car.model == 3 && wantedLevel() > 0)
+            if (car.model == 3 && wantedLevel() > 0 && !levelAt(b.p, 3) && !levelAt(focus, 3) &&
+                std::abs(b.height - ground() - .8) < 2)
             {
                 aim = focus;
                 desired = std::atan2(aim.x - b.p.x, aim.z - b.p.z);
@@ -605,7 +659,6 @@ void World::step(PlayerInput input, double dt)
         player.v = dir * (input.walking.length() > .01 ? (input.running ? 5.7 : 2.7) : 0);
         playerDistance += player.v.length() * dt;
         player.angle = -input.lookHeading;
-        player.height = terrain.height(player.p) + .85;
         player.wake();
         bodies.push_back(&player);
     }
@@ -614,7 +667,6 @@ void World::step(PlayerInput input, double dt)
         bool local = (p.body.p - focus).length2() < 90 * 90;
         p.phase += dt;
         p.distance += p.body.v.length() * dt;
-        p.body.height = terrain.height(p.body.p) + .85;
         if (p.dead)
         {
             p.body.v *= std::exp(-dt * 5);
@@ -624,7 +676,7 @@ void World::step(PlayerInput input, double dt)
         if ((p.body.p - p.target).length() < 1)
         {
             p.node = p.next;
-            p.next = chooseNext(p.node, -1);
+            p.next = chooseWalkNext(p.node, -1);
             p.target = nodePoint(p.next) + Vec2{9.1, 9.1};
         }
         auto dir = (p.target - p.body.p).unit();
@@ -634,7 +686,7 @@ void World::step(PlayerInput input, double dt)
             {
                 auto d = p.body.p - c.body.p;
                 double distance = d.length();
-                if (distance < 4 && c.body.v.length() > 5)
+                if (distance < 4 && std::abs(p.body.height - c.body.height) < 1.8 && c.body.v.length() > 5)
                 {
                     dir = d.unit();
                     p.fear = 2;
@@ -664,6 +716,12 @@ void World::step(PlayerInput input, double dt)
     for (auto &c : cars)
         beforeContact.push_back(c.body.v);
     physics.step(bodies, dt);
+    for (size_t i = 0; i < cars.size(); ++i)
+        supportCar(cars[i], previousCars[i], dt);
+    for (size_t i = 0; i < people.size(); ++i)
+        supportPerson(people[i].body, previousPeople[i], dt);
+    if (controlledCar < 0)
+        supportPerson(player, previousPlayer, dt);
     std::vector<double> impacts(cars.size());
     for (size_t i = 0; i < cars.size(); i++)
         impacts[i] = (cars[i].body.v - beforeContact[i]).length();
@@ -672,7 +730,8 @@ void World::step(PlayerInput input, double dt)
     for (auto &pickup : pickups)
     {
         pickup.wait = std::max(0., pickup.wait - dt);
-        if (pickup.wait > 0 || (pickup.p - position()).length() > 1.7)
+        if (pickup.wait > 0 || (pickup.p - position()).length() > 1.7 ||
+            std::abs(terrain.height(pickup.p) - ground()) > 1.7)
             continue;
         if (pickup.health)
         {
@@ -704,12 +763,15 @@ void World::step(PlayerInput input, double dt)
     if (particles.size() > 5000)
         particles.erase(particles.begin(),
                         particles.begin() + static_cast<std::ptrdiff_t>(particles.size() - 5000));
-    if (health <= 0 || terrain.height(position().x, position().z) < CityLayout::waterLevel + .3 ||
+    if (health <= 0 || ground() < CityLayout::waterLevel + .3 ||
         std::max(std::abs(position().x), std::abs(position().z)) > landEdge ||
         (controlledCar >= 0 && cars[controlledCar].destroyed))
     {
         controlledCar = -1;
         player.p = nodePoint(nodes / 2 * nodes + nodes / 2) + Vec2{7, 7};
+        player.roadLevel = 0;
+        player.verticalSpeed = 0;
+        player.height = terrain.height(player.p) + .85;
         health = 1;
         wanted = 0;
         playerBurnUntil = 0;
