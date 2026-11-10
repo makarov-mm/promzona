@@ -22,7 +22,8 @@ struct Application
     bool running{true}, active{true}, menu{true}, console{}, loading{}, cursorHidden{};
     bool keys[256]{}, pressed[256]{}, firing{};
     int width{1280}, height{720}, wheel{}, cameraMode{};
-    double look{}, cameraYaw{}, zoom{20};
+    double look{}, lookPitch{}, cameraYaw{}, zoom{20};
+    bool jobsOpen{};
     std::wstring command, message;
     std::filesystem::path saveFile;
     void cursor(bool hidden)
@@ -179,6 +180,16 @@ std::string utf8(const std::wstring &s)
 }
 View camera(const World &w, Application &a, double dt)
 {
+    if (w.drone.active)
+    {
+        const auto &d = w.drone;
+        View camera;
+        camera.eye = {float(d.position.x), float(d.altitude), float(d.position.z)};
+        const auto f = forward(d.heading) * std::cos(d.pitch);
+        camera.target = camera.eye + Vec3{float(f.x), float(std::sin(d.pitch)), float(f.z)};
+        camera.heading = d.heading;
+        return camera;
+    }
     auto p = w.position();
     double heading = w.controlledCar >= 0 ? w.cars[w.controlledCar].heading() : a.look;
     a.cameraYaw = wrap(a.cameraYaw + wrap(heading - a.cameraYaw) * (1 - std::exp(-dt * 3)));
@@ -190,26 +201,25 @@ View camera(const World &w, Application &a, double dt)
     else
         v.eye = v.target + Vec3{float(-std::sin(a.cameraYaw) * a.zoom), float(a.zoom * .43),
                                 float(-std::cos(a.cameraYaw) * a.zoom)};
+    bool mounted=w.controlledCar>=0 && w.cars[w.controlledCar].mountedGun();
+    bool aim=(w.controlledCar<0 || mounted) && a.cameraMode==0 && a.firing;
+    if(aim && mounted) v.target.y=y+2.3f;
+    Vec3 sight{float(std::sin(a.look)*std::cos(a.lookPitch)),float(std::sin(a.lookPitch)),float(std::cos(a.look)*std::cos(a.lookPitch))};
+    if(aim) v.eye=v.target-sight*(mounted?7.f:3.f)+Vec3{float(-std::cos(a.look)*.35),.12f,float(std::sin(a.look)*.35)};
     // Sweep the camera segment; stop before roofs, facades or terrain, including a small clearance.
     auto intended = v.eye;
     for (int i = 1; i <= 80; i++)
     {
         float t = i / 80.f;
         auto q = v.target + (intended - v.target) * t;
-        bool blocked = w.scenerySolid({q.x, q.z}, q.y, .6);
-        for (auto &b : w.buildings)
-            if (std::abs(q.x - b.p.x) < b.half.x + .6 && std::abs(q.z - b.p.z) < b.half.z + .6 &&
-                q.y > w.terrain.height(b.p) - .6 && q.y < w.terrain.height(b.p) + b.height + .6)
-            {
-                blocked = true;
-                break;
-            }
+        bool blocked = w.scenerySolid({q.x,q.z},q.y,.6) || w.insideBuilding({q.x,q.z},q.y,.6);
         if (blocked)
         {
             v.eye = v.target + (intended - v.target) * std::max(0.f, t - .03f);
             break;
         }
     }
+    if(aim) v.target=v.target+sight*45.f;
     v.heading = a.cameraYaw;
     return v;
 }
@@ -258,7 +268,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             scenario != L"canal" && scenario != L"bridge" && scenario != L"overpass" &&
             scenario != L"underpass" && scenario != L"tunnel" && scenario != L"portal" &&
             scenario != L"facade" && scenario != L"facade-night" && scenario != L"park" &&
-            scenario != L"park-unshadowed" && scenario != L"park-evening")
+            scenario != L"park-unshadowed" && scenario != L"park-evening" && scenario != L"streaming" &&
+            scenario != L"courier" && scenario != L"pursuit" && scenario != L"transit" && scenario != L"tank" && scenario != L"drone" &&
+            scenario != L"leaflets" && scenario != L"taxi")
             throw std::runtime_error("Unknown smoke scenario");
         if (content.empty())
             content = std::filesystem::is_directory(exeDirectory / L"Content")
@@ -401,6 +413,78 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 world->rain = world->rainTarget = .85;
                                 world->weatherClock = 120;
                             }
+                            if (scenario == L"drone")
+                            {
+                                world->enterExit();
+                                world->toggleDrone(0);
+                                if (!world->drone.active) throw std::runtime_error("Drone launch failed");
+                                const auto &b = world->buildings[world->drone.targets[0]];
+                                auto delta = b.p - world->drone.position;
+                                app.look = std::atan2(delta.x, delta.z);
+                                app.lookPitch = .1;
+                            }
+                            if (scenario == L"tank")
+                            {
+                                world->command("spawn tank");
+                                world->controlledCar=int(world->cars.size()-1);
+                                app.look=world->cars.back().heading()+.46;
+                                app.zoom=12;
+                                world->clock.setHour(14);
+                            }
+                            if (scenario == L"transit")
+                            {
+                                auto it=std::ranges::find(world->cars,9,&Car::kind);
+                                if(it==world->cars.end()) throw std::runtime_error("Missing tram in generated city");
+                                world->controlledCar=int(it-world->cars.begin());
+                                app.zoom=18;
+                                world->clock.setHour(13);
+                            }
+                            if (scenario == L"pursuit")
+                            {
+                                world->command("wanted 6");
+                                for(int n=0;n<24;++n) world->updateDispatch();
+                                world->clock.setHour(12);
+                            }
+                            if (scenario == L"leaflets")
+                            {
+                                world->enterExit();
+                                if (!world->startContract(JobKind::leaflets)) throw std::runtime_error("No leaflet route");
+                                world->player.p=world->jobTarget();
+                                world->player.height=world->terrain.height(world->player.p)+.85;
+                                world->interactJob();
+                            }
+                            if (scenario == L"taxi")
+                            {
+                                if (!world->startContract(JobKind::taxi)) throw std::runtime_error("Taxi unavailable");
+                                auto &c = world->cars[world->controlledCar];
+                                const auto &person = world->people[world->job.actor];
+                                // Park with the passenger on the kerb side of this street.
+                                c.body.p = person.body.p + rotate({c.body.halfW + .68,0},c.body.angle);
+                                c.body.height = world->terrain.height(c.body.p) + .8;
+                                c.body.v = {};
+                                world->interactJob();
+                            }
+                            if (scenario == L"courier")
+                            {
+                                int source = world->nearestSite(ServiceKind::kiosk,world->position());
+                                if (source < 0) throw std::runtime_error("Missing kiosk in smoke city");
+                                const auto &s = world->sites[source];
+                                world->controlledCar = -1;
+                                world->player.p = s.entrance;
+                                world->player.height = world->terrain.height(s.entrance)+.85;
+                                world->health = .4;
+                                world->money = 60;
+                                world->buyFood();
+                                world->interactJob();
+                                if (world->job.kind != JobKind::courier || world->money != 45)
+                                    throw std::runtime_error("Courier or shop unavailable in gameplay");
+                                Vec3 at{float(s.centre.x),float(world->terrain.height(s.centre)+1.15),float(s.centre.z)};
+                                View v;
+                                v.eye = at + Vec3{-3.5f,1.95f,-6.5f};
+                                v.target = at;
+                                reviewView = v;
+                                world->clock.setHour(11);
+                            }
                             if (scenario == L"walk")
                             {
                                 world->enterExit();
@@ -496,8 +580,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         SwapBuffers(context.dc);
                         audio.clear();
                         renderer.prepare(*world);
-                        app.look = app.cameraYaw =
-                            world->controlledCar >= 0 ? world->cars[world->controlledCar].heading() : 0;
+                        app.jobsOpen = false;
+                        app.lookPitch = world->drone.active ? world->drone.pitch : 0;
+                        app.look = world->controlledCar >= 0 ? world->cars[world->controlledCar].heading()
+                                                             : -world->player.angle;
+                        if (world->drone.active)
+                            app.look = world->drone.heading;
+                        app.cameraYaw = app.look;
                         app.loading = false;
                         accumulator = 0;
                         last = Timer::now();
@@ -533,11 +622,43 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     }
                     else if (app.active || smoke)
                     {
-                        if (app.pressed['F'])
+                        if (app.pressed['K'])
+                        {
+                            bool active = world->drone.active;
+                            world->toggleDrone(app.look);
+                            if (world->drone.active) { app.lookPitch = world->drone.pitch; app.jobsOpen = false; }
+                            else if (active) { app.look = -world->player.angle; app.lookPitch = 0; }
+                        }
+                        if (!world->drone.active && app.pressed['F'] && !world->buyFood())
+                        {
+                            int previous = world->controlledCar;
                             world->enterExit();
-                        if (app.pressed['R'])
+                            if(previous!=world->controlledCar)
+                            {
+                                int vehicle=world->controlledCar>=0 ? world->controlledCar : previous;
+                                app.look=world->cars[vehicle].heading();
+                                app.lookPitch=0;
+                            }
+                        }
+                        if (!world->drone.active && app.pressed['E'])
+                            world->interactJob();
+                        if (!world->drone.active && app.pressed['J'])
+                            app.jobsOpen = !app.jobsOpen;
+                        if (app.jobsOpen && (app.pressed['1'] || app.pressed['2'] || app.pressed['3'] || app.pressed['4'] || app.pressed['5'] || app.pressed['6'] || app.pressed['7']))
+                        {
+                            if (app.pressed['3'] && world->job.kind != JobKind::none)
+                                world->finishJob(false);
+                            else if (app.pressed['1'] || app.pressed['2'])
+                                world->startContract(app.pressed['1'] ? JobKind::vehicle : JobKind::elimination);
+                            else if (app.pressed['4'] || app.pressed['5'])
+                                world->startContract(app.pressed['4'] ? JobKind::leaflets : JobKind::broadcast);
+                            else if (app.pressed['6'] || app.pressed['7'])
+                                world->startContract(app.pressed['6'] ? JobKind::taxi : JobKind::patient);
+                            app.jobsOpen = false;
+                        }
+                        if (!world->drone.active && app.pressed['R'])
                             world->recover();
-                        if (app.pressed['V'])
+                        if (!world->drone.active && app.pressed['V'])
                             app.cameraMode = 1 - app.cameraMode;
                         if (app.wheel)
                             world->inventory.cycle(app.wheel > 0 ? 1 : -1);
@@ -560,8 +681,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             POINT centre{app.width / 2, app.height / 2}, mouse;
                             ClientToScreen(app.window, &centre);
                             GetCursorPos(&mouse);
-                            if (world->controlledCar < 0)
+                            if (world->controlledCar < 0 || world->cars[world->controlledCar].mountedGun())
+                            {
                                 app.look = wrap(app.look - (mouse.x - centre.x) * .003);
+                                app.lookPitch=clamp(app.lookPitch-(mouse.y-centre.y)*.003,-1.1,1.1);
+                            }
                             SetCursorPos(centre.x, centre.y);
                         }
                         PlayerInput input;
@@ -571,9 +695,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         auto f = forward(app.look);
                         input.walking = f * (double(app.keys['W']) - double(app.keys['S'])) +
                                         perpendicular(f) * (double(app.keys['D']) - double(app.keys['A']));
+                        input.collective = double(app.keys[VK_SPACE]) - double(app.keys[VK_CONTROL]);
                         input.running = app.keys[VK_SHIFT];
                         input.shooting = app.firing;
                         input.lookHeading = app.look;
+                        input.lookPitch = app.lookPitch;
+                        if (smoke && scenario == L"drone") input.collective=1;
+                        if (smoke && scenario == L"tank")
+                            input.shooting=frames>=150;
                         if (smoke && scenario == L"drive")
                             input.car = {frames < smokeFrames * 2 / 3 ? 1. : 0., .12, false,
                                          frames >= smokeFrames * 2 / 3};
@@ -582,14 +711,21 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             input.walking = {0, 1};
                             input.running = input.shooting = true;
                         }
+                        if (smoke && scenario == L"transit") input.car={.8,0,false,false};
                         if (smoke && scenario == L"bridge")
                             input.car = {.55, 0, false, false};
                         accumulator += dt;
+                        bool droneWasActive = world->drone.active;
                         int steps = 0;
                         while (accumulator >= 1. / 120 && steps++ < 12)
                         {
                             world->step(input, 1. / 120);
                             accumulator -= 1. / 120;
+                        }
+                        if (droneWasActive && !world->drone.active)
+                        {
+                            app.look = -world->player.angle;
+                            app.lookPitch = 0;
                         }
                         if (steps >= 12)
                             accumulator = 0;
@@ -603,8 +739,51 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     auto view = camera(*world, app, dt);
                     if (smoke && reviewView)
                         view = *reviewView;
+                    if (smoke && scenario == L"streaming")
+                    {
+                        // Far jumps stress cancellation/eviction; the last stop revisits the first.
+                        constexpr Vec2 stops[] = {
+                            {-600, -600}, {600, 600}, {-600, 600}, {600, -600}, {-600, -600}};
+                        const int phase = std::min(4, frames / 180);
+                        const Building *selected = nullptr;
+                        for (const auto &b : world->buildings)
+                            if (!selected ||
+                                (b.p - stops[phase]).length2() < (selected->p - stops[phase]).length2())
+                                selected = &b;
+                        auto plan = planBuilding(*selected, world->terrain.height(selected->p));
+                        Vec3 normal = plan.windowsOnZ ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
+                        auto front =
+                            plan.origin + normal * (plan.windowsOnZ ? plan.halfDepth : plan.halfWidth);
+                        view.target = front + Vec3{0, 5, 0};
+                        view.eye = front + normal * 23 + cross({0, 1, 0}, normal) * 12 + Vec3{0, 8, 0};
+                        world->clock.setHour(10);
+                        world->rain = world->rainTarget = 0;
+                    }
+                    if(smoke && scenario==L"pursuit")
+                    {
+                        auto unit=std::ranges::find_if(world->cars,[](const Car &c){return c.responding && c.kind==12;});
+                        if(unit==world->cars.end() || unit->lift<5) throw std::runtime_error("Missing airborne pursuit unit");
+                        view.target={float(unit->body.p.x),float(unit->body.height+.4),float(unit->body.p.z)};
+                        view.eye=view.target+Vec3{10,4,-12};
+                    }
                     audio.update(*world, view.heading);
                     renderer.render(*world, view, app.width, app.height);
+                    if (smoke && scenario == L"streaming")
+                    {
+                        auto stats = renderer.streamingStats();
+                        if (stats.peakGpuBytes > 64 * 1024 * 1024 || stats.queued > 8 || stats.ready > 2)
+                            throw std::runtime_error("Streaming exceeded its memory/queue budget");
+                        if (frames % 180 == 179)
+                        {
+                            if (stats.residentCells == 0)
+                                throw std::runtime_error(
+                                    "Streaming left a visited neighbourhood without details");
+                            log << "Stop " << frames / 180 << ": " << renderer.sceneryStats() << std::endl;
+                            renderer.screenshot(smokeOutput /
+                                                    ("stop-" + std::to_string(frames / 180) + ".bmp"),
+                                                app.width, app.height);
+                        }
+                    }
                 }
                 else
                 {
@@ -612,14 +791,22 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
                 }
                 renderer.overlay(world.get(), app.width, app.height, fps, app.menu, app.console, app.command,
-                                 app.message, app.loading ? progress.load() * .95f : -1);
+                                 app.message, app.loading ? progress.load() * .95f : -1, app.jobsOpen);
                 if (smoke)
                     if (auto error = glGetError(); error != GL_NO_ERROR)
                         throw std::runtime_error("OpenGL error: " + std::to_string(error));
                 if (smoke && world && !app.loading && ++frames >= smokeFrames)
                 {
+                    if (scenario == L"streaming")
+                    {
+                        auto stats = renderer.streamingStats();
+                        if (stats.evictions < 10 || stats.uploads <= stats.residentCells ||
+                            stats.residentCells >= stats.totalCells)
+                            throw std::runtime_error(
+                                "Streaming route did not exercise eviction and reloading");
+                    }
                     double distance = (world->position() - smokeStart).length();
-                    if ((scenario == L"drive" || scenario == L"walk" || scenario == L"bridge") &&
+                    if ((scenario == L"drive" || scenario == L"walk" || scenario == L"transit" || scenario == L"bridge") &&
                         distance < 1)
                         throw std::runtime_error("Smoke movement did not advance");
                     if (scenario == L"bridge")
@@ -631,6 +818,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             throw std::runtime_error(
                                 "Smoke bridge traversal did not reach the opposite bank on its road surface");
                     }
+                    if (scenario == L"drone" && (!world->drone.active || world->drone.altitude < world->ground()+12))
+                        throw std::runtime_error("Recon flight or camera did not advance");
                     if (scenario == L"walk" &&
                         (world->controlledCar >= 0 || world->inventory.ammo(WeaponId::automatic) >= 1000))
                         throw std::runtime_error("Smoke running/fire input failed");
@@ -643,6 +832,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             std::abs(world->ground() - world->surface(c.body.p, expected)) > .1)
                             throw std::runtime_error("Smoke support level mismatch");
                     }
+                    if (scenario == L"taxi" && (!world->job.acquired || world->people[world->job.actor].riding != world->controlledCar))
+                        throw std::runtime_error("Taxi passenger did not board");
+                    if (scenario == L"leaflets" && world->job.route.completed != 1)
+                        throw std::runtime_error("Leaflet handout did not finish");
+                    if (scenario == L"tank" && (world->controlledCar<0 ||
+                        world->cars[world->controlledCar].kind!=11 || world->shotCooldown==0))
+                        throw std::runtime_error("Tank did not fire");
                     world->save(app.saveFile);
                     World loaded;
                     loaded.load(app.saveFile);

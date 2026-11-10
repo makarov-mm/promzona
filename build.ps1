@@ -24,7 +24,9 @@ try {
     $env:PATH=($env:PATH.Split(';')+$savedPath.Split(';') | Select-Object -Unique) -join ';'
 }catch{$env:PATH=$savedPath;throw}
 $build=Join-Path $root "build/native-$Configuration"
-& $cmake -S $root -B $build -G Ninja "-DCMAKE_MAKE_PROGRAM=$ninja" "-DCMAKE_BUILD_TYPE=$Configuration" '-DBUILD_TESTING=ON'
+. (Join-Path $root 'tools/cmake-cache.ps1')
+$cacheArgs = @(Get-CMakeCacheArguments $build $root)
+& $cmake @cacheArgs -S $root -B $build -G Ninja "-DCMAKE_MAKE_PROGRAM=$ninja" "-DCMAKE_BUILD_TYPE=$Configuration" '-DBUILD_TESTING=ON'
 if($LASTEXITCODE -ne 0){throw 'CMake configure failed.'}
 & $cmake --build $build --parallel 6
 if($LASTEXITCODE -ne 0){throw 'Native compilation failed.'}

@@ -115,13 +115,18 @@ struct Car
         terrainPitch{}, terrainRoll{};
     Vec2 terrainGradient{};
     bool terrainActive{}, falling{}, destroyed{}, recovering{}, braking{}, wreckSupported{};
-    double health{1}, fireTime{}, routeDistance{}, wheelTravel{}, lastDamageAt{-100}, safeDrivingTime{},
+    double health{1}, fireTime{}, routeDistance{}, wheelTravel{}, turretYaw{}, turretPitch{}, lastDamageAt{-100}, safeDrivingTime{},
         impactCooldown{};
+    bool responding{}, seesSuspect{}, firePlayerCaused{}, summoned{};
+    double nextShot{}, nextSightCheck{};
     std::uint32_t model{}, id{};
     int routeFrom{}, routeTo{}, previousNode{-1}, routePhase{};
     int routeLevel{};
+    int line{-1}, nextStop{};
+    double along{}, dwell{}, serviceTarget{7}, checkTrafficAt{};
     std::optional<Path> route;
     double heading() const { return -body.angle; }
+    bool mountedGun() const { return kind == 11 || kind == 14; }
     bool grounded() const { return lift < .12 && std::cos(roll) * std::cos(pitch) > .45; }
     void destroy();
 };

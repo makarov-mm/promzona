@@ -71,12 +71,42 @@ bool World::scenerySolid(Vec2 p, double y, double radius) const
                (s->roof(p.x) && y > floor + RoadLevel::clearance - radius && y < ground + radius);
     return y < ground + radius || (y > floor - .55 - radius && y < floor + radius);
 }
+std::optional<Vec2> World::vehicleExit(const Car &car) const
+{
+    const double height = car.body.height + .05;
+    for (double along : {0., -.6, .7, -1.3, 1.3})
+        for (double side : {1., -1.})
+        {
+            Vec2 at = car.body.p + rotate({side * (car.body.halfW + .9), along * car.body.halfH}, car.body.angle);
+            auto overlaps = [&](const Body &body) {
+                if (std::abs(body.height - height) > body.verticalExtent * .5 + .8) return false;
+                auto d = rotate(at - body.p, -body.angle);
+                if (body.circle) return d.length2() < (body.radius + .35) * (body.radius + .35);
+                return std::abs(d.x) < body.halfW + .35 && std::abs(d.z) < body.halfH + .35;
+            };
+            if (scenerySolid(at, height, .35) || insideBuilding(at, height, .35) ||
+                std::ranges::any_of(staticBodies, overlaps) ||
+                std::ranges::any_of(cars,[&](const Car &other){return &other != &car && overlaps(other.body);}) ||
+                std::ranges::any_of(people,[&](const Person &p){return !p.dead && p.riding < 0 && overlaps(p.body);}) ||
+                (controlledCar < 0 && overlaps(player))) continue;
+            return at;
+        }
+    return std::nullopt;
+}
+
 void World::supportCar(Car &c, Vec2 previousPosition, double dt)
 {
     auto &b = c.body;
     double previousFloor = surface(previousPosition, b.roadLevel), foot = b.height - .8;
     b.roadLevel = selectLevel(b.p, b.roadLevel, foot);
     double floor = surface(b.p, b.roadLevel);
+    if(c.kind==12 && c.destroyed)
+    {
+        double roof=flightFloor(b.p);
+        if(foot>=roof-.15) floor=std::max(floor,roof);
+        double oldRoof=flightFloor(previousPosition);
+        if(foot>=oldRoof-.15) previousFloor=std::max(previousFloor,oldRoof);
+    }
     bool attached = c.lift < .03 && c.verticalVelocity <= 0 && std::abs(foot - previousFloor) < .2;
     if (attached && std::abs(floor - previousFloor) < .45)
         foot = floor;

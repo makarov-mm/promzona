@@ -111,6 +111,14 @@ void AudioMixer::update(World &world, double cameraHeading)
         std::lock_guard lock(mutex_);
         listener_ = world.position();
         heading_ = cameraHeading;
+        auto pa = clips_.find("peace_pa");
+        if (pa != clips_.end())
+        {
+            const bool active = world.job.kind == JobKind::broadcast && world.job.route.enabled &&
+                                world.controlledCar == world.job.actor;
+            std::erase_if(voices_, [&](const Voice &v) {return !active && v.samples == &pa->second;});
+            if (active) for (auto &v: voices_) if(v.samples==&pa->second) v.source=world.position();
+        }
         for (auto &v : voices_)
         {
             v.touched = false;
@@ -149,6 +157,8 @@ void AudioMixer::update(World &world, double cameraHeading)
         for (auto c : engines)
         {
             double gain = world.controlledCar >= 0 && c == &world.cars[world.controlledCar] ? .38 : .24;
+            if(c->responding && c->kind!=12 && c->kind!=13 && c->kind!=14)
+                loop(0x10000+int(c->id),"siren",spatialAudio(c->body.p, listener_, heading_, .26),1);
             loop(int(c->id), "engine", spatialAudio(c->body.p, listener_, heading_, gain),
                  .75 + std::min(1.5, c->body.v.length() * .05));
         }
@@ -157,7 +167,8 @@ void AudioMixer::update(World &world, double cameraHeading)
         std::erase_if(voices_, [](auto &v) { return v.loop && !v.touched; });
     }
     for (auto &event : world.sounds)
-        play({event.name, event.source, event.gain, event.ui});
+        if (event.name != "peace_pa" || (world.job.kind == JobKind::broadcast && world.job.route.enabled && world.controlledCar==world.job.actor))
+            play(event);
     world.sounds.clear();
 }
 void AudioMixer::pause(bool paused)

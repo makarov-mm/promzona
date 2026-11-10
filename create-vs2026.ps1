@@ -8,6 +8,10 @@ if (-not (Test-Path -LiteralPath $vswhere)) {
     throw 'Install Visual Studio 2026 with Desktop development with C++ and C++ CMake tools for Windows.'
 }
 $vs = & $vswhere -latest -products '*' -version '[18.0,19.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+if (-not $vs) {
+    # A servicing installation can still have a working compiler and SDK.
+    $vs = & $vswhere -all -latest -products '*' -version '[18.0,19.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+}
 if ($LASTEXITCODE -ne 0 -or -not $vs) {
     throw 'Visual Studio 2026 C++ tools were not found. Add the Desktop development with C++ workload.'
 }
@@ -26,7 +30,9 @@ if ('Visual Studio 18 2026' -notin $info.generators.name) {
 # No developer-shell setup, downloads or changes to the Suites solution are needed.
 Push-Location -LiteralPath $root
 try {
-    & $cmake --preset vs2026 "-DCMAKE_GENERATOR_INSTANCE=$vs"
+    . (Join-Path $root 'tools/cmake-cache.ps1')
+    $cacheArgs = @(Get-CMakeCacheArguments (Join-Path $root 'build/vs2026') $root)
+    & $cmake @cacheArgs --preset vs2026 "-DCMAKE_GENERATOR_INSTANCE=$vs"
     if ($LASTEXITCODE -ne 0) { throw 'Visual Studio solution generation failed.' }
 }
 finally { Pop-Location }

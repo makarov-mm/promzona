@@ -87,6 +87,51 @@ int main()
         check(policeRoster(1).size() == 2 && policeRoster(6).size() == 9 && policeRoster(6).back() == 12,
               "original police roster includes final air patrol kind");
         auto w = empty();
+        {
+            auto armed = person({0, -12});
+            armed.sidearm = WeaponId::automatic;
+            armed.alertUntil = 8;
+            w.people.push_back(armed);
+            auto &shooter = w.people.front();
+            auto aim = [&](int frames) {
+                for (int n = 0; n < frames; ++n) {
+                    w.time += 1./120;
+                    w.civilianCombat(shooter, 1./120);
+                }
+            };
+            aim(70);
+            check(w.health == 1, "civilian takes time to aim");
+            w.staticBodies.push_back(box({0,-5},{2,.3},1,4));
+            aim(40);
+            check(w.health == 1 && w.sounds.empty(), "civilian cannot fire through a wall");
+            w.staticBodies.clear();
+            aim(92);
+            check(w.sounds.size() == 3 && w.health < 1, "rifle fires a three-round burst then rests");
+            w.killPerson(shooter);
+            auto count = w.pickups.size();
+            w.killPerson(shooter);
+            check(count == w.pickups.size() && std::ranges::count_if(w.pickups,[](const Pickup &p) {
+                return p.weapon == WeaponId::automatic && p.dropped;
+            }) == 1, "armed civilian drops a single collectable rifle");
+            auto hp = w.health;
+            aim(200);
+            check(w.health == hp, "dead civilians cannot continue shooting");
+        }
+        w = empty();
+        {
+            w.cars.push_back(car({0, 0}));
+            w.controlledCar = 0;
+            auto previous = w.player.p;
+            w.staticBodies.push_back(box({0, 0}, {6, 6}, 1, 4));
+            w.enterExit();
+            check(w.controlledCar == 0 && (w.player.p - previous).length() == 0,
+                  "blocked doors keep driver and position intact");
+            w.staticBodies.clear();
+            w.enterExit();
+            check(w.controlledCar < 0 && (w.player.p - previous).length() > 1,
+                  "driver exits on a clear side");
+        }
+        w = empty();
         w.cars.push_back(car({0, 10}));
         w.people.push_back(person({0, 5}));
         auto hit = w.traceAttack({}, {0, 1}, 1.3, 0, 30);

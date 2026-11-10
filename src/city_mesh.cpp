@@ -1,5 +1,6 @@
 #include "promzona/city_mesh.hpp"
 #include "promzona/architecture.hpp"
+#include <set>
 namespace pz
 {
 namespace
@@ -40,6 +41,50 @@ CityChunk cityChunk(const World &w, double x0, double z0, double size)
         return Vec3{float(x), float((bed ? w.terrain.bedHeight(x, z) : w.terrain.height(x, z)) + add),
                     float(z)};
     };
+    // Rails and contact wires follow the very same polyline that constrains the tram.
+    std::set<std::array<int,5>> segments;
+    std::set<std::pair<int,int>> poles;
+    for(const auto &line:w.lines)
+    {
+        const auto &points=line.track.points();
+        for(size_t i=1;i<points.size();++i)
+        {
+            auto a=points[i-1], b=points[i], mid=(a+b)*.5;
+            if(!owns(mid)) continue;
+            auto f=(b-a).unit(), r=perpendicular(f);
+            auto quant=[](double x){return int(std::round(x*100));};
+            if(!segments.insert({quant(a.x),quant(a.z),quant(b.x),quant(b.z),line.kind}).second) continue;
+            auto previous=i>1?points[i-2]:points[points.size()-2];
+            auto next=i+1<points.size()?points[i+1]:points[1];
+            auto ra=perpendicular((b-previous).unit()), rb=perpendicular((next-a).unit());
+            auto strip=[&](double offset,double width,double height,int material){
+                auto corner=[&](Vec2 p){return ground(p.x,p.z,height);};
+                quad(data[material],corner(a+ra*(offset-width)),corner(a+ra*(offset+width)),
+                     corner(b+rb*(offset+width)),corner(b+rb*(offset-width)));
+            };
+            if(line.kind==9)
+                for(double rail:{-.762,.762}) strip(rail,.045,.042,Metal);
+            for(int n=0;n<(line.kind==9?1:2);++n)
+            {
+                const double wire=line.kind==9?0.:(n?.28:-.28);
+                auto u=a+ra*wire, v=b+rb*wire;
+                auto base=ground(u.x,u.z,5.75), end=ground(v.x,v.z,5.75);
+                Vec3 up{0,.028f,0};
+                quad(data[Frame],base-up,end-up,end+up,base+up);
+                quad(data[Frame],base+up,end+up,end-up,base-up);
+            }
+            double along=std::abs(f.x)>.999 ? a.x : std::abs(f.z)>.999 ? a.z : 1e10;
+            if(along==1e10 || std::abs(std::remainder(along-l.coordinate(0)-18.,36.))>.05) continue;
+            auto post=a+r*(line.kind==9?7.2:3.9);
+            if(!l.urbanSite(post,.25) || l.roadDistance(post)<l.roadHalf()+.4 ||
+               !poles.emplace(quant(post.x),quant(post.z)).second) continue;
+            auto foot=ground(post.x,post.z);
+            box(data[Metal],foot+Vec3{0,2.93f,0},{.065f,2.93f,.065f});
+            auto end=ground(a.x,a.z,5.79), root=foot+Vec3{0,5.84f,0}, edge=Vec3{float(f.x*.035),0,float(f.z*.035)};
+            quad(data[Metal],root-edge,root+edge,end+edge,end-edge);
+            quad(data[Metal],end-edge,end+edge,root+edge,root-edge);
+        }
+    }
     // Clip real holes in the terrain, not transparent rectangles above it.
     // The cutting edges are linear inside each metre-wide strip, just like centreZ().
     auto tile = [&](int material, double a, double b, double c, double d, double add = 0, bool bed = false)
@@ -319,6 +364,27 @@ CityChunk cityChunk(const World &w, double x0, double z0, double size)
         if (!owns(b.p))
             continue;
         buildingCore(data, planBuilding(b, w.terrain.height(b.p)), b.style);
+    }
+    for (const auto &site : w.sites)
+    {
+        if (!owns(site.centre)) continue;
+        auto p = ground(site.centre.x,site.centre.z);
+        if (site.kind == ServiceKind::garage)
+        {
+            float d = float(site.halfDepth), h = float(site.height), width = float(site.halfWidth);
+            box(data[Foundation],p+Vec3{0,h/2,0},{width,h/2,d});
+            box(data[Roof],p+Vec3{0,h,0},{width+.13f,.11f,d+.15f});
+            box(data[Metal],p+Vec3{0,1.16f,-d-.04f},{width-.22f,1.14f,.04f});
+            for (int i=1; i<9; ++i)
+                box(data[Frame],p+Vec3{0,i*.25f,-d-.085f},{width-.26f,.017f,.014f});
+        }
+        else if (site.kind == ServiceKind::clinic)
+        {
+            auto sign = p + Vec3{0,3.35f,float(site.halfDepth)+.24f};
+            box(data[Metal],sign,{.84f,.84f,.055f});
+            box(data[Lamps],sign+Vec3{0,0,.08f},{.60f,.17f,.035f});
+            box(data[Lamps],sign+Vec3{0,0,.08f},{.17f,.60f,.04f});
+        }
     }
     for (auto &b : l.furniture)
     {

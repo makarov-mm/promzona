@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param([ValidateSet('Debug','Release')][string]$Configuration = 'Release',
-      [string[]]$Scenarios = @('day','drive','walk','night','canal','bridge','overpass','underpass','portal','tunnel','facade','facade-night','park','park-unshadowed','park-evening'))
+      [string[]]$Scenarios = @('day','drive','walk','night','canal','bridge','overpass','underpass','portal','tunnel','facade','facade-night','park','park-unshadowed','park-evening','streaming','courier','pursuit','transit','tank','drone','leaflets','taxi'))
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $runtime = Join-Path $root "artifacts/$Configuration"
@@ -19,7 +19,7 @@ foreach ($scenario in $Scenarios) {
         $previous = Join-Path $directory $name
         if (Test-Path -LiteralPath $previous) { Remove-Item -LiteralPath $previous }
     }
-    $frames = if ($scenario -eq 'bridge') { 480 } else { 180 }
+    $frames = if ($scenario -eq 'bridge') { 480 } elseif ($scenario -eq 'leaflets') { 210 } elseif ($scenario -eq 'streaming') { 900 } else { 180 }
     $arguments = "--smoke --scenario $scenario --frames $frames --smoke-output `"$directory`" --screenshot `"$bmp`""
     $process = Start-Process -FilePath $exe -WorkingDirectory $env:TEMP -ArgumentList $arguments -WindowStyle Hidden -PassThru
     try {
@@ -27,14 +27,18 @@ foreach ($scenario in $Scenarios) {
             $process.Kill()
             throw "Smoke timed out: $scenario"
         }
-        $log = Get-Content -LiteralPath (Join-Path $directory 'native.log') -Raw
+        $logFile = Join-Path $directory 'native.log'
+        if (-not (Test-Path -LiteralPath $logFile)) { throw "Smoke $scenario exited before logging (exit $($process.ExitCode))." }
+        $log = Get-Content -LiteralPath $logFile -Raw
         Write-Host $log.Trim()
         if ($process.ExitCode -ne 0 -or $log -notmatch 'SMOKE PASS' -or -not (Test-Path -LiteralPath $bmp)) {
             throw "Smoke failed: $scenario, exit $($process.ExitCode)"
         }
-        $frame = [Drawing.Image]::FromFile($bmp)
-        try { $frame.Save((Join-Path $directory 'frame.png'), [Drawing.Imaging.ImageFormat]::Png) }
-        finally { $frame.Dispose() }
+        foreach ($capture in Get-ChildItem -LiteralPath $directory -Filter '*.bmp') {
+            $frame = [Drawing.Image]::FromFile($capture.FullName)
+            try { $frame.Save([IO.Path]::ChangeExtension($capture.FullName, '.png'), [Drawing.Imaging.ImageFormat]::Png) }
+            finally { $frame.Dispose() }
+        }
     }
     finally { $process.Dispose() }
 }

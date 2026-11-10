@@ -2,7 +2,7 @@
 #include "promzona/sun_shadow.hpp"
 #include "promzona/visibility.hpp"
 #include <iostream>
-#include <set>
+#include <map>
 #include <stdexcept>
 using namespace pz;
 namespace
@@ -95,9 +95,9 @@ void placement()
         auto repeat = planTrees(world);
         check(world.trees.size() > 50, "city contains vegetation");
         check(world.trees.size() == repeat.size(), "deterministic tree count");
-        std::set<unsigned> ids;
+        std::map<unsigned,const Body*> ids;
         for (const auto &b : world.staticBodies)
-            check(ids.insert(b.id).second, "unique static body IDs");
+            check(ids.emplace(b.id,&b).second, "unique static body IDs");
         std::array<int, 3> kinds{};
         for (size_t k = 0; k < world.trees.size(); ++k)
         {
@@ -119,7 +119,7 @@ void placement()
             for (const auto &b : world.layout.furniture)
                 check((p - b.p).length() >= 1.799, "tree clears street furniture");
             check(ids.contains(0x40000000u + unsigned(k)), "trunk has fixed collider");
-            const auto &body = world.staticBodies[world.staticBodies.size() - world.trees.size() + k];
+            const auto &body = *ids.at(0x40000000u + unsigned(k));
             check(body.circle && body.invMass == 0 && (body.p - p).length() < .001, "collider matches trunk");
         }
         for (int count : kinds)

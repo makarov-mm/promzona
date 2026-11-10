@@ -89,7 +89,7 @@ std::span<const int> policeRoster(int level)
 }
 
 AttackHit World::traceAttack(Vec2 from, Vec2 dir, double y, double slope, double range, int ignoreCar,
-                             bool includePlayer) const
+                             bool includePlayer, const Person *shooter) const
 {
     AttackHit hit{HitKind::none, -1, range};
     for (double at = .25; at <= range; at += .25)
@@ -114,7 +114,7 @@ AttackHit World::traceAttack(Vec2 from, Vec2 dir, double y, double slope, double
     }
     for (size_t i = 0; i < people.size(); i++)
     {
-        if (people[i].dead)
+        if (&people[i] == shooter || people[i].dead || people[i].riding >= 0)
             continue;
         double at = rayPerson(from, dir, y, slope, people[i].body, hit.distance);
         if (at < hit.distance)
@@ -163,7 +163,7 @@ void World::reportCrime(double severity, double radius, bool sight)
             return;
         }
     for (auto &c : cars)
-        if (c.model == 3 && !c.destroyed && &c != (controlledCar >= 0 ? &cars[controlledCar] : nullptr) &&
+        if ((c.model == 3 || c.responding) && !c.destroyed && &c != (controlledCar >= 0 ? &cars[controlledCar] : nullptr) &&
             (c.body.p - from).length2() < 70 * 70 &&
             (!sight || blastVisible(from, y, c.body.p, c.body.height)))
         {
@@ -171,19 +171,32 @@ void World::reportCrime(double severity, double radius, bool sight)
             return;
         }
 }
-void World::killPerson(Person &p, Vec2 velocity)
+void World::killPerson(Person &p, Vec2 velocity, bool playerCaused)
 {
     if (p.dead)
         return;
+    p.riding = -1;
     p.dead = true;
     p.health = 0;
+    p.aimSeconds = p.alertUntil = 0;
+    p.burstLeft = 0;
     p.burnUntil = 0;
     p.body.v = velocity;
     p.body.wake();
-    pickups.push_back({p.body.p, WeaponId::none, false, 1});
+    if (job.kind == JobKind::elimination && &p == &people[job.actor])
+        finishJob(playerCaused);
+    else if (job.passenger() && &p == &people[job.actor])
+        finishJob(false);
+    alarmWitnesses(p.body.p, p.body.height, playerCaused);
+    if (p.sidearm != WeaponId::none && pickups.size() < 5000)
+        pickups.push_back({p.body.p, p.sidearm, false, 1., false, true, p.body.roadLevel});
+    p.sidearm = WeaponId::none;
+    if (std::ranges::count_if(pickups, [](const Pickup &drop)
+        { return !drop.health && !drop.energy && drop.weapon == WeaponId::none; }) < 240)
+        pickups.push_back({p.body.p, WeaponId::none, false, 1., false, true, p.body.roadLevel});
     sounds.push_back({"impact", p.body.p, .8});
 }
-void World::damageCar(Car &c, double amount)
+void World::damageCar(Car &c, double amount, bool playerCaused)
 {
     if (c.destroyed || c.falling || !std::isfinite(amount) || amount <= 0)
         return;
@@ -191,6 +204,8 @@ void World::damageCar(Car &c, double amount)
     c.health = std::max(-.5, c.health - amount);
     c.lastDamageAt = time;
     c.safeDrivingTime = 0;
+    if (playerCaused && (c.fireTime > 0 || c.health <= .32))
+        c.firePlayerCaused = true;
     if (c.fireTime > 0)
         c.fireTime += amount * 12;
     else if (c.health <= .32)
@@ -230,9 +245,9 @@ void World::destroyCar(Car &c)
         return;
     c.destroy(); // Finite mass and continuing gravity/contact integration.
     c.fireTime = 0;
-    explode(c.body.p, c.body.height, 1, true);
+    explode(c.body.p, c.body.height, 1, true, c.firePlayerCaused);
 }
-void World::explode(Vec2 p, double y, double strength, bool vehicleBlast)
+void World::explode(Vec2 p, double y, double strength, bool vehicleBlast, bool playerCaused)
 {
     struct Blast
     {
@@ -247,7 +262,7 @@ void World::explode(Vec2 p, double y, double strength, bool vehicleBlast)
         auto b = pending.front();
         pending.pop_front();
         sounds.push_back({"explosion", b.p, .95});
-        reportCrime(.45, 80, false);
+        if (playerCaused) reportCrime(.45, 80, false);
         for (int i = 0; i < 95 && particles.size() < 5000; i++)
         {
             double a = random.next() * 2 * pi, r = random.next() * 8;
@@ -275,7 +290,7 @@ void World::explode(Vec2 p, double y, double strength, bool vehicleBlast)
             c.body.impulse(d / std::max(.5, d.length()) * (s * (b.vehicle ? 6250 : 5000)));
             c.verticalVelocity += s * (b.vehicle ? 1.4 : 2);
             c.wreckSupported = false;
-            damageCar(c, (b.vehicle ? 2.1 : 3.2) * s);
+            damageCar(c, (b.vehicle ? 2.1 : 3.2) * s, playerCaused);
             if (c.health <= 0 && !c.destroyed)
             {
                 c.destroy();
@@ -291,12 +306,13 @@ void World::explode(Vec2 p, double y, double strength, bool vehicleBlast)
             if (s <= 0)
                 continue;
             person.fear = 2;
+            if (playerCaused && person.sidearm != WeaponId::none) person.alertUntil = time + 8.;
             person.health -= b.vehicle ? 1 : s * 2;
             auto d = person.body.p - b.p;
             auto v = d / std::max(.5, d.length()) * (6 * s);
             person.body.v += v;
             if (person.health <= 0)
-                killPerson(person, v);
+                killPerson(person, v, playerCaused);
         }
         if (controlledCar < 0)
             health = std::max(0., health - 6 * effect(player.p, player.height, 8));
@@ -306,15 +322,18 @@ void World::shoot(double heading, double pitch)
 {
     if (shotCooldown > 0 || health <= 0)
         return;
-    auto w = inventory.active();
+    if (controlledCar >= 0 && cars[controlledCar].destroyed) return;
+    bool mounted = controlledCar >= 0 && cars[controlledCar].mountedGun();
+    bool cannon = mounted && cars[controlledCar].kind == 11;
+    auto w = mounted ? weapon(cannon ? WeaponId::bazooka : WeaponId::automatic) : inventory.active();
     if (!w && controlledCar >= 0)
         return;
-    if (w && !inventory.consume(w->id))
+    if (!mounted && w && !inventory.consume(w->id))
         return;
-    shotCooldown = w ? w->interval : .6;
+    shotCooldown = cannon ? 1.65 : w ? w->interval : .6;
     firing = true;
     auto start = position(), dir = forward(heading);
-    double y = controlledCar >= 0 ? cars[controlledCar].body.height + .3 : player.height + .47;
+    double y = controlledCar >= 0 ? cars[controlledCar].body.height + (mounted?1.45:.3) : player.height + .47;
     double slope = std::tan(clamp(pitch, -1.2, 1.2));
     reportCrime(w ? .055 : .015, w ? 60 : 5, false);
     if (w && w->id == WeaponId::flamethrower)
@@ -328,7 +347,7 @@ void World::shoot(double heading, double pitch)
         double muzzle = controlledCar >= 0 ? cars[controlledCar].body.halfH + .3 : .8;
         auto hit = traceAttack(start, dir, y, slope, muzzle, controlledCar);
         if (hit.kind != HitKind::none)
-            explode(start + dir * std::max(0., hit.distance - .18), y + hit.distance * slope);
+            explode(start + dir * std::max(0., hit.distance - .18), y + hit.distance * slope, 1, false, true);
         else
         {
             if (rockets.size() >= 16)
@@ -348,7 +367,7 @@ void World::shoot(double heading, double pitch)
     if (hit.kind == HitKind::car)
     {
         auto &c = cars[hit.index];
-        damageCar(c, w ? w->carDamage : 0);
+        damageCar(c, w ? w->carDamage : 0, true);
         if (c.health <= 0)
             destroyCar(c);
     }
@@ -356,9 +375,10 @@ void World::shoot(double heading, double pitch)
     {
         auto &p = people[hit.index];
         p.health -= w ? w->personDamage : .26;
+        if (p.sidearm != WeaponId::none) p.alertUntil = time + 8;
         p.fear = 2;
         if (p.health <= 0)
-            killPerson(p, dir * 4);
+            killPerson(p, dir * 4, true);
         else
             p.body.impulse(dir * 90);
     }
@@ -390,7 +410,8 @@ void World::flame(Vec2 direction, double y)
             auto &c = cars[hit.index];
             if (!c.destroyed)
             {
-                damageCar(c, .015);
+                damageCar(c, .015, true);
+                c.firePlayerCaused = true;
                 c.fireTime = std::max(.001, c.fireTime);
             }
         }
@@ -438,7 +459,7 @@ void World::combatStep(double dt)
             auto p = r.p;
             double y = r.height;
             rockets.erase(rockets.begin() + static_cast<std::ptrdiff_t>(i));
-            explode(p, y);
+            explode(p, y, 1, false, true);
         }
         else if (r.travel >= weapon(WeaponId::bazooka)->range)
             rockets.erase(rockets.begin() + static_cast<std::ptrdiff_t>(i));
@@ -465,6 +486,7 @@ void World::combatStep(double dt)
             if (c.safeDrivingTime >= 18)
             {
                 c.fireTime = 0;
+                c.firePlayerCaused = false;
                 c.safeDrivingTime = 0;
             }
         }
@@ -492,7 +514,10 @@ void World::combatStep(double dt)
             if (!p.dead && (p.body.p - c.body.p).length2() < radius * radius &&
                 std::abs(p.body.height - c.body.height) < 1.8 &&
                 blastVisible(c.body.p, c.body.height, p.body.p, p.body.height))
+            {
+                p.burnPlayerCaused = c.firePlayerCaused || (p.burnUntil > time && p.burnPlayerCaused);
                 p.burnUntil = std::max(p.burnUntil, time + 9);
+            }
         if (controlledCar < 0 && (player.p - c.body.p).length2() < radius * radius &&
             std::abs(player.height - c.body.height) < 1.8 &&
             blastVisible(c.body.p, c.body.height, player.p, player.height))
@@ -505,7 +530,7 @@ void World::combatStep(double dt)
         p.health -= .18 * elapsed;
         p.fear = 2;
         if (p.health <= 0)
-            killPerson(p);
+            killPerson(p, {}, p.burnPlayerCaused);
         else if ((p.body.p - position()).length2() < 110 * 110 && particles.size() < 5000)
             particles.push_back({{float(p.body.p.x), float(p.body.height), float(p.body.p.z)},
                                  {0, 1, 0},

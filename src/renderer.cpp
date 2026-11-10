@@ -1,4 +1,5 @@
 #include "promzona/renderer.hpp"
+#include "promzona/fleet.hpp"
 #include "json.hpp"
 #include "promzona/gl.hpp"
 #include "promzona/animation.hpp"
@@ -6,6 +7,8 @@
 #include "promzona/architecture.hpp"
 #include "promzona/visibility.hpp"
 #include "promzona/sun_shadow.hpp"
+#include "promzona/detail_stream.hpp"
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <iomanip>
@@ -189,7 +192,7 @@ struct Renderer::Impl
 {
     std::filesystem::path root;
     GLuint scene{}, ui{}, white{}, uiTexture{}, bones[2]{}, rug{}, shadowTexture{}, shadowFbo{};
-    Mesh uiQuad, cube, skin[2];
+    Mesh uiQuad, cube, marker, skin[2];
     int poses[2]{};
     std::map<std::uint32_t, ActorMotion> actorMotion;
     std::map<std::filesystem::path, GLuint> textures;
@@ -217,12 +220,27 @@ struct Renderer::Impl
         std::vector<Wheel> wheels;
     };
     std::vector<Batch> city;
+    std::array<GLuint, 8> walls{}, normals{}, orm{};
+    std::array<GLuint, 3> signs{};
+    std::unique_ptr<DetailStream> detailStream;
+    std::unique_ptr<DetailResidency> detailResidency;
+    std::map<size_t, std::vector<Batch>> detailMeshes;
+    std::optional<Vec3> detailAnchor;
+    std::vector<size_t> detailCandidates, measuredDetailBytes;
+    bool detailIdle{};
+    std::unique_ptr<DetailStream::Packet> pendingDetail;
+    std::vector<Batch> pendingBatches;
+    int pendingSurface{};
+    size_t pendingBytes{}, detailUploads{}, detailEvictions{}, peakDetailBytes{};
+    double maxDetailUploadMs{};
+
     // Three species, three silhouettes, two LODs; all plants share these meshes.
     std::array<std::array<Mesh, 2>, 18> treeModels;
     std::array<std::vector<std::array<float, 8>>, 18> treeInstances;
     size_t sceneryBytes{}, submittedBatches{}, submittedTriangles{}, submittedDetails{}, shadowBatches{},
         treeCount{};
-    std::array<Model, 4> cars;
+    std::array<Model, std::size(fleet)> cars;
+    std::array<Model, 2> foodModels;
     GLuint peopleTexture[2]{};
     int width{}, height{};
     HDC uiDC{};
@@ -274,6 +292,12 @@ struct Renderer::Impl
         MeshData c;
         box(c, {}, {.5f, .5f, .5f});
         cube.upload(c);
+        MeshData arrow;
+        const Vec3 rim[] = {{-.43f,.9f,-.43f},{.43f,.9f,-.43f},{.43f,.9f,.43f},{-.43f,.9f,.43f}};
+        for (int i = 0; i < 4; ++i)
+            quad(arrow, rim[i], rim[(i+1)%4], {}, {});
+        quad(arrow, rim[3],rim[2],rim[1],rim[0]);
+        marker.upload(arrow);
         uiDC = CreateCompatibleDC(nullptr);
         font = CreateFontW(-21, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
                            CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Segoe UI");
@@ -293,11 +317,10 @@ struct Renderer::Impl
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             peopleTexture[i] = texture(root / (std::string("Textures/People/") + name + "-palette.png"));
         }
-        const char *models[] = {"old_car_-_vaz_2107", "luaz", "azlh-2140_sl_moskvich", "militia_sedan"};
         rug = texture(root / "Textures/Interiors/rug_red.png");
-        for (int k = 0; k < 4; k++)
+        for (size_t k = 0; k < cars.size(); k++)
         {
-            auto path = root / "Models/Imported" / models[k];
+            auto path = root / "Models/Imported" / fleet[k].folder;
             if (!std::filesystem::exists(path / "manifest.json"))
             {
                 if (k == 3)
@@ -305,47 +328,54 @@ struct Renderer::Impl
                 else
                     throw std::runtime_error("Missing vehicle manifest");
             }
-            auto j = nlohmann::json::parse(readText(path / "manifest.json"));
-            for (auto &wheel : j.value("wheels", nlohmann::json::array()))
-            {
-                auto p = wheel.at("pivot");
-                cars[k].wheels.push_back({{p[0], p[1], p[2]}, wheel.at("radius"), wheel.at("front")});
-            }
-            for (auto &lod : j.at("lods"))
-            {
-                std::vector<Batch> batches;
-                for (auto &part : lod)
-                {
-                    Batch b;
-                    auto file = path / part.at("file").get<std::string>();
-                    auto data = loadGlb(file);
-                    b.mesh.upload(data);
-                    b.part = part.value("part", 0);
-                    int mat = part.at("material");
-                    b.color = data.embeddedColor.empty()
-                                  ? white
-                                  : uploadTexture(file, decodeImage(data.embeddedColor));
-                    if (mat >= 0)
-                    {
-                        auto &m = j.at("materials").at(mat);
-                        if (m.contains("colorMap"))
-                            b.color = texture(path / m.at("colorMap").get<std::string>());
-                        if (m.contains("normalMap"))
-                            b.normal = texture(path / m.at("normalMap").get<std::string>());
-                        if (m.contains("color"))
-                        {
-                            auto color = m.at("color");
-                            b.tint = {color[0], color[1], color[2]};
-                        }
-                        b.alpha = m.value("alpha", 1.f);
-                        b.roughness = m.value("roughness", .7f);
-                        b.metallic = m.value("metal", 0.f);
-                    }
-                    batches.push_back(std::move(b));
-                }
-                cars[k].lods.push_back(std::move(batches));
-            }
+            loadModel(cars[k], path);
         }
+        loadModel(foodModels[0], root / "Models/Imported/soviet_kiosk__3d_model");
+        loadModel(foodModels[1], root / "Models/Imported/soviet_soda_machine");
+    }
+    void loadModel(Model &model, const std::filesystem::path &path)
+    {
+        auto j = nlohmann::json::parse(readText(path / "manifest.json"));
+        for (auto &wheel : j.value("wheels", nlohmann::json::array()))
+        {
+            auto p = wheel.at("pivot");
+            model.wheels.push_back({{p[0], p[1], p[2]}, wheel.at("radius"), wheel.at("front")});
+        }
+        for (auto &lod : j.at("lods"))
+        {
+            std::vector<Batch> batches;
+            for (auto &part : lod)
+            {
+                Batch b;
+                auto file = path / part.at("file").get<std::string>();
+                auto data = loadGlb(file);
+                b.mesh.upload(data);
+                b.part = part.value("part", 0);
+                int mat = part.at("material");
+                b.color = data.embeddedColor.empty()
+                              ? white
+                              : uploadTexture(file, decodeImage(data.embeddedColor));
+                if (mat >= 0)
+                {
+                    auto &m = j.at("materials").at(mat);
+                    if (m.contains("colorMap"))
+                        b.color = texture(path / m.at("colorMap").get<std::string>());
+                    if (m.contains("normalMap"))
+                        b.normal = texture(path / m.at("normalMap").get<std::string>());
+                    if (m.contains("color"))
+                    {
+                        auto color = m.at("color");
+                        b.tint = {color[0], color[1], color[2]};
+                    }
+                    b.alpha = m.value("alpha", 1.f);
+                    b.roughness = m.value("roughness", .7f);
+                    b.metallic = m.value("metal", 0.f);
+                }
+                batches.push_back(std::move(b));
+            }
+            model.lods.push_back(std::move(batches));
+        }
+        if (model.lods.empty()) throw std::runtime_error("Empty imported model: " + path.string());
     }
     ~Impl()
     {
@@ -401,6 +431,187 @@ struct Renderer::Impl
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
         textures.emplace(key, t);
         return t;
+    }
+    Batch uploadSurface(const MeshData &data, int i, bool detail)
+    {
+        Batch b;
+        b.mesh.upload(data);
+        b.detail = detail;
+        Vec3 low{1e9f, 1e9f, 1e9f}, high{-1e9f, -1e9f, -1e9f};
+        for (const auto &vertex : data.vertices)
+        {
+            const auto &p = vertex.position;
+            low = {std::min(low.x, p.x), std::min(low.y, p.y), std::min(low.z, p.z)};
+            high = {std::max(high.x, p.x), std::max(high.y, p.y), std::max(high.z, p.z)};
+        }
+        b.centre = (low + high) * .5f;
+        b.radius = (high - low).length() * .5f;
+        if (i >= Facade && i < Paint)
+        {
+            b.color = walls[i - Facade];
+            b.normal = normals[i - Facade];
+            b.orm = orm[i - Facade];
+        }
+        else
+            b.color = white;
+        if (i == Grass)
+        {
+            b.tint = {.32f, .40f, .24f};
+            b.surface = 1;
+        }
+        if (i == Road)
+        {
+            b.tint = {.26f, .28f, .29f};
+            b.surface = 2;
+            b.roughness = .86f;
+        }
+        if (i == Pavement)
+        {
+            b.tint = {.55f, .55f, .49f};
+            b.surface = 3;
+        }
+        if (i == Paint)
+            b.tint = {.9f, .86f, .68f};
+        if (i == Glass)
+        {
+            b.tint = {.23f, .34f, .40f};
+            b.roughness = .15f;
+            b.metallic = .35f;
+        }
+        if (i == Water)
+        {
+            b.tint = {.12f, .30f, .34f};
+            b.surface = 4;
+            b.roughness = .12f;
+        }
+        if (i == Sand)
+        {
+            b.tint = {.62f, .53f, .36f};
+            b.surface = 5;
+        }
+        if (i == Metal)
+        {
+            b.tint = {.22f, .28f, .25f};
+            b.metallic = .65f;
+        }
+        if (i == Lamps)
+        {
+            b.tint = {.95f, .79f, .48f};
+            b.emissive = 1.8f;
+        }
+        if (i == Windows)
+            b.surface = 6;
+        if (i == Frame)
+            b.tint = {.65f, .66f, .60f};
+        if (i == Door)
+        {
+            b.tint = {.19f, .28f, .25f};
+            b.metallic = .25f;
+        }
+        if (i == Roof)
+            b.tint = {.38f, .39f, .36f};
+        if (i == Foundation)
+            b.tint = {.30f, .35f, .31f};
+        if (i >= Balcony && i < Roof)
+        {
+            constexpr Vec3 paints[] = {{.27f, .39f, .33f}, {.48f, .39f, .28f}, {.51f, .54f, .49f}};
+            b.tint = paints[i - Balcony];
+            b.surface = 7;
+            b.metallic = .15f;
+        }
+        if (i >= Sign)
+            b.color = signs[i - Sign];
+        return b;
+    }
+    void updateDetails(Vec3 eye)
+    {
+        if (!detailStream)
+            return;
+        const auto cells = detailStream->cells();
+        auto evict = [&](size_t reservation)
+        {
+            for (auto id : detailResidency->trim(cells, eye, reservation))
+            {
+                detailMeshes.erase(id); // GL buffers die on the render thread.
+                ++detailEvictions;
+            }
+        };
+        // Rotation does not change the neighbourhood. Avoid a city-wide sort or worker
+        // wakeup on every stationary frame (prefetch has 75 m of headroom over the fade).
+        if (!detailAnchor || (*detailAnchor - eye).length() >= 4)
+        {
+            detailAnchor = eye;
+            detailCandidates = detailOrder(cells, eye, detailPrefetchDistance);
+            detailIdle = false;
+            evict(0);
+        }
+        else if (detailIdle)
+            return;
+        if (pendingDetail && cells[pendingDetail->id].distance(eye) > detailKeepDistance)
+        {
+            pendingDetail.reset();
+            pendingBatches.clear();
+            pendingBytes = 0;
+        }
+        std::vector<size_t> wanted;
+        size_t workingSet{};
+        for (auto id : detailCandidates)
+        {
+            workingSet += measuredDetailBytes[id];
+            if (workingSet > detailGpuBudget)
+                break; // Do not continually replace nearer cells with farther ones at the budget limit.
+            if (!detailResidency->contains(id) && (!pendingDetail || pendingDetail->id != id))
+                wanted.push_back(id);
+        }
+        detailStream->request(wanted);
+        detailIdle = wanted.empty() && !pendingDetail;
+        if (!pendingDetail)
+        {
+            pendingDetail = detailStream->poll();
+            if (pendingDetail)
+            {
+                measuredDetailBytes[pendingDetail->id] = pendingDetail->bytes;
+                pendingSurface = 0;
+                pendingBytes = 0;
+                evict(pendingDetail->bytes);
+            }
+        }
+        if (!pendingDetail)
+            return;
+        // One material upload is indivisible. Stop between batches after 2 MiB or 1.5 ms.
+        // The first batch is always allowed, otherwise a large material could starve forever.
+        auto start = std::chrono::steady_clock::now();
+        size_t uploaded{};
+        while (pendingSurface < SurfaceCount)
+        {
+            auto &mesh = pendingDetail->geometry[pendingSurface];
+            size_t bytes = meshBytes(mesh);
+            double elapsed =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            if (uploaded && (uploaded + bytes > 2 * 1024 * 1024 || elapsed >= 1.5))
+                break;
+            if (!mesh.indices.empty())
+            {
+                pendingBatches.push_back(uploadSurface(mesh, pendingSurface, true));
+                uploaded += bytes;
+                pendingBytes += bytes;
+            }
+            mesh = {}; // Release CPU geometry as soon as this material is uploaded.
+            ++pendingSurface;
+        }
+        maxDetailUploadMs = std::max(
+            maxDetailUploadMs,
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+        peakDetailBytes = std::max(peakDetailBytes, detailResidency->bytes() + pendingBytes);
+        if (pendingSurface == SurfaceCount)
+        {
+            detailResidency->add(pendingDetail->id, pendingDetail->bytes);
+            detailMeshes.emplace(pendingDetail->id, std::move(pendingBatches));
+            pendingBatches.clear();
+            pendingDetail.reset();
+            pendingBytes = 0;
+            ++detailUploads;
+        }
     }
     void setModel(const Mat4 &model) { UniformMatrix4fv(uniform("uModel"), 1, GL_FALSE, model.m.data()); }
     void material(GLuint color, GLuint normal, Vec3 tint, float emissive = 0)
@@ -499,22 +710,53 @@ std::string Renderer::graphicsInfo() const
 std::string Renderer::sceneryStats() const
 {
     auto &r = *impl_;
+    auto stream = streamingStats();
     return "Scenery batches=" + std::to_string(r.submittedBatches) + "/" + std::to_string(r.city.size()) +
            " near=" + std::to_string(r.submittedDetails) +
            " submitted_triangles=" + std::to_string(r.submittedTriangles) +
            " trees=" + std::to_string(r.treeCount) + " shadow_batches=" + std::to_string(r.shadowBatches) +
-           " resident_mesh_MiB=" + std::to_string(r.sceneryBytes / (1024 * 1024));
+           " resident_mesh_MiB=" + std::to_string((r.sceneryBytes + stream.gpuBytes) / (1024 * 1024)) +
+           " base_MiB=" + std::to_string(r.sceneryBytes / (1024 * 1024)) +
+           " detail_MiB=" + std::to_string(stream.gpuBytes / (1024 * 1024)) +
+           " detail_cells=" + std::to_string(stream.residentCells) + "/" + std::to_string(stream.totalCells) +
+           " detail_uploads=" + std::to_string(stream.uploads) +
+           " evictions=" + std::to_string(stream.evictions) +
+           " peak_detail_MiB=" + std::to_string(stream.peakGpuBytes / (1024 * 1024)) +
+           " max_detail_upload_ms=" + std::to_string(stream.maxUploadMs);
+}
+StreamingStats Renderer::streamingStats() const
+{
+    const auto &r = *impl_;
+    if (!r.detailStream)
+        return {};
+    const auto worker = r.detailStream->stats();
+    return {r.detailMeshes.size(),
+            r.detailStream->cells().size(),
+            r.detailResidency->bytes() + r.pendingBytes,
+            r.peakDetailBytes,
+            r.detailUploads,
+            r.detailEvictions,
+            worker.queued,
+            worker.ready,
+            r.maxDetailUploadMs};
 }
 void Renderer::prepare(const World &world)
 {
     auto &r = *impl_;
+    r.detailStream.reset(); // Join old immutable jobs before starting a new city.
+    r.detailAnchor.reset();
+    r.detailMeshes.clear();
+    r.pendingDetail.reset();
+    r.pendingBatches.clear();
+    r.pendingBytes = r.detailUploads = r.detailEvictions = r.peakDetailBytes = 0;
+    r.maxDetailUploadMs = 0;
     r.city.clear();
     r.sceneryBytes = 0;
     r.actorMotion.clear();
-    std::array<GLuint, 8> walls{};
-    std::array<GLuint, 8> normals{};
-    std::array<GLuint, 8> orm{};
-    std::array<GLuint, 3> signs{};
+    auto &walls = r.walls;
+    auto &normals = r.normals;
+    auto &orm = r.orm;
+    auto &signs = r.signs;
     auto manifest = nlohmann::json::parse(readText(r.root / "Textures/manifest.json"));
     for (int i = 0; i < 8; i++)
     {
@@ -527,125 +769,22 @@ void Renderer::prepare(const World &world)
     }
     for (int i = 0; i < 3; ++i)
         signs[i] = r.texture(r.root / "Textures" / manifest[4 + i].at("color").get<std::string>());
-    auto uploadChunk = [&](const CityChunk &data, bool detail)
-    {
-        for (int i = 0; i < SurfaceCount; ++i)
-            if (!data[i].indices.empty())
-            {
-                Impl::Batch b;
-                b.mesh.upload(data[i]);
-                r.sceneryBytes +=
-                    data[i].vertices.size() * sizeof(Vertex) + data[i].indices.size() * sizeof(std::uint32_t);
-                b.detail = detail;
-                Vec3 low{1e9f, 1e9f, 1e9f}, high{-1e9f, -1e9f, -1e9f};
-                for (const auto &vertex : data[i].vertices)
-                {
-                    const auto &p = vertex.position;
-                    low = {std::min(low.x, p.x), std::min(low.y, p.y), std::min(low.z, p.z)};
-                    high = {std::max(high.x, p.x), std::max(high.y, p.y), std::max(high.z, p.z)};
-                }
-                b.centre = (low + high) * .5f;
-                b.radius = (high - low).length() * .5f;
-                if (i >= Facade && i < Paint)
-                {
-                    b.color = walls[i - Facade];
-                    b.normal = normals[i - Facade];
-                    b.orm = orm[i - Facade];
-                }
-                else
-                    b.color = r.white;
-                if (i == Grass)
-                {
-                    b.tint = {.32f, .40f, .24f};
-                    b.surface = 1;
-                }
-                if (i == Road)
-                {
-                    b.tint = {.26f, .28f, .29f};
-                    b.surface = 2;
-                    b.roughness = .86f;
-                }
-                if (i == Pavement)
-                {
-                    b.tint = {.55f, .55f, .49f};
-                    b.surface = 3;
-                }
-                if (i == Paint)
-                    b.tint = {.9f, .86f, .68f};
-                if (i == Glass)
-                {
-                    b.tint = {.23f, .34f, .40f};
-                    b.roughness = .15f;
-                    b.metallic = .35f;
-                }
-                if (i == Water)
-                {
-                    b.tint = {.12f, .30f, .34f};
-                    b.surface = 4;
-                    b.roughness = .12f;
-                }
-                if (i == Sand)
-                {
-                    b.tint = {.62f, .53f, .36f};
-                    b.surface = 5;
-                }
-                if (i == Metal)
-                {
-                    b.tint = {.22f, .28f, .25f};
-                    b.metallic = .65f;
-                }
-                if (i == Lamps)
-                {
-                    b.tint = {.95f, .79f, .48f};
-                    b.emissive = 1.8f;
-                }
-                if (i == Windows)
-                    b.surface = 6;
-                if (i == Frame)
-                    b.tint = {.65f, .66f, .60f};
-                if (i == Door)
-                {
-                    b.tint = {.19f, .28f, .25f};
-                    b.metallic = .25f;
-                }
-                if (i == Roof)
-                    b.tint = {.38f, .39f, .36f};
-                if (i == Foundation)
-                    b.tint = {.30f, .35f, .31f};
-                if (i >= Balcony && i < Roof)
-                {
-                    constexpr Vec3 paints[] = {{.27f, .39f, .33f}, {.48f, .39f, .28f}, {.51f, .54f, .49f}};
-                    b.tint = paints[i - Balcony];
-                    b.surface = 7;
-                    b.metallic = .15f;
-                }
-                if (i >= Sign)
-                    b.color = signs[i - Sign];
-                r.city.push_back(std::move(b));
-            }
-    };
     // Chunk ownership covers the whole island and coast, regardless of grid size.
     double low = -std::ceil(world.landEdge / 144) * 144, high = -low;
     for (double z = low; z < high; z += 144)
         for (double x = low; x < high; x += 144)
         {
             auto data = cityChunk(world, x, z);
-            uploadChunk(data, false);
+            for (int i = 0; i < SurfaceCount; ++i)
+                if (!data[i].indices.empty())
+                {
+                    r.sceneryBytes += meshBytes(data[i]);
+                    r.city.push_back(r.uploadSurface(data[i], i, false));
+                }
         }
-    // Near architecture is baked separately in 72m cells. No per-window CPU work per frame.
-    std::map<std::pair<int, int>, std::vector<const Building *>> details;
-    for (const auto &b : world.buildings)
-    {
-        auto key = std::pair{int(std::floor(b.p.x / 72)), int(std::floor(b.p.z / 72))};
-        details[key].push_back(&b);
-    }
-    for (const auto &[key, buildings] : details)
-    {
-        CityChunk data;
-        for (const auto *b : buildings)
-            buildingDetails(data, planBuilding(*b, world.terrain.height(b->p)));
-        uploadChunk(data, true);
-    }
+    r.detailStream = std::make_unique<DetailStream>(world);
+    r.measuredDetailBytes.assign(r.detailStream->cells().size(), 0);
+    r.detailResidency = std::make_unique<DetailResidency>(r.detailStream->cells().size());
     r.treeCount = world.trees.size();
     for (int species = 0; species < 3; ++species)
         for (int variant = 0; variant < 3; ++variant)
@@ -672,6 +811,7 @@ void Renderer::prepare(const World &world)
 void Renderer::render(const World &world, const View &view, int w, int h)
 {
     auto &r = *impl_;
+    r.updateDetails(view.eye);
     float day = float(world.clock.daylight()), rain = float(world.rain);
     Vec3 fog = {.48f * day + .055f, .62f * day + .055f, .73f * day + .07f};
     fog = fog * (1 - rain * .35f);
@@ -744,7 +884,8 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             float length = delta.length();
             return (depthPass || length < range + radius) && frustum.sphere(p, radius);
         };
-        for (auto &b : r.city)
+        auto drawScenery = [&](const auto &b)
+        {
             if ((!depthPass || (!b.detail && b.surface != 4)) &&
                 visible(b.centre, b.radius, b.detail ? buildingDetailEnd : 1000))
             {
@@ -759,6 +900,13 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 }
                 r.draw(b, Mat4::identity());
             }
+        };
+        for (const auto &b : r.city)
+            drawScenery(b);
+        if (!depthPass)
+            for (const auto &[id, batches] : r.detailMeshes)
+                for (const auto &b : batches)
+                    drawScenery(b);
         for (auto &instances : r.treeInstances)
             instances.clear();
         for (const auto &t : world.trees)
@@ -801,15 +949,28 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 }
             }
         }
+        for (const auto &site : world.sites)
+        {
+            if (!site.food()) continue;
+            Vec3 p{float(site.centre.x),float(world.terrain.height(site.centre)),float(site.centre.z)};
+            if (!visible(p, 4, 200)) continue;
+            const auto &model = r.foodModels[site.kind == ServiceKind::kiosk ? 0 : 1];
+            const auto lod = std::min<size_t>(model.lods.size()-1, (p-view.eye).length() > 65 ? 1 : 0);
+            const auto transform = Mat4::translate(p) * Mat4::yaw(float(pi));
+            for (const auto &batch : model.lods[lod]) r.draw(batch, transform);
+        }
+        auto vehicleTransform = [](const Car &c) {
+            Vec3 base{float(c.body.p.x), float(c.body.height - .8), float(c.body.p.z)};
+            return Mat4::translate(base) * Mat4::yaw(float(c.heading())) *
+                   Mat4::pitch(float(-c.terrainPitch + c.pitch)) * Mat4::roll(float(-c.terrainRoll + c.roll));
+        };
         for (auto &c : world.cars)
         {
             Vec3 p{float(c.body.p.x), float(c.body.height - .8), float(c.body.p.z)};
-            if (!visible(p, 5, 400))
+            if (!visible(p, float(c.body.halfH + 2), 400))
                 continue;
-            auto transform = Mat4::translate(p) * Mat4::yaw(float(c.heading())) *
-                             Mat4::pitch(float(-c.terrainPitch + c.pitch)) *
-                             Mat4::roll(float(-c.terrainRoll + c.roll));
-            auto &model = r.cars[c.model % 4];
+            auto transform = vehicleTransform(c);
+            auto &model = r.cars.at(c.model);
             float distance = (p - view.eye).length();
             size_t lod = std::min(model.lods.size() - 1, size_t(distance > 150 ? 2 : distance > 65 ? 1 : 0));
             for (int translucent = 0; translucent < (depthPass ? 1 : 2); ++translucent)
@@ -834,6 +995,24 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                                         Mat4::pitch(float(c.wheelTravel / std::max(.05f, wheel.radius))) *
                                         Mat4::translate(wheel.pivot * -1.f);
                     }
+                    if (c.kind==11 && b.part==100)
+                    {
+                        Vec3 centre{0,1.8f,.2f};
+                        partTransform=transform*Mat4::translate(centre)*Mat4::yaw(float(c.turretYaw))*Mat4::translate(centre*-1.f);
+                    }
+                    if(c.kind==14 && (b.part==100 || b.part==103))
+                    {
+                        Vec3 pivot{0,2.2f,.55f};
+                        auto pitch=b.part==103?Mat4::pitch(float(-c.turretPitch)):Mat4::identity();
+                        partTransform=transform*Mat4::translate(pivot)*Mat4::yaw(float(c.turretYaw))*pitch*Mat4::translate(pivot*-1.f);
+                    }
+                    if (c.kind==12 && (b.part==101 || b.part==102))
+                    {
+                        const bool mainRotor=b.part==101;
+                        const Vec3 pivot=mainRotor?Vec3{0,3.03f,0}:Vec3{.25f,2.5f,-3.9f};
+                        auto spin=mainRotor?Mat4::yaw(float(c.wheelTravel)):Mat4::pitch(float(-c.wheelTravel*3));
+                        partTransform=transform*Mat4::translate(pivot)*spin*Mat4::translate(pivot*-1.f);
+                    }
                     r.draw(b, partTransform);
                 }
                 if (translucent)
@@ -843,7 +1022,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 }
             }
         }
-        auto person = [&](const Body &b, int style, double heading, double distance, bool dead, bool player)
+        auto person = [&](const Body &b, int style, double heading, double distance, bool dead, bool player, const Car *cabin=nullptr, WeaponId drawn=WeaponId::none)
         {
             Vec3 p{float(b.p.x), float(b.height - .85), float(b.p.z)};
             if (!visible(p, 2, 130))
@@ -857,10 +1036,21 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             state.distance = distance;
             state.dead = dead;
             state.player = player;
-            state.aiming = player && world.aiming;
+            state.aiming = player ? world.aiming : drawn != WeaponId::none;
             auto animation = motion.sample(state, world.time, r.poses[k]);
-            r.setModel(Mat4::translate(p + Vec3{0, dead ? .23f : 0.f, 0}) * Mat4::yaw(motion.heading) *
-                       Mat4::pitch(dead ? float(pi * .5) : motion.lean));
+            if (cabin)
+            {
+                if (r.poses[k] >= 384) animation = {320,320,1};
+                const auto seat = rotate(b.p - cabin->body.p, -cabin->body.angle);
+                const float floor = float((b.height - .85) - (cabin->body.height - .8));
+                // The baked seated pose is 1.47 m tall. Low cars need a more reclined posture.
+                const float posture = std::clamp((float(cabin->body.verticalExtent) - floor - .14f) / 1.48f, .65f, 1.f);
+                r.setModel(vehicleTransform(*cabin) * Mat4::translate({float(seat.x),floor,float(seat.z)}) *
+                           Mat4::yaw(float(heading - cabin->heading())) * Mat4::scale({1,posture,1}));
+            }
+            else
+                r.setModel(Mat4::translate(p + Vec3{0, dead ? .23f : 0.f, 0}) * Mat4::yaw(motion.heading) *
+                           Mat4::pitch(dead ? float(pi * .5) : motion.lean));
             r.material(r.peopleTexture[k], 0, {1, 1, 1});
             Uniform1i(r.uniform("uSkin"), 1);
             Uniform1f(r.uniform("uPose"), animation.to);
@@ -871,22 +1061,100 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             ActiveTexture(TEXTURE0);
             r.skin[k].draw();
             Uniform1i(r.uniform("uSkin"), 0);
+            if (state.aiming && !dead && !cabin && (drawn == WeaponId::pistol || drawn == WeaponId::automatic))
+            {
+                auto hands = Mat4::translate(p) * Mat4::yaw(motion.heading) *
+                             Mat4::translate({.14f, 1.32f, .43f});
+                auto gunPart = [&](Vec3 offset, Vec3 size, Vec3 colour) {
+                    r.setModel(hands * Mat4::translate(offset) * Mat4::scale(size));
+                    r.material(r.white, 0, colour);
+                    r.cube.draw();
+                };
+                bool rifle = drawn == WeaponId::automatic;
+                gunPart({}, {.05f,.07f,rifle ? .36f : .18f}, {.16f,.17f,.17f});
+                gunPart({0,-.055f,-.045f}, {.044f,.13f,.05f}, {.12f,.10f,.08f});
+                if (rifle)
+                {
+                    gunPart({0,.01f,.27f}, {.032f,.032f,.23f}, {.12f,.13f,.13f});
+                    gunPart({0,-.025f,-.235f}, {.058f,.09f,.18f}, {.29f,.18f,.12f});
+                }
+            }
         };
         for (auto &p : world.people)
-            person(p.body, int(p.style), p.heading, p.distance, p.dead, false);
+            person(p.body, int(p.style), p.heading, p.distance, p.dead, false, p.riding >= 0 ? &world.cars[p.riding] : nullptr, p.aimSeconds > 0 ? p.sidearm : WeaponId::none);
         if (world.controlledCar < 0)
-            person(world.player, 0, -world.player.angle, world.playerDistance, false, true);
+        {
+            auto gun = world.aiming ? world.inventory.active() : nullptr;
+            person(world.player, 0, -world.player.angle, world.playerDistance, false, true,
+                   nullptr, gun ? gun->id : WeaponId::none);
+        }
     } // sun/camera geometry passes
     Frustum effectFrustum(vp);
     auto visible = [&](Vec3 p, float radius, float range)
     { return (p - view.eye).length() < range + radius && effectFrustum.sphere(p, radius); };
+    for (const auto &site : world.sites)
+    {
+        Vec3 p{float(site.entrance.x),float(world.terrain.height(site.entrance)+.085),float(site.entrance.z)};
+        if (!visible(p, 2, 45)) continue;
+        Vec3 color = site.kind == ServiceKind::clinic ? Vec3{.16f,.55f,1.f} :
+                     site.kind == ServiceKind::garage ? Vec3{1.f,.65f,.16f} : Vec3{.3f,.85f,.48f};
+        for (int side : {-1,1})
+        {
+            r.solid(p + Vec3{side*.78f,0,0}, {.045f,.025f,1.6f}, color, .45f);
+            r.solid(p + Vec3{0,0,side*.78f}, {1.6f,.025f,.045f}, color, .45f);
+        }
+    }
+    if (world.drone.active)
+    {
+        const auto &b=world.buildings[world.drone.targets[world.drone.scanned]];
+        Vec3 point{float(b.p.x),float(world.terrain.height(b.p)+b.height+1.25),float(b.p.z)};
+        if (visible(point,2,210))
+        {
+            r.material(r.white,0,{.32f,.92f,.72f},.65f);
+            r.setModel(Mat4::translate(point)*Mat4::yaw(float(world.time)));
+            r.marker.draw();
+        }
+    }
+    if (world.job.kind != JobKind::none && !world.job.escaping())
+    {
+        auto point = world.jobTarget();
+        double height = world.terrain.height(point) + 2.;
+        if (world.job.kind == JobKind::elimination || (world.job.passenger() && !world.job.acquired))
+            height = world.people[world.job.actor].body.height + 1.3;
+        if (world.job.kind == JobKind::vehicle && !world.job.acquired)
+            height = world.cars[world.job.actor].body.height + 1.4;
+        Vec3 p{float(point.x),float(height + .12*std::sin(3*world.time)),float(point.z)};
+        if (visible(p, 2, 240))
+        {
+            r.material(r.white, 0, {1,.61f,.12f}, .65f);
+            r.setModel(Mat4::translate(p) * Mat4::yaw(float(std::fmod(world.time,2*pi))));
+            r.marker.draw();
+        }
+    }
     for (auto &p : world.pickups)
     {
-        Vec3 v{float(p.p.x), float(world.terrain.height(p.p) + .7 + .14 * std::sin(world.time * 3)),
+        Vec3 v{float(p.p.x), float(world.surface(p.p, p.roadLevel) + .7 + .14 * std::sin(world.time * 3)),
                float(p.p.z)};
         if (!visible(v, 1, 60))
             continue;
-        r.solid(v, {.28f, .28f, .28f}, p.health ? Vec3{.3f, .9f, .4f} : Vec3{.9f, .65f, .2f}, .8f);
+        if (p.energy)
+        {
+            r.solid(v, {.14f,.29f,.14f}, {.12f,.68f,.83f}, .45f);
+            r.solid(v+Vec3{0,.15f,0}, {.145f,.025f,.145f}, {.78f,.83f,.85f});
+        }
+        else if (p.health)
+        {
+            r.solid(v, {.38f,.25f,.17f}, {.90f,.87f,.77f});
+            r.solid(v+Vec3{0,0,.09f}, {.16f,.05f,.014f}, {.85f,.14f,.12f});
+            r.solid(v+Vec3{0,0,.09f}, {.05f,.16f,.015f}, {.85f,.14f,.12f});
+        }
+        else if (p.weapon == WeaponId::none)
+            r.solid(v, {.29f,.06f,.15f}, {.43f,.75f,.38f}, .4f);
+        else
+        {
+            r.solid(v, {.39f,.085f,.07f}, {.44f,.45f,.44f}, .35f);
+            r.solid(v+Vec3{-.12f,-.07f,0}, {.065f,.15f,.07f}, {.28f,.20f,.13f});
+        }
     }
     for (auto &rocket : world.rockets)
     {
@@ -912,7 +1180,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     UseProgram(0);
 }
 void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, bool console,
-                       const std::wstring &command, const std::wstring &message, float progress)
+                       const std::wstring &command, const std::wstring &message, float progress, bool jobsOpen)
 {
     auto &r = *impl_;
     r.canvas(w, h);
@@ -944,6 +1212,8 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         r.rect(35, 66, int(230 * clamp(health, 0., 1.)), 12, RGB(117, 182, 103));
         auto weapon = world->inventory.active();
         r.text(35, 86,
+               world->controlledCar>=0 && world->cars[world->controlledCar].kind==11 ? L"ТАНКОВАЯ ПУШКА" :
+               world->controlledCar>=0 && world->cars[world->controlledCar].kind==14 ? L"БОРТОВОЙ ПУЛЕМЁТ" :
                weapon ? std::wstring(weapon->name.begin(), weapon->name.end()) + L"  " +
                             std::to_wstring(world->inventory.ammo(weapon->id))
                       : L"КУЛАКИ");
@@ -956,7 +1226,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         }
         int mx = 22, my = h - 245, ms = 190;
         r.rect(mx - 5, my - 5, ms + 10, ms + 10, RGB(17, 28, 26));
-        auto focus = world->position();
+        auto focus = world->drone.active ? world->drone.position : world->position();
         double scale = ms / 260.;
         auto map = [&](Vec2 p)
         {
@@ -1011,6 +1281,30 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             if (p.x > mx && p.x < mx + ms && p.y > my && p.y < my + ms)
                 r.rect(p.x - 1, p.y - 1, 3, 3, RGB(104, 157, 176));
         }
+        for (const auto &s : world->sites)
+        {
+            auto p = map(s.entrance);
+            if (s.kind == ServiceKind::clinic)
+            {
+                r.rect(p.x-3,p.y-1,7,3,RGB(120,205,249));
+                r.rect(p.x-1,p.y-3,3,7,RGB(120,205,249));
+            }
+            else r.rect(p.x-1,p.y-1,4,4,s.food()?RGB(110,211,134):RGB(194,152,81));
+        }
+        if (world->job.kind != JobKind::none && !world->job.escaping())
+        {
+            Vec2 d = world->jobTarget() - focus;
+            auto p = map(focus + d * (1/std::max(1.,std::max(std::abs(d.x),std::abs(d.z))/122.)));
+            r.rect(p.x-4,p.y-4,9,9,RGB(47,42,30));
+            r.rect(p.x-2,p.y-2,5,5,RGB(255,189,65));
+        }
+        if (world->drone.active)
+        {
+            auto roof=map(world->buildings[world->drone.targets[world->drone.scanned]].p);
+            auto pilot=map(world->player.p);
+            r.rect(roof.x-3,roof.y-3,7,7,RGB(94,241,191));
+            r.rect(pilot.x-2,pilot.y-2,5,5,RGB(255,255,255));
+        }
         RestoreDC(r.uiDC, saved);
         r.rect(mx + ms / 2 - 3, my + ms / 2 - 3, 7, 7, RGB(255, 189, 76));
         r.text(mx, my - 30, L"N");
@@ -1018,17 +1312,91 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         wchar_t time[32];
         swprintf_s(time, L"%02d:%02d", hour, minute);
         r.text(mx, my + ms + 6, time);
+        std::wstring hint = world->controlledCar >= 0
+            ? L"[W/S] Газ / тормоз   [Space] Ручник   [F] Выйти"
+            : L"[WASD] Идти   [Shift] Бежать   [ЛКМ] Огонь   [F] Сесть";
+        if(world->controlledCar>=0 && world->cars[world->controlledCar].kind==12)
+            hint=L"[W/S] Вперёд / назад   [A/D] Разворот   [Space] Набор высоты   [Ctrl] Снижение   [F] Выйти";
+        if (world->controlledCar>=0 && world->cars[world->controlledCar].kind==9)
+            hint=L"[W/S] Вперёд / назад по рельсам   [Space] Тормоз   [F] Выйти";
+        if (world->controlledCar>=0 && world->cars[world->controlledCar].mountedGun())
+            hint=L"[WASD] Управление   [Мышь] Башня   [ЛКМ] Огонь   [F] Выйти";
+        int site = world->counterInReach(true);
+        if (site >= 0)
+        {
+            hint = world->controlledCar < 0 ? L"[F] Перекус  $" + std::to_wstring(world->sites[site].price()) + L"     " : L"";
+            if (world->job.kind == JobKind::none) hint += L"[E] Взять посылку";
+            else if (world->job.kind == JobKind::courier && world->job.destination == site) hint += L"[E] Передать посылку";
+            else if (world->controlledCar >= 0) hint = L"[F] Выйти";
+        }
+        if (world->drone.active)
+        {
+            const auto &d=world->drone;
+            auto delta=world->buildings[d.targets[d.scanned]].p-d.position;
+            const auto mint=RGB(119,237,189);
+            const int left=w/2-155;
+            r.rect(left,22,310,81,RGB(17,28,26));
+            r.text(left+12,27,L"РАЗВЕДКА     АКБ "+std::to_wstring(int(std::ceil(d.battery)))+L"%",mint);
+            r.text(left+12,55,L"Крыша "+std::to_wstring(d.scanned+1)+L"/3   "+std::to_wstring(int(delta.length()))+L" м",mint);
+            r.rect(left+12,92,286,4,RGB(70,94,85));
+            r.rect(left+12,92,int(286*clamp(d.scanTime/2.,0.,1.)),4,mint);
+            r.rect(w/2-7,h/2,15,1,mint);
+            r.rect(w/2,h/2-7,1,15,mint);
+            hint=L"[WASD] Полёт   [Space/Ctrl] Высота   [ЛКМ] Сканировать крышу   [K] Вернуться";
+        }
+        else if (world->job.passenger() && !world->job.acquired && world->controlledCar >= 0 &&
+                 (focus - world->jobTarget()).length() <= 10)
+            hint = world->job.ride.car < 0 ? L"[E] Посадить пассажира" : L"Пассажир подходит к двери";
+        else if (world->job.peace() && !world->job.escaping()) {
+            if(world->job.kind==JobKind::broadcast && world->controlledCar==world->job.actor)
+                hint=world->job.route.enabled?L"[E] Выключить громкоговоритель":L"[E] Включить громкоговоритель";
+            if(world->job.kind==JobKind::leaflets && world->controlledCar<0 && (focus-world->jobTarget()).length()<2.2)
+                hint=L"[E] Раздать листовки · стойте на месте";
+        }
+        else if (world->controlledCar<0) hint+=L"   [K] Дрон";
         r.rect(235, h - 57, w - 255, 39, RGB(12, 18, 17));
-        r.text(245, h - 50,
-               world->controlledCar >= 0
-                   ? L"[W/S] Газ/тормоз  [A/D] Руль  [Space] Ручник  [F] Выйти  [R] Вернуть  [F1] Консоль"
-                   : L"[WASD] Идти  [Shift] Бежать  [F] Сесть  [ЛКМ] Огонь  [Колесо] Оружие  [F1] Консоль");
+        r.text(245, h - 50, hint + (world->drone.active ? L"" : L"     [J] Заказы"));
+        if (world->energySeconds > 0)
+            r.text(35,123,L"Энергия  " + std::to_wstring(int(std::ceil(world->energySeconds))) + L" с",RGB(93,218,226));
+        if (world->job.kind != JobKind::none)
+        {
+            const auto &j = world->job;
+            auto title = j.kind == JobKind::courier ? L"Передать посылку" :
+                         j.kind == JobKind::elimination ? L"Устранить цель" :
+                         j.passenger() ? (!j.acquired ? L"Забрать пассажира" : j.kind == JobKind::taxi ? L"Довезти пассажира" : L"В поликлинику") :
+                         j.acquired ? L"В гараж · кузов ≥ 50%" : L"Забрать автомобиль";
+            std::wstring status=title;
+            if (j.peace())
+                status=std::wstring(j.kind==JobKind::leaflets ? L"Листовки" : L"Громкоговоритель")+
+                    L"   "+std::to_wstring(j.route.completed)+L"/"+std::to_wstring(j.stopCount())+L"   "+
+                    std::to_wstring(int(j.stopped))+(j.kind==JobKind::leaflets ? L"/3 с" : L"/30 с");
+            if (j.escaping()) status=L"Скройтесь от преследования";
+            else status+=L"   "+std::to_wstring(int((world->jobTarget()-focus).length()))+L" м";
+            r.rect(235,h-102,430,36,RGB(17,26,24));
+            r.text(247,h-98,status, RGB(242,194,98));
+        }
+        if (world->time < world->noticeUntil)
+            r.text(235, h-142, world->notice, RGB(252,206,124));
+        if (jobsOpen)
+        {
+            int left = std::max(12,w/2-215), top = std::max(15,h/2-175);
+            r.rect(left,top,430,350,RGB(21,30,27));
+            r.text(left+20,top+12,L"ЗАКАЗЫ",RGB(244,192,103));
+            r.text(left+20,top+56,L"[1] Доставить автомобиль");
+            r.text(left+20,top+90,L"[2] Устранить цель");
+            r.text(left+20,top+124,L"[3] Отказаться от текущего заказа");
+            r.text(left+20,top+158,L"[4] Раздать листовки");
+            r.text(left+20,top+192,L"[5] Рейс с громкоговорителем");
+            r.text(left+20,top+226,L"[6] Такси");
+            r.text(left+20,top+260,L"[7] Доставить пациента");
+            r.text(left+20,top+302,L"[J] Закрыть",RGB(148,170,151));
+        }
     }
     if (console)
     {
         r.rect(0, 0, w, 230, RGB(12, 17, 20));
         r.text(20, 20, L"PROMZONA / native console");
-        r.text(20, 60, L"weapons · health · money N · hour N · rain 0/1 · wanted 0..6 · recover");
+        r.text(20, 60, L"weapons · health · money N · hour N · rain 0/1 · wanted 0..6 · spawn tank/helicopter/btr · recover");
         r.text(20, 105, L"> " + command + L"_");
         r.text(20, 155, message, RGB(224, 172, 91));
     }

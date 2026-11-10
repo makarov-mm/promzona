@@ -162,11 +162,16 @@ int main(int argc, char **argv)
         world.inventory.give(WeaponId::bazooka);
         world.inventory.give(WeaponId::pistol);
         world.inventory.select(WeaponId::pistol);
-        world.people[5].dead = true;
-        world.people[5].health = 0;
-        world.people[6].fear = .75;
-        world.people[6].burnUntil = world.time + 8;
-        world.people[6].burnPlayerCaused = true;
+        // Only pedestrians on the street are eligible for these test events.
+        const auto firstWalker = std::ranges::find_if(world.people, [](const auto &p) { return p.riding < 0; });
+        const auto secondWalker = std::find_if(std::next(firstWalker), world.people.end(), [](const auto &p) { return p.riding < 0; });
+        const auto victim = firstWalker - world.people.begin();
+        const auto witness = secondWalker - world.people.begin();
+        world.people[victim].dead = true;
+        world.people[victim].health = 0;
+        world.people[witness].fear = .75;
+        world.people[witness].burnUntil = world.time + 8;
+        world.people[witness].burnPlayerCaused = true;
         world.cars[7].fireTime = 3.25;
         world.cars[7].health = .1;
         world.cars[7].lastDamageAt = world.time;
@@ -186,12 +191,12 @@ int main(int argc, char **argv)
         check(loaded.money == 432 && loaded.inventory.ammo(WeaponId::bazooka) == 20,
               "save inventory and money");
         check(loaded.inventory.active()->id == WeaponId::pistol, "manual weapon selection survives load");
-        check(loaded.people[5].dead && loaded.people[6].fear == .75, "save pedestrian state");
+        check(loaded.people[victim].dead && loaded.people[witness].fear == .75, "save pedestrian state");
         check(loaded.cars[7].fireTime == 3.25 && loaded.cars[7].health == .1, "save burning vehicle state");
         check(loaded.cars[7].lastDamageAt == world.time && loaded.cars[7].impactCooldown == .2 &&
                   loaded.playerBurnUntil == world.playerBurnUntil &&
-                  loaded.people[6].burnUntil == world.people[6].burnUntil &&
-                  loaded.people[6].burnPlayerCaused,
+                  loaded.people[witness].burnUntil == world.people[witness].burnUntil &&
+                  loaded.people[witness].burnPlayerCaused,
               "save damage cooldown and ongoing fire state");
         check(loaded.rockets.size() == 1 && loaded.rockets[0].slope == -.1 && loaded.rockets[0].travel == 2 &&
                   loaded.rockets[0].ownerCar == 0,
