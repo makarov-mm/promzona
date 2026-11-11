@@ -4,6 +4,8 @@
 #include <fstream>
 #include <bit>
 #include <sstream>
+#include <charconv>
+#include <cctype>
 #include <stdexcept>
 namespace pz
 {
@@ -45,6 +47,7 @@ void Terrain::generate(std::uint32_t seed, int nodes, std::span<const Building> 
     size_ = int(-2 * origin_) + 1;
     heights_.resize(size_t(size_) * size_);
     double phase = seed % 10007 * .002;
+    const bool revised = layout && layout->revision() == CityLayout::districtRevision;
     auto natural = [&](double x, double z)
     {
         if (rivers_)
@@ -52,7 +55,15 @@ void Terrain::generate(std::uint32_t seed, int nodes, std::span<const Building> 
             double inland = edge - std::max(std::abs(x), std::abs(z));
             double h = 26 + 14 * std::sin(x * .0045 + phase) * std::cos(z * .004 - phase * .3) +
                        9 * std::sin(z * .003 + phase * .7);
-            double shore = smooth((inland - 12) / 210), beach = -4.8 + clamp((inland + 2) / 42, 0., 1.) * 7.2;
+            double shorelineOffset = 0;
+            if (revised && inland > -6 && inland < 42)
+            {
+                const double band = smooth((inland + 6) / 10) * (1 - smooth((inland - 18) / 24));
+                shorelineOffset = band * (4.1 * std::sin(x * .029 + z * .018 + phase) +
+                                         2.2 * std::sin(z * .055 - x * .036 - phase));
+            }
+            const double shore = smooth((inland - 12) / 210);
+            const double beach = -4.8 + clamp((inland + 2 + shorelineOffset) / 42, 0., 1.) * 7.2;
             h = beach * (1 - shore) + h * shore;
             double bank = riverDistance(x), bankHalf = 18 - (wide ? 7.3 : 4.8) - 2.8;
             if (bank < 150)
@@ -65,6 +76,10 @@ void Terrain::generate(std::uint32_t seed, int nodes, std::span<const Building> 
                 double v = smooth((bank - (bankHalf - 3.2)) / 3.2);
                 h = -8 + 10.2 * v;
             }
+            // The inland canal profile must meet the sea at its mouth. Otherwise its
+            // flat banks continue offshore as two rectangular fingers above the water.
+            if (revised && bank < 150 && inland < 42)
+                h = std::min(h, beach);
             return h;
         }
         double t = smooth((edge - std::max(std::abs(x), std::abs(z))) / 205);
@@ -72,19 +87,34 @@ void Terrain::generate(std::uint32_t seed, int nodes, std::span<const Building> 
                    7 * std::sin(z * .0055 + phase * .7) + 4 * std::cos((x + z) * .006 - phase);
         return h * t;
     };
+    const double track = revised ? layout->railZ() : 0, end = revised ? layout->railEnd() : 0;
+    const double berthHeight = revised ? natural(end - 23, track) : 0;
+    auto base = [&](double x, double z)
+    {
+        const double h = natural(x, z);
+        if (!revised || std::abs(z - track) >= 52 || x <= layout->railStart() - 18 || x >= end + 27)
+            return h;
+        // The loading aprons and their adjacent building foundations sit on the same grade.
+        const double across = 1 - smooth((std::abs(z - track) - 20) / 32);
+        const double along = smooth((x - layout->railStart() + 18) / 18) * (1 - smooth((x - end - 3) / 24));
+        const double berth = smooth((x - end + 210) / 95);
+        const double railGrade = natural(x, track) * (1 - berth) + berthHeight * berth;
+        return h + (railGrade - h) * across * along;
+    };
     for (int j = 0; j < size_; j++)
         for (int i = 0; i < size_; i++)
-            heights_[i + size_t(j) * size_] = float(natural(origin_ + i, origin_ + j));
+            heights_[i + size_t(j) * size_] = float(base(origin_ + i, origin_ + j));
     double low = -(nodes - 1) * 18.;
     auto pad = [&](const Building &b)
     {
         double x = low + (std::floor((b.p.x - low) / 36) + .5) * 36,
                z = low + (std::floor((b.p.z - low) / 36) + .5) * 36;
-        return natural(x, z);
+        return base(x, z);
     };
     std::vector<float> grading(heights_.size());
     for (auto &b : buildings)
     {
+        if (b.kind == BuildingKind::wagon || b.kind == BuildingKind::buffer) continue;
         int x0 = std::max(0, int(std::floor(b.p.x - b.half.x - 4.5 - origin_))),
             x1 = std::min(size_ - 1, int(std::ceil(b.p.x + b.half.x + 4.5 - origin_))),
             z0 = std::max(0, int(std::floor(b.p.z - b.half.z - 4.5 - origin_))),
@@ -103,12 +133,13 @@ void Terrain::generate(std::uint32_t seed, int nodes, std::span<const Building> 
                 if (w > grading[k])
                 {
                     grading[k] = float(w);
-                    heights_[k] = float(natural(x, z) * (1 - w) + level * w);
+                    heights_[k] = float(base(x, z) * (1 - w) + level * w);
                 }
             }
     }
     for (auto &b : buildings)
     {
+        if (b.kind == BuildingKind::wagon || b.kind == BuildingKind::buffer) continue;
         double level = pad(b);
         int x0 = std::max(0, int(std::floor(b.p.x - b.half.x - .8 - origin_))),
             x1 = std::min(size_ - 1, int(std::ceil(b.p.x + b.half.x + .8 - origin_))),
@@ -202,6 +233,7 @@ void World::newRoute(Car &car)
     {
         if (auto s = levelEdge(car.routeFrom, car.routeTo))
         {
+            car.laneIndex = 0;
             car.route = s->route(car.routeFrom == s->leftNode);
             car.routePhase = 2;
             car.routeLevel = s->id;
@@ -209,8 +241,9 @@ void World::newRoute(Car &car)
         else
         {
             auto f = (nodePoint(car.routeTo) - nodePoint(car.routeFrom)).unit();
-            car.route.emplace(nodePoint(car.routeFrom) + f * 9 + perpendicular(f) * CityLayout::lane,
-                              nodePoint(car.routeTo) - f * 11 + perpendicular(f) * CityLayout::lane);
+            const auto offset = perpendicular(f) * CityLayout::laneOffset(car.laneIndex);
+            car.route.emplace(nodePoint(car.routeFrom) + f * 9 + offset,
+                              nodePoint(car.routeTo) - f * 11 + offset);
             car.routePhase = 0;
             car.routeLevel = 0;
         }
@@ -223,15 +256,18 @@ void World::newRoute(Car &car)
                  : car.responding ? pursuitNext(from, car.routeFrom) : chooseNext(from, car.routeFrom);
         auto centre = nodePoint(from), incoming = (centre - nodePoint(car.routeFrom)).unit(),
              outgoing = (nodePoint(to) - centre).unit();
+        const double entryLane = CityLayout::laneOffset(car.laneIndex);
+        if (levelEdge(from, to)) car.laneIndex = 0;
+        const double exitLane = CityLayout::laneOffset(car.laneIndex);
         if (to == car.routeFrom)
-            car.route = Path::turnaround(centre, incoming);
+            car.route = Path::turnaround(centre, incoming, entryLane);
         else
         {
-            auto start = centre - incoming * 11 + perpendicular(incoming) * CityLayout::lane;
-            auto end = centre + outgoing * 9 + perpendicular(outgoing) * CityLayout::lane;
+            auto start = centre - incoming * 11 + perpendicular(incoming) * entryLane;
+            auto end = centre + outgoing * 9 + perpendicular(outgoing) * exitLane;
             double handle = dot(incoming, outgoing) > .5    ? 6
-                            : cross(incoming, outgoing) > 0 ? (9 - CityLayout::lane) * .82
-                                                            : (9 + CityLayout::lane) * .55228475;
+                            : cross(incoming, outgoing) > 0 ? (9 - exitLane) * .82
+                                                            : (9 + exitLane) * .55228475;
             car.route.emplace(start, start + incoming * handle, end - outgoing * handle, end);
         }
         car.previousNode = car.routeFrom;
@@ -241,6 +277,7 @@ void World::newRoute(Car &car)
         car.routeLevel = 0;
     }
     car.routeDistance = 0;
+    car.senseAt = 0;
 }
 Vec2 World::pickupSite()
 {
@@ -261,27 +298,35 @@ Vec2 World::pickupSite()
     }
     return nodePoint(nodes / 2 * nodes + nodes / 2) + Vec2{10, 10};
 }
-void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
+void World::generate(std::uint32_t newSeed, std::function<void(float)> progress, int layoutRevision)
 {
     seed = newSeed;
     drone = {};
     conversation = {};
     rescues = {};
+    patrol = {};
+    arrests = lastFine = 0;
+    patrolScanAt = 0;
     nextRescueScan = nextRescueDispatch = 0;
     casualtyCursor = 0;
     random = Random(seed);
     buildings.clear();
     cars.clear();
+    trafficCells.clear();
+    trafficIndexAt = 0;
     people.clear();
     pickups.clear();
     particles.clear();
     surfaceMarks.clear();
+    ripples.clear();
     tireContacts.clear();
     rockets.clear();
     playerBurnUntil = fireClock = nextFlameSound = 0;
     staticBodies.clear();
     fixtures.clear();
     fixtureByBody.clear();
+    fixtureCells.assign(nodes * nodes, {});
+    displacedFixtures.clear();
     nextFixtureRestore = 0;
     staticQueryCount = size_t(-1);
     nearbyStaticBodies.clear();
@@ -296,6 +341,9 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
     player.invI = 0;
     player.verticalExtent = 1.7;
     controlledCar = 0;
+    playerTransitSeat = -1;
+    transitExitRequested = false;
+    nextPlatformScan = 0;
     money = 0;
     health = 1;
     wanted = 0;
@@ -305,6 +353,8 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
     playerDistance = 0;
     aiming = firing = false;
     rain = rainTarget = 0;
+    dayNightCycle = true;
+    simulationSpeed = 1;
     weatherClock = 120;
     shotCooldown = wantedCooldown = 0;
     sounds.clear();
@@ -314,7 +364,7 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
             progress(v);
     };
     report(.02f);
-    layout.generate(std::bit_cast<std::int32_t>(seed), nodes, true, [&](float p) { report(.02f + p * .8f); });
+    layout.generate(std::bit_cast<std::int32_t>(seed), nodes, true, [&](float p) { report(.02f + p * .8f); }, layoutRevision);
     roadLevels = generateRoadLevels(layout, seed);
     buildings = layout.buildings;
     indexRoofs();
@@ -322,6 +372,7 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
     terrain.generate(seed, nodes, buildings, true, &layout);
     for (auto &s : roadLevels)
         s.bake(terrain);
+    generatePuddles();
     report(.55f);
     std::uint32_t id = 10;
     for (auto &b : buildings)
@@ -344,7 +395,12 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
         body.halfH = b.half.z;
         body.height = terrain.height(b.p) + b.height * .5;
         body.verticalExtent = b.height;
-        if (b.height <= 3) registerFixture(body);
+        if (b.height <= 3)
+        {
+            size_t ordinal = fixtures.size() + 1;
+            registerFixture(body, ordinal % 9 == 0 ? FixtureKind::dumpster :
+                                  ordinal % 3 == 0 ? FixtureKind::hydrant : FixtureKind::bin);
+        }
         staticBodies.push_back(body);
     }
     // Rail contact shapes use the identical spans/profile as the visible bridge rails.
@@ -369,6 +425,7 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
                 }
         }
     appendLevelContacts(id);
+    Random lanes(seed ^ 0x4c414e45u);
     for (int i = 0; i < int(trafficPopulation); i++)
     {
         Car car;
@@ -377,6 +434,8 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
         constexpr unsigned streetFleet[]{0, 1, 2, 11, 12, 13, 14, 0, 2, 16, 1, 13, 15, 17, 12, 3, 0};
         fitVehicle(car, i % 37 == 16 ? ambulanceModel : streetFleet[i % std::size(streetFleet)]);
         car.body.friction = .5;
+        // Stable lane distribution without changing the seeded city generation sequence.
+        car.laneIndex = i && layout.wide() ? lanes.index(2) : 0;
         car.routeFrom = random.index(nodes * nodes);
         car.routeTo = chooseNext(car.routeFrom, -1);
         auto from = nodePoint(car.routeFrom), to = nodePoint(car.routeTo), f = (to - from).unit();
@@ -404,14 +463,12 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
             if ((c.body.p - cars[0].body.p).length() < 8)
             {
                 c.routeLevel = c.body.roadLevel = 0;
-                c.routePhase = 0;
                 c.routeFrom = 0;
                 c.routeTo = chooseNext(0, -1);
-                auto f = (nodePoint(c.routeTo) - nodePoint(0)).unit();
-                c.route.emplace(nodePoint(0) + f * 9 + perpendicular(f) * 1.9,
-                                nodePoint(c.routeTo) - f * 11 + perpendicular(f) * 1.9);
+                c.routePhase = 1;
+                newRoute(c);
                 c.body.p = c.route->sample(0).first;
-                c.body.angle = -std::atan2(f.x, f.z);
+                c.body.angle = -c.route->sample(0).second;
             }
             c.routeDistance = 0;
             c.body.height = surface(c.body.p, c.body.roadLevel) + .8;
@@ -472,10 +529,13 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
     generateTransit();
     generateStreetLife();
     formCompanies(false);
+    generateStreetFurniture();
+    generateShops();
     report(1);
 }
 void World::enterExit()
 {
+    if (transitPassenger()) { rideTransit(); return; }
     if (controlledCar < 0 && useScooter()) return;
     if (controlledCar >= 0)
     {
@@ -518,6 +578,7 @@ void World::enterExit()
 }
 void World::recover()
 {
+    if (transitPassenger()) { controlledCar = -1; playerTransitSeat = -1; transitExitRequested = false; }
     conversation = {};
     releaseScooter(playerScooter, {});
     if (drone.active) stopDrone(L"Связь с дроном прервана", 2);
@@ -558,7 +619,7 @@ void World::step(PlayerInput input, double dt)
     if (!(dt > 0 && dt <= .025))
         throw std::invalid_argument("World uses fixed steps <=25 ms");
     time += dt;
-    clock.step(dt);
+    if (dayNightCycle) clock.step(dt);
     shotCooldown = std::max(0., shotCooldown - dt);
     wantedCooldown -= dt;
     if (wantedCooldown < 0 && wanted > 0)
@@ -579,7 +640,7 @@ void World::step(PlayerInput input, double dt)
         input = {};
         input.lookHeading = -player.angle;
     }
-    if (playerScooter >= 0) input.shooting = false;
+    if (playerScooter >= 0 || transitPassenger()) input.shooting = false;
     aiming = input.shooting;
     bool mounted = controlledCar>=0 && cars[controlledCar].mountedGun();
     if(mounted)
@@ -598,7 +659,12 @@ void World::step(PlayerInput input, double dt)
     combatStep(dt);
     if (time >= dispatchAt) updateDispatch();
     if (time >= nextRescueScan) updateRescues();
+    if (time >= patrolScanAt) updatePatrol();
     auto focus = position();
+    if (time >= trafficIndexAt || trafficCells.empty() || nextTrafficCar.size() != cars.size() ||
+        nextTrafficPerson.size() != people.size())
+        indexTraffic();
+    if (time >= nextPlatformScan) updatePlatforms();
     std::vector<Vec2> previousCars, previousPeople;
     for (auto &c : cars)
         previousCars.push_back(c.body.p);
@@ -639,7 +705,7 @@ void World::step(PlayerInput input, double dt)
         car.terrainRoll = -std::atan(dot(car.terrainGradient, {f.z, -f.x}));
         if (car.line >= 0 && !car.destroyed && !car.falling)
         {
-            runTransit(car, input.car, int(i) == controlledCar, local, dt);
+            runTransit(car, input.car, int(i) == controlledCar && !transitPassenger(), local, dt);
             if (local)
             {
                 bodies.push_back(&b);
@@ -664,19 +730,22 @@ void World::step(PlayerInput input, double dt)
         {
             stepWreck(car, dt);
         }
-        else if ((medical && medical->braking) || (job.passenger() && int(i) == job.ride.car) || car.summoned || car.kind == 11 || ((job.kind == JobKind::vehicle || job.kind == JobKind::broadcast) && int(i) == job.actor))
+        else if ((int(i) == patrol.car && patrol.stage != PatrolStage::seated) ||
+                 (medical && medical->braking) || (job.passenger() && int(i) == job.ride.car) || car.summoned || car.personal || car.kind == 11 || ((job.kind == JobKind::vehicle || job.kind == JobKind::broadcast) && int(i) == job.actor))
             stepVehicle(car, {0, 0, true, false}, dt, 1 - rain * .2);
         else if (!local)
         {
             if (!car.route)
                 newRoute(car);
             double cruise = car.responding ? 16. : medical && medical->stage == RescueStage::driving ? 11. : 7.;
+            if (time >= car.senseAt) senseTraffic(car, false);
+            cruise = std::min(cruise, car.trafficLimit);
             bool clear = car.routeDistance + cruise * dt < car.route->length() || intersectionClear(car);
             car.routeDistance = std::min(
                 car.route->length(),
                 car.routeDistance +
                     (clear ? cruise * dt
-                           : std::min(7 * dt, std::max(0., car.route->length() - car.routeDistance))));
+                           : std::min(cruise * dt, std::max(0., car.route->length() - car.routeDistance))));
             if (car.routeDistance >= car.route->length() && clear)
                 newRoute(car);
             auto sample = car.route->sample(car.routeDistance);
@@ -694,6 +763,7 @@ void World::step(PlayerInput input, double dt)
             if (!car.route)
                 newRoute(car);
             car.routeDistance = car.route->closestDistance(b.p);
+            if (time >= car.senseAt) senseTraffic(car, true);
             bool clear = intersectionClear(car);
             auto end = car.route->sample(car.route->length());
             auto beyond = b.p - end.first;
@@ -737,17 +807,14 @@ void World::step(PlayerInput input, double dt)
                 aim = focus;
                 desired = std::atan2(aim.x - b.p.x, aim.z - b.p.z);
                 target = 12 + wantedLevel();
+                // Other responders cover a nearby stop while the lead officer is at the suspect's door.
+                if (patrol.stage == PatrolStage::approaching && wantedLevel() < 4 &&
+                    (b.p - focus).length2() < 19 * 19 &&
+                    (controlledCar < 0 ? player.v.length2() : cars[controlledCar].body.v.length2()) < 1)
+                    target = 0;
             }
             auto dir = forward(car.heading());
-            for (auto &other : cars)
-            {
-                if (&other == &car || (car.responding && controlledCar >= 0 && &other == &cars[controlledCar]) || std::abs(b.height - other.body.height) > 2)
-                    continue;
-                auto delta = other.body.p - b.p;
-                double along = dot(delta, dir);
-                if (along > 0 && along < 8 && std::abs(cross(delta, dir)) < 1.6)
-                    target = std::min(target, std::max(0., along - 4) * 1.4);
-            }
+            target = std::min(target, car.trafficLimit);
             double speed = dot(b.v, dir);
             double steerLimit = .68 / (1 + std::pow(std::abs(speed) / 22, 2));
             double curvature =
@@ -815,7 +882,7 @@ void World::step(PlayerInput input, double dt)
                 double distance = d.length();
                 if (distance < 4 && std::abs(p.body.height - c.body.height) < 1.8 && c.body.v.length() > 5)
                 {
-                    const bool playerDriving = controlledCar >= 0 && nearby == &cars[controlledCar];
+                    const bool playerDriving = controlledCar >= 0 && !transitPassenger() && nearby == &cars[controlledCar];
                     // A car following the carriageway is dangerous only on an actual collision course.
                     if (!playerDriving || layout.roadDistance(c.body.p) > layout.roadHalf() - .25 ||
                         (dot(d, c.body.v.unit()) > 0 && std::abs(dot(d, perpendicular(c.body.v.unit()))) < c.body.halfW + p.body.radius))
@@ -833,9 +900,9 @@ void World::step(PlayerInput input, double dt)
                 }
                 if (distance < 1.1 && std::abs(p.body.height - c.body.height) < 1.8 && c.body.v.length() > 6)
                 {
-                    if (controlledCar >= 0 && &c == &cars[controlledCar])
+                    if (controlledCar >= 0 && !transitPassenger() && &c == &cars[controlledCar])
                         reportCrime(.45);
-                    killPerson(p, c.body.v * .6, controlledCar >= 0 && &c == &cars[controlledCar]);
+                    killPerson(p, c.body.v * .6, controlledCar >= 0 && !transitPassenger() && &c == &cars[controlledCar]);
                     break;
                 }
             }
@@ -844,6 +911,13 @@ void World::step(PlayerInput input, double dt)
         double speed = p.fear > 0 ? 3.5 : 1.2;
         riderIntent(p, dir, speed);
         socialIntent(p, dir, speed);
+        if (p.waitingLine >= 0 && p.fear <= 0 && p.watchUntil <= time && p.alertUntil <= time)
+        {
+            const auto delta = p.platformTarget - p.body.p;
+            dir = delta.unit();
+            speed = delta.length2() < .16 ? 0. : std::min(1.4, delta.length() * 2);
+        }
+        if (p.fear <= 0 && waitingForTaxi(int(&p - people.data()))) speed = 0;
         if (job.passenger() && !job.acquired && &p == &people[job.actor] && p.fear <= 0)
         {
             if (job.ride.car >= 0)
@@ -866,7 +940,10 @@ void World::step(PlayerInput input, double dt)
             p.burstLeft = 0;
             p.cover = {};
         }
-        medicIntent(int(&p - people.data()), dir, speed);
+        if (int(&p - people.data()) == patrol.officer)
+            officerIntent(dir, speed);
+        else
+            medicIntent(int(&p - people.data()), dir, speed);
         if (speed > .01) p.heading = std::atan2(dir.x, dir.z);
         auto desired = dir * speed;
         p.body.v += (desired - p.body.v) * (1 - std::exp(-dt * 4));
@@ -897,6 +974,8 @@ void World::step(PlayerInput input, double dt)
     }
     if (controlledCar < 0)
         supportPerson(player, previousPlayer, dt);
+    else if (transitPassenger())
+        player.angle = -placeTransitRider(player, cars[controlledCar], playerTransitSeat);
     updateTireMarks(focus, dt);
     updateScooters(dt);
     stepWildlife(dt);
@@ -908,7 +987,7 @@ void World::step(PlayerInput input, double dt)
     for (auto &pickup : pickups)
     {
         pickup.wait = std::max(0., pickup.wait - dt);
-        if (pickup.wait > 0 || (pickup.p - position()).length() > 1.7 ||
+        if (transitPassenger() || pickup.wait > 0 || (pickup.p - position()).length() > 1.7 ||
             std::abs(surface(pickup.p, pickup.roadLevel) - ground()) > 1.7)
             continue;
         if (health <= 0 || (controlledCar >= 0 && cars[controlledCar].destroyed))
@@ -956,12 +1035,20 @@ void World::step(PlayerInput input, double dt)
     if (particles.size() > 5000)
         particles.erase(particles.begin(),
                         particles.begin() + static_cast<std::ptrdiff_t>(particles.size() - 5000));
-    if (health <= 0 || ground() < CityLayout::waterLevel + .3 ||
+    while (!ripples.empty() && time - ripples.front().born >= WaterRipple::lifetime)
+        ripples.pop_front();
+    const double dangerDepth = controlledCar >= 0 ? .85 : 1.15;
+    bool submerged = ground() < CityLayout::waterLevel &&
+                     terrain.bedHeight(position().x, position().z) < CityLayout::waterLevel - dangerDepth;
+    if (submerged) splash(position(), controlledCar >= 0 ? 2.5 : .8);
+    if (health <= 0 || submerged ||
         std::max(std::abs(position().x), std::abs(position().z)) > landEdge ||
         (controlledCar >= 0 && cars[controlledCar].destroyed))
     {
         auto fallen = position();
         controlledCar = -1;
+        playerTransitSeat = -1;
+        transitExitRequested = false;
         clinicRespawn(fallen);
         player.roadLevel = 0;
         player.verticalSpeed = 0;
@@ -976,67 +1063,124 @@ void World::step(PlayerInput input, double dt)
         physics.clear();
     }
     else
-        servicesStep(dt);
-}
-void World::command(const std::string &text)
-{
-    std::istringstream in(text);
-    std::string command;
-    in >> command;
-    if (command == "health")
     {
-        health = 1;
-        if (controlledCar >= 0)
+        servicesStep(dt);
+        arrestStep(dt);
+    }
+}
+namespace
+{
+template<class T> T consoleNumber(std::string_view arg, T low, T high, const char *usage)
+{
+    T number{};
+    auto [end, error] = std::from_chars(arg.data(), arg.data() + arg.size(), number);
+    if (error != std::errc{} || end != arg.data() + arg.size() || !(number >= low && number <= high))
+        throw std::invalid_argument(usage);
+    return number;
+}
+bool consoleToggle(std::string_view arg)
+{
+    if (arg == "on" || arg == "1") return true;
+    if (arg == "off" || arg == "0") return false;
+    throw std::invalid_argument("Expected on/off or 1/0");
+}
+}
+
+std::wstring World::command(const std::string &text)
+{
+    if (text.size() > 160) throw std::invalid_argument("Command too long");
+    std::istringstream in(text);
+    std::vector<std::string> args;
+    for (std::string token; in >> token;)
+    {
+        for (char &c : token) c = char(std::tolower(static_cast<unsigned char>(c)));
+        args.push_back(std::move(token));
+    }
+    if (args.empty()) return {};
+    const auto &cmd = args[0];
+    auto count = [&](size_t n, const char *usage) {
+        if (args.size() != n) throw std::invalid_argument(usage);
+    };
+    if (cmd == "health" || cmd == "repair")
+    {
+        count(1, "health | repair");
+        if (cmd == "repair" && (controlledCar < 0 || cars[controlledCar].destroyed))
+            throw std::invalid_argument("Enter an intact vehicle first");
+        if (cmd == "health") health = 1;
+        if (controlledCar >= 0 && !cars[controlledCar].destroyed)
         {
-            cars[controlledCar].health = 1;
-            cars[controlledCar].firePlayerCaused = false;
-            cars[controlledCar].fireTime = cars[controlledCar].safeDrivingTime = 0;
+            auto &car = cars[controlledCar];
+            car.health = 1;
+            car.firePlayerCaused = false;
+            car.fireTime = car.safeDrivingTime = 0;
         }
     }
-    else if (command == "money")
+    else if (cmd == "money")
     {
-        int n = 1000;
-        in >> n;
-        money = clamp(n, 0, 100000000);
+        if (args.size() == 1) money = 1000;
+        else { count(2, "money 0..999999999"); money = consoleNumber(args[1], 0, 999999999, "money 0..999999999"); }
     }
-    else if (command == "weapons")
+    else if (cmd == "weapons")
     {
-        for (auto w : weapons())
-            inventory.give(w.id);
+        count(1, "weapons");
+        for (auto w : weapons()) inventory.give(w.id);
     }
-    else if (command == "hour")
+    else if (cmd == "weapon")
     {
-        double h = 7;
-        in >> h;
-        clock.setHour(h);
+        if (args.size() != 2 && args.size() != 3) throw std::invalid_argument("weapon TYPE [1..9999]");
+        auto it = std::ranges::find_if(weapons(), [&](const Weapon &w) {
+            return std::ranges::equal(w.name, args[1], [](char a,char b){ return std::tolower(a) == b; });
+        });
+        if (it == weapons().end()) throw std::invalid_argument("Unknown weapon");
+        int ammo = args.size() == 3 ? consoleNumber(args[2], 1, Inventory::ammoLimit, "Ammo: 1..9999") : it->pickupAmmo;
+        if (!inventory.give(it->id, ammo)) throw std::invalid_argument("Ammunition already full");
     }
-    else if (command == "rain")
+    else if (cmd == "hour")
     {
-        int n = 1;
-        in >> n;
-        rainTarget = n ? 1 : 0;
+        if (args.size() == 1) clock.setHour(7);
+        else { count(2, "hour 0..24"); clock.setHour(consoleNumber(args[1], 0., 24., "hour 0..24")); }
     }
-    else if (command == "wanted")
+    else if (cmd == "rain" || cmd == "cycle")
     {
-        int n = 6;
-        in >> n;
-        wanted = double(clamp(n, 0, 6));
+        if (cmd == "rain" && args.size() == 1) rainTarget = 1;
+        else
+        {
+            count(2, "rain on/off | cycle on/off");
+            bool on = consoleToggle(args[1]);
+            if (cmd == "rain") { rainTarget = on ? 1 : 0; weatherClock = on ? 80 : 180; }
+            else dayNightCycle = on;
+        }
+    }
+    else if (cmd == "speed")
+    {
+        count(2, "speed 0.1..3");
+        simulationSpeed = consoleNumber(args[1], .1, 3., "speed 0.1..3");
+    }
+    else if (cmd == "wanted")
+    {
+        if (args.size() > 2) throw std::invalid_argument("wanted 0..6");
+        wanted = args.size() == 1 ? 6 : consoleNumber(args[1], 0, 6, "wanted 0..6");
         wantedCooldown = 15;
     }
-    else if (command == "spawn")
+    else if (cmd == "spawn")
     {
-        std::string type, extra;
-        in >> type;
-        unsigned model = type == "tank" ? 10 : type == "helicopter" ? 7 : type == "btr" ? 6 : unsigned(-1);
-        if (model >= std::size(fleet) || in >> extra)
-            throw std::invalid_argument("spawn tank | helicopter | btr");
-        if (!spawnVehicle(model))
-            throw std::runtime_error("No clear street nearby or vehicle limit reached");
+        count(2, "spawn TYPE");
+        static constexpr std::pair<std::string_view, unsigned> types[]{
+            {"car",0},{"van",14},{"truck",16},{"police",3},{"rosguard",4},{"fsb",5},
+            {"btr",6},{"helicopter",7},{"tank",10},{"ambulance",ambulanceModel}
+        };
+        auto type = std::ranges::find_if(types,[&](auto entry){ return entry.first == args[1]; });
+        if (type == std::end(types)) throw std::invalid_argument("Unknown vehicle");
+        if (!spawnVehicle(type->second)) throw std::runtime_error("No clear street nearby or vehicle limit reached");
     }
-    else if (command == "recover")
-        recover();
-    else
-        throw std::invalid_argument(
-            "Commands: weapons, health, money N, hour N, rain 0/1, wanted 0..6, spawn tank/helicopter/btr, recover");
+    else if (cmd == "recover") { count(1, "recover"); recover(); }
+    else if (cmd == "jobs")
+    {
+        count(1, "jobs");
+        return L"Выполнено " + std::to_wstring(jobsCompleted) + L"   Сорвано " + std::to_wstring(jobsFailed) +
+               L"   Заработок $" + std::to_wstring(jobEarnings) + L"   Серий " + std::to_wstring(seriesCompleted);
+    }
+    else throw std::invalid_argument("Unknown command. Type help.");
+    return L"OK";
 }
 } // namespace pz

@@ -166,6 +166,7 @@ Input Input::sanitized() const
 void Car::destroy()
 {
     destroyed = true;
+    personal = false;
     health = 0;
     body.mass(mass);
     body.wake();
@@ -229,8 +230,15 @@ void stepVehicle(Car &car, Input raw, double dt, double traction)
         engine = 185000;
         break;
     case 10:
-        engine = 26000;
+    {
+        // The trolley's electric drive has a low-speed torque reserve for hill starts.
+        // At higher speeds motor power, then tire adhesion, limit the uphill effort.
+        const double grade = car.terrainActive ? dot(car.terrainGradient, {s, c}) : 0.;
+        const double uphill = input.throttle > 0 ? std::max(0., grade) : 0.;
+        const double available = clamp(240000. / std::max(1., std::abs(speed)), 26000., 65000.);
+        engine = std::min(available, 26000. + car.mass * 9.81 * uphill);
         break;
+    }
     case 8:
     case 6:
     case 4:

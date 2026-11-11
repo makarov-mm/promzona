@@ -4,11 +4,16 @@
 
 namespace pz
 {
+enum class District { estate, courtyard, cottages, centre, garages, industry };
+enum class BuildingKind { apartment, cottage, garage, hall, chimney, tank, shed, pump, fence, crate, wagon, buffer, stall };
+
 struct Building
 {
     Vec2 p, half;
     double height;
     int style{};
+    BuildingKind kind{BuildingKind::apartment};
+    int front{1}; // Z direction of the door
 };
 // The seeded .NET Random stream used by CityLayout (not the game's runtime PRNG).
 class LayoutRandom
@@ -22,26 +27,40 @@ class LayoutRandom
     int index(int maximum);
 };
 
-// Port of CityTraffic.Layout revision 0: topology, plots, parks and canals.
+// Seeded topology, plots and districts. Revision zero preserves existing native saves.
 // Instance-owned state allows background generation without changing the live city.
 class CityLayout
 {
-    int nodes_{49};
+    int nodes_{49}, revision_{};
+    std::int32_t seed_{};
     bool wide_{true};
     std::vector<bool> roads_, parks_;
 
   public:
     void setRoad(int i, int j, int direction, bool value);
     static constexpr double spacing = 36, lane = 1.9, waterLevel = -2.8;
+    static constexpr float canalDeckThickness = .38f;
     std::vector<Building> buildings, furniture;
     void generate(std::int32_t seed, int nodes = 49, bool wide = true,
-                  std::function<void(float)> progress = {});
+                  std::function<void(float)> progress = {}, int revision = 0);
+    static constexpr int districtRevision = 4;
+    int revision() const { return revision_; }
+    District district(int i, int j) const;
+    bool industrial(int i, int j) const;
+    bool railEdge(int i, int j, int direction) const;
+    int yardWest() const { return nodes_ / 3 + 1; }
+    int yardEast() const { return 2 * nodes_ / 3; }
+    int yardRow() const { return nodes_ - 8; }
+    double railZ() const { return coordinate(yardRow() + 2) + 2; }
+    double railStart() const { return coordinate(yardWest()) - 2; }
+    double railEnd() const { return coordinate(yardEast() - 1) - 6; }
     int nodes() const { return nodes_; }
     bool wide() const { return wide_; }
     bool rivers() const { return nodes_ >= 49; }
     double coordinate(int i) const { return -(nodes_ - 1) * 18. + i * spacing; }
     Vec2 point(int n) const { return {coordinate(n % nodes_), coordinate(n / nodes_)}; }
     double edge() const { return coordinate(nodes_ - 1) + 54; }
+    static constexpr double laneOffset(int index) { return lane + index * 3.35; }
     double roadHalf() const { return wide_ ? 7.3 : 4.8; }
     double sidewalk() const { return wide_ ? 9.1 : 6.5; }
     double bankHalf() const { return 18 - roadHalf() - 2.8; }
@@ -55,6 +74,7 @@ class CityLayout
     int degree(int node) const;
     double roadDistance(Vec2 p) const;
     double riverDistance(double x) const;
+    bool sandyGround(Vec2 p, double streetDistance) const;
     bool bridge(Vec2 p) const;
     double deckHeight(double x) const;
     bool urbanSite(Vec2 p, double radius = 0) const;

@@ -1,4 +1,5 @@
 #include "promzona/renderer.hpp"
+#include "promzona/audio.hpp"
 #include "promzona/fleet.hpp"
 #include "json.hpp"
 #include "effect_batch.hpp"
@@ -228,6 +229,9 @@ struct Renderer::Impl
     GLuint effectShader{};
     EffectBatch effects;
     SceneMode mode{SceneMode::enhanced};
+    GraphicsPreferences graphics;
+    GLuint menuArt{};
+    float menuAspect{};
     PostProcessing post;
     SceneTimer timer;
     int poses[2]{};
@@ -242,6 +246,8 @@ struct Renderer::Impl
         Vec3 centre{};
         float radius{100000};
         int part{}, surface{};
+        // 1 = dedicated paint material, 2 = paint shares an atlas with trim.
+        int paintMask{};
         float alpha{1}, roughness{.7f}, metallic{};
         bool detail{};
     };
@@ -257,8 +263,9 @@ struct Renderer::Impl
         std::vector<Wheel> wheels;
     };
     std::vector<Batch> city;
-    std::array<GLuint, 8> walls{}, normals{}, orm{};
+    std::array<GLuint, 10> walls{}, normals{}, orm{};
     std::array<GLuint, 3> signs{};
+    GLuint stationSign{};
     std::unique_ptr<DetailStream> detailStream;
     std::unique_ptr<DetailResidency> detailResidency;
     std::map<size_t, std::vector<Batch>> detailMeshes;
@@ -286,8 +293,10 @@ struct Renderer::Impl
     };
     std::array<AnimalRig,5> animalRigs;
     Mesh scooterFrame, scooterRubber, scooterTrim;
-    std::array<std::array<Mesh, 2>, 3> fixtureModels;
-    std::array<std::vector<std::array<float, 8>>, 3> fixtureInstances;
+    static constexpr size_t fixtureKinds = size_t(World::FixtureKind::count);
+    std::array<std::array<Mesh, 2>, fixtureKinds> fixtureModels;
+    std::array<std::vector<std::array<float, 8>>, fixtureKinds> fixtureInstances;
+    std::vector<size_t> visibleFixtures;
     GLuint dumpsterTexture{};
     GLuint peopleTexture[2]{};
     Minimap minimap;
@@ -342,6 +351,10 @@ struct Renderer::Impl
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, rgba);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        const auto menuPath = root / "Textures/menu-city.png";
+        const auto art = loadImage(menuPath);
+        menuAspect = float(art.width) / art.height;
+        menuArt = uploadTexture(menuPath, art);
         glGenTextures(1, &uiTexture);
         MeshData q;
         quad(q, {-1, -1, 0}, {1, -1, 0}, {1, 1, 0}, {-1, 1, 0});
@@ -485,6 +498,12 @@ struct Renderer::Impl
                 if (mat >= 0)
                 {
                     auto &m = j.at("materials").at(mat);
+                    auto name = m.value("name", std::string{});
+                    if (name == "paint" || name == "Car_Paint" || name == "CarBody" ||
+                        name == "Ukrainer79Custom_bodymat" || name == "olive" || name == "Cabin") b.paintMask = 1;
+                    else if (!m.value("glass",false) && b.part < 3 &&
+                             (j.at("materials").size() <= 3 || name == "standard" || name == "standard1"))
+                        b.paintMask = 2;
                     if (m.contains("colorMap"))
                         b.color = texture(path / m.at("colorMap").get<std::string>());
                     if (m.contains("normalMap"))
@@ -539,7 +558,7 @@ struct Renderer::Impl
     }
     void buildFixtureModels()
     {
-        std::array<MeshData, 3> enamel, iron;
+        std::array<MeshData, fixtureKinds> enamel, iron;
         cylinder(enamel[0], {0,-.33f,0}, {0,.32f,0}, .255f, 12);
         cylinder(enamel[0], {0,.30f,0}, {0,.36f,0}, .28f, 12);
         cylinder(iron[0], {0,.36f,0}, {0,.363f,0}, .244f, 12);
@@ -561,8 +580,97 @@ struct Renderer::Impl
             for (float z : {-.38f,.38f})
                 cylinder(iron[2], {side*.58f,-.48f,z}, {side*.66f,-.48f,z}, .095f, 8);
         }
+        using K = World::FixtureKind;
+        auto parts = [&](K kind) -> std::pair<MeshData&,MeshData&> {
+            return {enamel[size_t(kind)],iron[size_t(kind)]};
+        };
+        auto [slats, legs] = parts(K::bench);
+        for (int n=0; n<4; ++n)
+            box(slats,{0,-.02f,-.18f+n*.12f},{1,.035f,.050f});
+        for (int n=0; n<3; ++n)
+            box(slats,{0,.17f+n*.14f,-.24f},{1,.05f,.03f});
+        for (float x : {-.78f,.78f})
+        {
+            cylinder(legs,{x,-.50f,-.18f},{x,.47f,-.245f},.034f,8);
+            cylinder(legs,{x,-.50f,.19f},{x,-.065f,.15f},.034f,8);
+            box(legs,{x,-.075f,0},{.036f,.032f,.24f});
+        }
+        auto [frame, phone] = parts(K::phoneBooth);
+        box(frame,{0,1.045f,0},{.65f,.105f,.65f});
+        for (float x : {-.56f,.56f})
+        {
+            for (float z : {-.56f,.56f})
+                box(frame,{x,-.10f,z},{.035f,1.05f,.035f});
+            box(frame,{x,-.49f,0},{.025f,.025f,.54f});
+            box(frame,{x,-.79f,0},{.02f,.27f,.54f});
+        }
+        box(frame,{0,-.08f,-.56f},{.55f,1.05f,.025f});
+        box(phone,{0,.15f,-.43f},{.23f,.32f,.12f});
+        box(frame,{.065f,.23f,-.30f},{.075f,.10f,.012f});
+        cylinder(frame,{.055f,.14f,-.301f},{.055f,.14f,-.282f},.08f,12);
+        for (int hole=0; hole<10; ++hole)
+        {
+            float a=float(hole*2*pi/10);
+            float x=.055f+.055f*std::cos(a), y=.14f+.055f*std::sin(a);
+            cylinder(phone,{x,y,-.282f},{x,y,-.278f},.009f,6);
+        }
+        box(frame,{.055f,.36f,-.300f},{.071f,.014f,.012f});
+        cylinder(phone,{-.14f,.10f,-.26f},{-.14f,.42f,-.26f},.042f,8);
+        cylinder(phone,{-.14f,.12f,-.26f},{-.12f,-.24f,-.32f},.011f,6);
+        for (float y : {.10f,.41f})
+            cylinder(phone,{-.14f,y,-.29f},{-.14f,y,-.22f},.062f,8);
+
+        auto [mail,pedestal] = parts(K::mailbox);
+        cylinder(pedestal,{0,-.73f,0},{0,.04f,0},.064f,10);
+        box(mail,{0,.35f,0},{.32f,.38f,.21f});
+        box(pedestal,{0,.54f,.214f},{.23f,.022f,.009f});
+        box(mail,{0,.57f,.229f},{.25f,.014f,.025f});
+        box(pedestal,{0,.23f,.213f},{.108f,.037f,.009f});
+
+        auto [plastic, handles] = parts(K::bag);
+        for (int n=0; n<6; ++n)
+        {
+            float x=-.155f+n*.052f, next=x+.052f;
+            float fold=.03f+.017f*std::sin(n*2.1f), nextFold=.03f+.017f*std::sin((n+1)*2.1f);
+            for (float side : {-1.f,1.f})
+                quad(plastic,{x*.8f,-.17f,side*.03f},{next*.8f,-.17f,side*.03f},
+                     {next,.065f,side*nextFold},{x,.065f,side*fold});
+        }
+        for (float x : {-.076f,.076f})
+            for (int n=0; n<8; ++n)
+            {
+                auto loop=[&](int i){float a=float(pi)*i/8;
+                    return Vec3{x+.045f*std::cos(a),.065f+.105f*std::sin(a),.024f};};
+                cylinder(handles,loop(n),loop(n+1),.007f,5);
+            }
+
+        auto [glass,cap] = parts(K::bottle);
+        cylinder(glass,{-.12f,0,0},{.045f,0,0},.045f,10);
+        cylinder(glass,{.044f,0,0},{.065f,0,0},.035f,10);
+        cylinder(glass,{.064f,0,0},{.12f,0,0},.019f,8);
+        cylinder(cap,{.116f,0,0},{.13f,0,0},.023f,8);
+        auto [paper,band] = parts(K::packet);
+        box(paper,{0,-.002f,0},{.055f,.035f,.085f});
+        box(band,{0,.034f,.04f},{.053f,.003f,.036f});
+        auto [label,alu] = parts(K::can);
+        cylinder(alu,{-.055f,0,0},{.055f,0,0},.034f,10);
+        cylinder(label,{-.041f,0,0},{.041f,0,0},.035f,10);
+        auto [sack,knot] = parts(K::garbageBag);
+        auto ring=[](int n,float y,float r) {
+            float a=float(2*pi)*n/12, pleat=1.f+.065f*std::cos(5*a);
+            return Vec3{r*pleat*std::cos(a),y,r*.84f*pleat*std::sin(a)};
+        };
+        constexpr float ys[]{-.28f,-.21f,-.045f,.11f,.19f,.24f};
+        constexpr float rs[]{.15f,.25f,.265f,.19f,.060f,.035f};
+        for (int n=0; n<12; ++n)
+            for (int j=1; j<6; ++j)
+                quad(sack,ring(n,ys[j-1],rs[j-1]),ring(n,ys[j],rs[j]),
+                     ring(n+1,ys[j],rs[j]),ring(n+1,ys[j-1],rs[j-1]));
+        cylinder(knot,{0,.20f,0},{.053f,.27f,.02f},.026f,7);
+
         for (size_t k=0; k<fixtureModels.size(); ++k)
         {
+            if (k == size_t(K::drinkMachine)) continue; // Uses the textured service cabinet from Content.
             fixtureModels[k][0].upload(enamel[k]);
             fixtureModels[k][1].upload(iron[k]);
         }
@@ -680,7 +788,18 @@ struct Renderer::Impl
             b.surface = 7;
             b.metallic = .15f;
         }
-        if (i >= Sign)
+        if (i == Rust || i == WorkshopSteel)
+        {
+            const int slot = i == Rust ? 8 : 9;
+            b.color = walls[slot];
+            b.normal = normals[slot];
+            b.orm = orm[slot];
+        }
+        if (i == Canvas) b.tint = {.96f,.53f,.20f};
+        if (i == SeaCanvas) b.tint = {.12f,.63f,.66f};
+        if (i == Ballast) { b.tint = {.40f,.36f,.30f}; b.surface = 2; }
+        if (i == StationSign) b.color = stationSign;
+        if (i >= Sign && i < Sign+3)
             b.color = signs[i - Sign];
         return b;
     }
@@ -896,6 +1015,16 @@ struct Renderer::Impl
         TextOutW(uiDC, x, y, s.c_str(), int(s.size()));
         SelectObject(uiDC, old);
     }
+    void menuText(int x, int y, int boxWidth, int boxHeight, const std::wstring &s, COLORREF color, bool title = false)
+    {
+        RECT bounds{x,y,x+boxWidth,y+boxHeight};
+        auto old = SelectObject(uiDC,title ? large : font);
+        SetBkMode(uiDC,TRANSPARENT);
+        SetTextColor(uiDC,color);
+        DrawTextW(uiDC,s.c_str(),int(s.size()),&bounds,DT_SINGLELINE|DT_VCENTER|DT_END_ELLIPSIS|DT_NOPREFIX);
+        hudDamage.touch(x,y,boxWidth,boxHeight);
+        SelectObject(uiDC,old);
+    }
     void rect(int x, int y, int w, int h, COLORREF color)
     {
         RECT r{x, y, x + w, y + h};
@@ -912,6 +1041,7 @@ void Renderer::sceneMode(SceneMode mode)
         impl_->post.releaseTargets();
     impl_->mode = mode;
 }
+void Renderer::graphics(const GraphicsPreferences &settings) { impl_->graphics = settings; }
 void Renderer::profileGpu() { impl_->timer.enable(); }
 std::string Renderer::gpuReport() const { return impl_->timer.report(); }
 std::string Renderer::graphicsInfo() const
@@ -975,9 +1105,9 @@ void Renderer::prepare(const World &world)
     auto &orm = r.orm;
     auto &signs = r.signs;
     auto manifest = nlohmann::json::parse(readText(r.root / "Textures/manifest.json"));
-    for (int i = 0; i < 8; i++)
+    for (size_t i = 0; i < walls.size(); ++i)
     {
-        auto m = manifest[10 + i];
+        const auto &m = manifest[10 + i];
         walls[i] = r.texture(r.root / "Textures" / m.at("color").get<std::string>());
         if (m.contains("normal"))
             normals[i] = r.texture(r.root / "Textures" / m.at("normal").get<std::string>());
@@ -986,6 +1116,7 @@ void Renderer::prepare(const World &world)
     }
     for (int i = 0; i < 3; ++i)
         signs[i] = r.texture(r.root / "Textures" / manifest[4 + i].at("color").get<std::string>());
+    r.stationSign = r.texture(r.root / "Textures/Signs/station.png");
     // Chunk ownership covers the whole island and coast, regardless of grid size.
     double low = -std::ceil(world.landEdge / 144) * 144, high = -low;
     for (double z = low; z < high; z += 144)
@@ -1043,16 +1174,21 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     glDisable(GL_BLEND);
     glDisable(GL_CULL_FACE);
     UseProgram(r.scene);
+    const float range = float(r.graphics.distance);
+    const float detailScale = .5f + .25f * r.graphics.quality;
+    const float nearPlane = std::clamp(view.distance * .01f, .12f, 8.f);
+    const float farPlane = std::max(650.f, range + view.distance + 100.f);
     auto vp =
-        Mat4::perspective(float(pi / 3), float(w) / h, .25f, 1800) * Mat4::lookAt(view.eye, view.target);
+        Mat4::perspective(float(pi / 3), float(w) / h, nearPlane, farPlane) * Mat4::lookAt(view.eye, view.target);
     Vec3 sun{float(std::cos((world.clock.hour - 6) * pi / 12)), float(world.clock.sunHeight()), .3f};
     auto shadow = sunShadow(view.target, sun);
-    if (!view.shadows)
+    if (!view.shadows || r.graphics.quality == 0)
         shadow.strength = 0;
     UniformMatrix4fv(r.uniform("uShadowMatrix"), 1, GL_FALSE, shadow.matrix.m.data());
     Uniform1f(r.uniform("uShadowStrength"), shadow.strength * (1 - rain * .7f));
     Uniform1i(r.uniform("uShadow"), 5);
     r.submittedBatches = r.submittedTriangles = r.submittedDetails = r.shadowBatches = 0;
+    world.fixturesNear({view.eye.x,view.eye.z},145,r.visibleFixtures);
     for (int pass = 0; pass < 2; ++pass)
     {
         bool depthPass = pass == 0;
@@ -1093,24 +1229,24 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         Uniform1i(r.uniform("uBones"), 2);
         Uniform1i(r.uniform("uOrm"), 3);
         Uniform1i(r.uniform("uRug"), 4);
-        Uniform1f(r.uniform("uDetailStart"), buildingDetailStart);
-        Uniform1f(r.uniform("uDetailEnd"), buildingDetailEnd);
+        Uniform1f(r.uniform("uDetailStart"), buildingDetailStart * detailScale);
+        Uniform1f(r.uniform("uDetailEnd"), buildingDetailEnd * detailScale);
         ActiveTexture(TEXTURE0 + 4);
         glBindTexture(GL_TEXTURE_2D, r.rug);
         ActiveTexture(TEXTURE0);
         Uniform1i(r.uniform("uSkin"), 0);
         Uniform1f(r.uniform("uAlpha"), 1);
         Frustum frustum(depthPass ? shadow.matrix : vp);
-        auto visible = [&](Vec3 p, float radius, float range)
+        auto visible = [&](Vec3 p, float radius, float objectRange)
         {
             auto delta = p - view.eye;
-            float length = delta.length();
-            return (depthPass || length < range + radius) && frustum.sphere(p, radius);
+            const float limit = std::min(range,objectRange) + radius;
+            return (depthPass || dot(delta,delta) < limit*limit) && frustum.sphere(p,radius);
         };
         auto drawScenery = [&](const auto &b)
         {
             if ((!depthPass || (!b.detail && b.surface != 4)) &&
-                visible(b.centre, b.radius, b.detail ? buildingDetailEnd : 1000))
+                visible(b.centre, b.radius, b.detail ? buildingDetailEnd * detailScale : range))
             {
                 if (depthPass)
                     ++r.shadowBatches;
@@ -1131,17 +1267,43 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 for (const auto &b : batches)
                     drawScenery(b);
         for (auto &instances : r.fixtureInstances) instances.clear();
-        for (const auto &f : world.fixtures)
+        for (auto id : r.visibleFixtures)
         {
+            const auto &f=world.fixtures[id];
             const auto &body = world.staticBodies[f.body];
             Vec3 at{float(body.p.x),float(body.height),float(body.p.z)};
             const auto delta = at - view.eye;
-            if (dot(delta,delta)>145*145 || !frustum.sphere(at,1.2f)) continue;
+            const float limit = std::min(range, f.kind >= World::FixtureKind::bag ? 38.f : 145.f);
+            if (dot(delta,delta)>limit*limit || !frustum.sphere(at,1.6f)) continue;
             float yaw = -float(body.angle), roll = float(f.tilt);
+            if (f.kind == World::FixtureKind::drinkMachine)
+            {
+                const auto &lods = r.foodModels[1].lods;
+                size_t lod = dot(delta,delta) > 65*65 ? lods.size()-1 : 0;
+                // Imported cabinets stand on a base pivot; roll the wreck around its body centre.
+                auto transform = Mat4::translate(at) * Mat4::yaw(yaw) * Mat4::roll(roll) *
+                                 Mat4::translate({0, -float(f.standingHeight)*.5f, 0});
+                for (const auto &part : lods[lod])
+                {
+                    r.draw(part,transform);
+                    if (depthPass) ++r.shadowBatches;
+                    else { ++r.submittedBatches; r.submittedTriangles += size_t(part.mesh.count)/3; }
+                }
+                continue;
+            }
             r.fixtureInstances[size_t(f.kind)].push_back({at.x,at.y,at.z,1,
                 std::sin(yaw),std::cos(yaw),std::sin(roll),std::cos(roll)});
         }
-        constexpr Vec3 enamel[] = {{.27f,.39f,.30f},{.84f,.17f,.085f},{.92f,.89f,.78f}};
+        struct Finish { Vec3 body, trim; float metal; };
+        static constexpr Finish finishes[] = {
+            {{.27f,.39f,.30f},{.18f,.20f,.18f},.36f}, {{.84f,.17f,.085f},{.18f,.20f,.18f},.36f},
+            {{.92f,.89f,.78f},{.18f,.20f,.18f},.36f}, {{.48f,.30f,.13f},{.15f,.17f,.16f},.03f},
+            {{.26f,.44f,.43f},{.18f,.21f,.20f},.32f}, {{.62f,.24f,.17f},{.55f,.61f,.56f},.24f},
+            {{.15f,.29f,.47f},{.19f,.21f,.23f},.30f}, {{.76f,.76f,.58f},{.73f,.74f,.62f},0},
+            {{.13f,.35f,.19f},{.47f,.42f,.24f},.10f}, {{.77f,.73f,.56f},{.64f,.17f,.11f},0},
+            {{.47f,.20f,.10f},{.65f,.68f,.66f},.62f}, {{.09f,.11f,.10f},{.16f,.17f,.14f},.06f}
+        };
+        static_assert(std::size(finishes)==Impl::fixtureKinds);
         for (size_t kind=0; kind<r.fixtureInstances.size(); ++kind)
         {
             const auto &instances = r.fixtureInstances[kind];
@@ -1150,10 +1312,10 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             {
                 auto &mesh = r.fixtureModels[kind][part];
                 r.setModel(Mat4::identity());
-                r.material(!part && kind==2 ? r.dumpsterTexture : r.white,0,
-                           part ? Vec3{.18f,.20f,.18f} : enamel[kind]);
+                r.material(!part && kind==size_t(World::FixtureKind::dumpster) ? r.dumpsterTexture : r.white,0,
+                           part ? finishes[kind].trim : finishes[kind].body);
                 Uniform1i(r.uniform("uInstanced"),2);
-                Uniform1f(r.uniform("uMetallic"),.36f);
+                Uniform1f(r.uniform("uMetallic"),finishes[kind].metal);
                 mesh.drawInstances(instances);
                 if (depthPass) ++r.shadowBatches;
                 else
@@ -1170,7 +1332,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             auto centre = t.foot + Vec3{0, t.height * .55f, 0};
             // Conservative sphere covers both LODs, the crown and the wind deformation.
             float radius = t.height * .8f, distance = (centre - view.eye).length();
-            if (distance - radius > treeDrawDistance || !frustum.sphere(centre, radius))
+            if (distance - radius > std::min(float(treeDrawDistance), range) || !frustum.sphere(centre, radius))
                 continue;
             float angle = float(t.seed % 1000) * .01f;
             std::array<float, 8> instance{
@@ -1230,7 +1392,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             const auto *crew = c.model == ambulanceModel ? world.ambulanceCall(c.id) : nullptr;
             const bool beacon = crew && crew->stage != World::RescueStage::standby && !c.destroyed;
             float distance = (p - view.eye).length();
-            size_t lod = std::min(model.lods.size() - 1, size_t(distance > 150 ? 2 : distance > 65 ? 1 : 0));
+            size_t lod = std::min(model.lods.size() - 1, size_t(distance > 150 * detailScale ? 2 : distance > 65 * detailScale ? 1 : 0));
             for (int translucent = 0; translucent < (depthPass ? 1 : 2); ++translucent)
             {
                 if (translucent)
@@ -1271,6 +1433,11 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                         auto spin=mainRotor?Mat4::yaw(float(c.wheelTravel)):Mat4::pitch(float(-c.wheelTravel*3));
                         partTransform=transform*Mat4::translate(pivot)*spin*Mat4::translate(pivot*-1.f);
                     }
+                    if (c.paint && !depthPass)
+                    {
+                        Uniform1i(r.uniform("uPaintIndex"), c.paint);
+                        Uniform1i(r.uniform("uPaintMask"), b.paintMask);
+                    }
                     r.draw(b, partTransform, beacon);
                 }
                 if (translucent)
@@ -1279,8 +1446,9 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                     glDisable(GL_BLEND);
                 }
             }
+            if (c.paint && !depthPass) Uniform1i(r.uniform("uPaintIndex"), 0);
         }
-        auto person = [&](const Body &b, int style, double heading, double distance, bool dead, bool player, const Car *cabin=nullptr, WeaponId drawn=WeaponId::none, bool ridingScooter=false, bool courier=false, bool medic=false)
+        auto person = [&](const Body &b, int style, double heading, double distance, bool dead, bool player, const Car *cabin=nullptr, WeaponId drawn=WeaponId::none, bool ridingScooter=false, bool courier=false, bool medic=false, bool officer=false)
         {
             Vec3 p{float(b.p.x), float(b.height - .85), float(b.p.z)};
             if (!visible(p, 2, 130))
@@ -1311,7 +1479,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             else
                 r.setModel(Mat4::translate(p + Vec3{0, dead ? .23f : 0.f, 0}) * Mat4::yaw(motion.heading) *
                            Mat4::pitch(dead ? float(pi * .5) : motion.lean));
-            r.material(r.peopleTexture[k], 0, {1, 1, 1});
+            r.material(r.peopleTexture[k], 0, officer ? Vec3{.58f,.65f,.78f} : Vec3{1,1,1});
             Uniform1i(r.uniform("uSkin"), 1);
             Uniform1f(r.uniform("uPose"), animation.to);
             Uniform1f(r.uniform("uPreviousPose"), animation.from);
@@ -1321,6 +1489,18 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             ActiveTexture(TEXTURE0);
             r.skin[k].draw();
             Uniform1i(r.uniform("uSkin"), 0);
+            if (officer && !dead && !cabin)
+            {
+                auto uniform = Mat4::translate(p) * Mat4::yaw(motion.heading);
+                auto trim = [&](Vec3 at, Vec3 size, Vec3 tint) {
+                    r.setModel(uniform * Mat4::translate(at) * Mat4::scale(size));
+                    r.material(r.white, 0, tint);
+                    r.cube.draw();
+                };
+                trim({0,1.71f,0},{.215f,.075f,.225f},{.11f,.15f,.21f});
+                trim({0,1.69f,.115f},{.16f,.018f,.096f},{.055f,.065f,.075f});
+                trim({.088f,1.35f,.115f},{.034f,.048f,.012f},{.76f,.65f,.32f});
+            }
             if (medic && !dead && !cabin)
             {
                 auto kit = Mat4::translate(p) * Mat4::yaw(motion.heading);
@@ -1370,13 +1550,16 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         };
         for (auto &p : world.people)
             person(p.body, int(p.style), p.heading, p.distance, p.dead, false, p.riding >= 0 ? &world.cars[p.riding] : nullptr, p.aimSeconds > 0 ? p.sidearm : WeaponId::none,
-                   p.ownedScooter >= 0 && world.scooters[p.ownedScooter].rider >= 0, p.courier, world.paramedicCall(int(&p-world.people.data())) != nullptr);
+                   p.ownedScooter >= 0 && world.scooters[p.ownedScooter].rider >= 0, p.courier, world.paramedicCall(int(&p-world.people.data())) != nullptr,
+                   int(&p-world.people.data()) == world.patrol.officer);
         if (world.controlledCar < 0)
         {
             auto gun = world.aiming ? world.inventory.active() : nullptr;
             person(world.player, 0, -world.player.angle, world.playerDistance, false, true,
                    nullptr, gun ? gun->id : WeaponId::none, world.playerScooter >= 0);
         }
+        if (world.transitPassenger())
+            person(world.player, 0, -world.player.angle, 0, false, true, &world.cars[world.controlledCar]);
         for (const auto &s : world.scooters)
         {
             bool fallen = s.rider == Scooter::free;
@@ -1419,13 +1602,20 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         Uniform1i(r.uniform("uSkin"),0);
     } // sun/camera geometry passes
     Frustum effectFrustum(vp);
-    auto visible = [&](Vec3 p, float radius, float range)
-    { return (p - view.eye).length() < range + radius && effectFrustum.sphere(p, radius); };
+    auto visible = [&](Vec3 p, float radius, float objectRange)
+    {
+        const auto delta = p-view.eye;
+        const float limit = std::min(range,objectRange)+radius;
+        return dot(delta,delta)<limit*limit && effectFrustum.sphere(p,radius);
+    };
     for (const auto &site : world.sites)
     {
+        if ((site.entrance - Vec2{view.eye.x,view.eye.z}).length2() > 47*47) continue;
         Vec3 p{float(site.entrance.x),float(world.terrain.height(site.entrance)+.085),float(site.entrance.z)};
         if (!visible(p, 2, 45)) continue;
         Vec3 color = site.kind == ServiceKind::clinic ? Vec3{.16f,.55f,1.f} :
+                     site.kind == ServiceKind::market ? Vec3{.84f,.42f,.92f} :
+                     (world.ownedGarage >= 0 && &site == &world.sites[world.ownedGarage]) ? Vec3{.20f,.95f,.85f} :
                      site.kind == ServiceKind::garage ? Vec3{1.f,.65f,.16f} : Vec3{.3f,.85f,.48f};
         for (int side : {-1,1})
         {
@@ -1444,6 +1634,18 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             r.marker.draw();
         }
     }
+    if (world.job.kind == JobKind::none && world.controlledCar >= 0)
+        for (auto hail : world.hailers)
+        {
+            if (hail.actor < 0 || hail.until <= world.time) continue;
+            const auto &actor = world.people[hail.actor];
+            if (actor.dead || actor.fear > 0 || actor.riding >= 0) continue;
+            Vec3 at{float(actor.body.p.x), float(actor.body.height + 1.45), float(actor.body.p.z)};
+            if (!visible(at, 1, 95)) continue;
+            r.material(r.white, 0, {.36f,.91f,.70f}, .6f);
+            r.setModel(Mat4::translate(at) * Mat4::yaw(float(world.time)));
+            r.marker.draw();
+        }
     if (world.job.kind != JobKind::none && !world.job.escaping())
     {
         auto point = world.jobTarget();
@@ -1491,13 +1693,13 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         if (visible(p, 1, 250))
             r.solid(p, {.12f, .12f, .12f}, {1, .6f, .2f}, 2);
     }
-    r.effects.draw(r.effectShader,world,view,vp);
-    if (post) r.post.present(w,h,day,rain,float(world.clock.sunHeight()));
+    r.effects.draw(r.effectShader,world,view,vp,r.graphics.effects);
+    if (post) r.post.present(w,h,day,rain,float(world.clock.sunHeight()),r.graphics.bloom);
     r.timer.end();
     UseProgram(0);
 }
-void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, bool console,
-                       const std::wstring &command, const std::wstring &message, float progress, bool jobsOpen)
+void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, const GameConsole *console,
+                        const std::wstring &message, const AudioLevels &levels, float progress, bool jobsOpen, const FrontEnd *front)
 {
     auto &r = *impl_;
     glViewport(0,0,w,h);
@@ -1508,27 +1710,40 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         for (int row=y;row<y+height;++row)
             std::fill_n(surface+size_t(row)*w+x,width,uint32_t{});
     });
-    if (menu || progress >= 0)
+    if (progress >= 0)
     {
-        r.rect(0, 0, w, h, RGB(9, 12, 13));
-        r.text(w / 2 - 180, h / 3 - 65, L"PROMZONA", RGB(220, 173, 96), true);
-        r.text(w / 2 - 210, h / 3 + 5, L"Нативная версия C++23 — перенос в работе");
-        if (progress >= 0)
+        const int width = std::min(600,w-32), x=(w-width)/2;
+        r.text(x, h/2-63, L"PROMZONA", RGB(220,173,96), true);
+        r.rect(x, h/2, width, 15, RGB(37,43,40));
+        r.rect(x, h/2, int(width*progress), 15, RGB(113,151,98));
+        r.text(x, h/2+26, L"Подготовка города");
+    }
+    else if (menu && front)
+    {
+        const auto rows = front->rows(world != nullptr,r.graphics,r.mode,levels);
+        MenuLayout layout(w,h,int(rows.size()));
+        const int x=layout.x, y=layout.y, width=layout.width, step=layout.step;
+        const int bottom=y+int(rows.size())*step;
+        const int headingHeight = std::min(y-4,68);
+        r.rect(x-12,y-headingHeight-3,width+24,bottom-y+headingHeight+60,RGB(19,27,26));
+        const wchar_t *heading = front->page == MenuPage::settings ? L"НАСТРОЙКИ" :
+            front->page == MenuPage::home ? L"PROMZONA" : L"ЗАМЕНА СЛОТА";
+        r.menuText(x+10,y-headingHeight,width-20,headingHeight,heading,RGB(231,193,122),width>=450 && headingHeight>=60);
+        for (int i=0;i<int(rows.size());++i)
         {
-            r.rect(w / 2 - 300, h / 2, 600, 22, RGB(37, 43, 40));
-            r.rect(w / 2 - 300, h / 2, int(600 * progress), 22, RGB(113, 151, 98));
-            r.text(w / 2 - 160, h / 2 + 38, L"Подготовка города и ресурсов...");
+            const auto &row=rows[i];
+            const int top=y+i*step;
+            const bool selected=i==front->focus;
+            r.rect(x,top,width,step-2,selected ? RGB(57,66,59) : RGB(27,36,34));
+            if (selected) r.rect(x,top,3,step-2,RGB(231,177,94));
+            const COLORREF ink=row.enabled ? RGB(229,231,212) : RGB(140,146,137);
+            const int column = width*53/100;
+            r.menuText(x+12,top,(row.value.empty()?width:column)-20,step-2,row.label,ink);
+            if (!row.value.empty()) r.menuText(x+column,top,width-column-10,step-2,row.value,ink);
         }
-        else
-        {
-            r.text(w / 2 - 150, h / 2, L"Enter — Новая игра");
-            r.text(w / 2 - 150, h / 2 + 40, L"L — Загрузить сохранение");
-            r.text(w / 2 - 150, h / 2 + 80, world ? L"Esc — Продолжить" : L"Esc — Выход");
-            const wchar_t *label = r.mode==SceneMode::original ? L"Без обработки · 100%" :
-                                   r.mode==SceneMode::enhanced ? L"Сглаживание · 100%" : L"Сглаживание · 75%";
-            r.text(w / 2 - 150, h / 2 + 120, std::wstring(L"F2 — Графика: ") + label);
-            if (world) r.text(w / 2 - 150, h / 2 + 160, L"Q — Выйти из игры");
-        }
+        if (world && front->page == MenuPage::home)
+            r.text(x,bottom+2,L"Автосохранение: слот " + std::to_wstring(front->active),RGB(190,197,177));
+        r.menuText(x+8,bottom+22,width-16,30,L"↑↓ Выбор     ←→ Изменить     Enter ОК     Esc Назад",RGB(190,197,177));
     }
     if (world && !menu && progress < 0)
     {
@@ -1538,10 +1753,11 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         double health = world->controlledCar >= 0 ? world->cars[world->controlledCar].health : world->health;
         r.rect(35, 66, int(230 * clamp(health, 0., 1.)), 12, RGB(117, 182, 103));
         auto weapon = world->inventory.active();
+        constexpr std::array weaponLabels{L"КУЛАКИ", L"ПИСТОЛЕТ", L"АВТОМАТ", L"БАЗУКА", L"ОГНЕМЁТ"};
         r.text(35, 86,
                world->controlledCar>=0 && world->cars[world->controlledCar].kind==11 ? L"ТАНКОВАЯ ПУШКА" :
                world->controlledCar>=0 && world->cars[world->controlledCar].kind==14 ? L"БОРТОВОЙ ПУЛЕМЁТ" :
-               weapon ? std::wstring(weapon->name.begin(), weapon->name.end()) + L"  " +
+               weapon ? std::wstring(weaponLabels[static_cast<size_t>(weapon->id)]) + L"  " +
                             std::to_wstring(world->inventory.ammo(weapon->id))
                       : L"КУЛАКИ");
         r.text(w - 250, 25, std::to_wstring(int(fps)) + L" FPS  /  C++23");
@@ -1550,11 +1766,32 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             r.text(w - 250, 60, L"В РОЗЫСКЕ", RGB(239, 159, 68));
             for (int i = 0; i < world->wantedLevel(); i++)
                 r.rect(w - 250 + i * 30, 90, 24, 10, RGB(228, 121, 44));
+            if (world->patrol.hold > 0)
+            {
+                r.text(w - 250, 108, L"Задержание", RGB(250,199,126));
+                r.rect(w - 250, 139, 174, 5, RGB(51,45,38));
+                double limit = world->controlledCar < 0 ? 1.5 : 2.5;
+                r.rect(w - 250, 139, int(174 * std::min(1.,world->patrol.hold / limit)), 5, RGB(239,159,68));
+            }
         }
         int mx = 22, my = h - 245;
         constexpr int ms = Minimap::size;
         r.rect(mx - 5, my - 5, ms + 10, ms + 10, RGB(17, 28, 26));
         auto focus = world->drone.active ? world->drone.position : world->position();
+        if (world->layout.revision() == CityLayout::districtRevision)
+        {
+            const auto &layout=world->layout;
+            int i=int(std::floor((focus.x-layout.coordinate(0))/layout.spacing));
+            int j=int(std::floor((focus.z-layout.coordinate(0))/layout.spacing));
+            const wchar_t *label=L"ПОБЕРЕЖЬЕ";
+            if (i>=0 && j>=0 && i<layout.nodes()-1 && j<layout.nodes()-1)
+            {
+                constexpr std::array labels{L"МИКРОРАЙОН",L"СТАРЫЕ ДВОРЫ",L"САДОВЫЙ ПОСЁЛОК",
+                    L"ЦЕНТР",L"ГАРАЖНЫЙ КООПЕРАТИВ",L"ПРОМЗОНА"};
+                label=labels[size_t(layout.district(i,j))];
+            }
+            r.text(mx,my-36,label,RGB(225,218,191));
+        }
         r.minimap.copyView(focus, r.mapPixels);
         BITMAPINFO mapInfo{};
         mapInfo.bmiHeader = {sizeof(BITMAPINFOHEADER), ms, -ms, 1, 32, BI_RGB};
@@ -1583,6 +1820,28 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             }
             else r.rect(p.x-1,p.y-1,3,3,pickup.energy ? RGB(184,225,75) : RGB(243,178,68));
         }
+        if (world->job.kind == JobKind::none && world->controlledCar >= 0)
+            for (auto hail : world->hailers)
+            {
+                if (hail.actor < 0 || hail.until <= world->time) continue;
+                const auto &person = world->people[hail.actor];
+                if (person.dead || person.fear > 0 || person.riding >= 0) continue;
+                auto p = map(person.body.p);
+                if (p.x < mx || p.x >= mx+ms || p.y < my || p.y >= my+ms) continue;
+                auto ink = RGB(84,232,179);
+                r.rect(p.x-1,p.y-4,3,2,ink);
+                r.rect(p.x-3,p.y-2,2,3,ink);
+                r.rect(p.x+2,p.y-2,2,3,ink);
+                r.rect(p.x-1,p.y+1,3,2,ink);
+            }
+        if (world->ownedGarage >= 0)
+        {
+            auto door = map(world->sites[world->ownedGarage].entrance);
+            auto ink = RGB(87,237,215);
+            r.rect(door.x-4,door.y-3,9,2,ink);
+            r.rect(door.x-4,door.y-1,2,5,ink);
+            r.rect(door.x+3,door.y-1,2,5,ink);
+        }
         if (world->job.kind != JobKind::none && !world->job.escaping())
         {
             Vec2 d = world->jobTarget() - focus;
@@ -1605,7 +1864,8 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         for (int k=3; k<=8; ++k)
             r.rect(mx+ms/2+int(std::lround(nose.x*k/8))-1,my+ms/2+int(std::lround(nose.z*k/8))-1,
                    3,3,RGB(255,200,90));
-        r.text(mx, my - 30, L"N");
+        r.rect(mx+4, my+4, 18, 23, RGB(20,28,25));
+        r.text(mx+6, my+2, L"N");
         int hour = int(world->clock.hour), minute = int((world->clock.hour - hour) * 60);
         wchar_t time[32];
         swprintf_s(time, L"%02d:%02d", hour, minute);
@@ -1624,6 +1884,21 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             r.rect(w/2-7,h/2,15,1,mint);
             r.rect(w/2,h/2-7,1,15,mint);
         }
+        if (world->transitPassenger())
+        {
+            const auto &car = world->cars[world->controlledCar];
+            const auto &line = world->lines[car.line];
+            const bool stopped = car.dwell > 0;
+            const int stop = stopped ? (car.nextStop + int(line.stops.size()) - 1) % int(line.stops.size()) : car.nextStop;
+            const auto title = (car.kind == 9 ? L"Трамвай №" : L"Троллейбус №") + std::to_wstring(car.line+1);
+            const auto label = world->transitExitRequested ? L"Выход на остановке " :
+                               stopped ? L"Остановка " : L"Следующая остановка ";
+            const auto status = label + std::to_wstring(stop+1);
+            const int left = w/2-174;
+            r.rect(left,22,348,62,RGB(18,33,32));
+            r.text(left+12,26,title,RGB(133,225,208));
+            r.text(left+12,53,status);
+        }
         int hintTop=r.hintBar(controlHints(*world),w,h);
         if (world->energySeconds > 0)
             r.text(35,123,L"Энергия  " + std::to_wstring(int(std::ceil(world->energySeconds))) + L" с",RGB(93,218,226));
@@ -1633,7 +1908,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             auto title = j.kind == JobKind::courier ? L"Передать посылку" :
                          j.kind == JobKind::elimination ? L"Устранить цель" :
                          j.passenger() ? (!j.acquired ? L"Забрать пассажира" : j.kind == JobKind::taxi ? L"Довезти пассажира" : L"В поликлинику") :
-                         j.acquired ? L"В гараж · кузов ≥ 50%" : L"Забрать автомобиль";
+                         j.acquired ? L"Доставить в гараж" : L"Забрать автомобиль";
             std::wstring status=title;
             if (j.peace())
                 status=std::wstring(j.kind==JobKind::leaflets ? L"Листовки" : L"Громкоговоритель")+
@@ -1641,15 +1916,45 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
                     std::to_wstring(int(j.stopped))+(j.kind==JobKind::leaflets ? L"/3 с" : L"/30 с");
             if (j.escaping()) status=L"Скройтесь от преследования";
             else status+=L"   "+std::to_wstring(int((world->jobTarget()-focus).length()))+L" м";
-            r.rect(235,hintTop-42,430,36,RGB(17,26,24));
-            r.text(247,hintTop-38,status, RGB(242,194,98));
+            if (j.series) status = std::to_wstring(world->seriesStage+1) + L"/3   " + status;
+            std::wstring details = L"$" + std::to_wstring(world->expectedPay());
+            int seconds = int(std::ceil(std::max(0., j.deadline - world->time)));
+            if (seconds > 0) details += L"   " + std::to_wstring(seconds/60) + L":" +
+                (seconds%60 < 10 ? L"0" : L"") + std::to_wstring(seconds%60);
+            else details += L"   Опоздание";
+            if (j.kind == JobKind::vehicle)
+                details += L"   Кузов " + std::to_wstring(int(std::round(world->cars[j.actor].health*100))) +
+                           L"%   нужно " + std::to_wstring(int(std::round(world->deliveryHealth()*100))) + L"%";
+            else if (j.passenger() && j.acquired)
+                details += j.ride.scares == 0 ? L"   Пассажир спокоен" : L"   Пассажир испуган";
+            r.rect(235,hintTop-69,435,63,RGB(17,26,24));
+            r.text(247,hintTop-65,status, RGB(242,194,98));
+            r.text(247,hintTop-37,details, RGB(202,218,201));
         }
         if (world->time < world->noticeUntil)
-            r.text(235, hintTop-(world->job.kind!=JobKind::none?77:35), world->notice, RGB(252,206,124));
-        if (jobsOpen)
+            r.text(235, hintTop-(world->job.kind!=JobKind::none?100:35), world->notice, RGB(252,206,124));
+        if (world->openMarket >= 0)
         {
-            int left = std::max(12,w/2-215), top = std::max(15,h/2-175);
-            r.rect(left,top,430,350,RGB(21,30,27));
+            int left = std::max(12,w-430), top = std::max(15,h/2-122);
+            r.rect(left,top,404,244,RGB(24,32,29));
+            r.text(left+20,top+12,L"РЫНОК",RGB(244,192,103));
+            std::array<std::wstring,4> names{
+                world->inventory.owns(WeaponId::pistol) ? L"Пистолетные патроны ×30" : L"Пистолет и 30 патронов",
+                world->inventory.owns(WeaponId::automatic) ? L"Автоматные патроны ×30" : L"Автомат и 30 патронов",
+                L"Таблетки", L"Энергетик"};
+            for (int i=0; i<4; ++i)
+            {
+                int price = world->shopPrice(static_cast<ShopItem>(i));
+                auto color = price > world->money ? RGB(159,148,139) : RGB(232,229,211);
+                r.text(left+20,top+54+34*i,L"[" + std::to_wstring(i+1) + L"]  " + names[i],color);
+                r.text(left+330,top+54+34*i,L"$"+std::to_wstring(price),color);
+            }
+            r.text(left+20,top+201,L"[E] Закрыть",RGB(161,184,165));
+        }
+        else if (jobsOpen)
+        {
+            int left = std::max(12,w/2-254), top = std::max(10,h/2-204);
+            r.rect(left,top,508,408,RGB(21,30,27));
             r.text(left+20,top+12,L"ЗАКАЗЫ",RGB(244,192,103));
             r.text(left+20,top+56,L"[1] Доставить автомобиль");
             r.text(left+20,top+90,L"[2] Устранить цель");
@@ -1658,25 +1963,45 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             r.text(left+20,top+192,L"[5] Рейс с громкоговорителем");
             r.text(left+20,top+226,L"[6] Такси");
             r.text(left+20,top+260,L"[7] Доставить пациента");
-            r.text(left+20,top+302,L"[J] Закрыть",RGB(148,170,151));
+            r.text(left+20,top+294,L"[8] Серия контрактов   " + std::to_wstring(world->seriesStage+1) + L"/3");
+            r.text(left+20,top+336,L"Выполнено " + std::to_wstring(world->jobsCompleted) +
+                   L"   Серий " + std::to_wstring(world->seriesCompleted) +
+                   L"   Заработано $" + std::to_wstring(world->jobEarnings),RGB(182,205,181));
+            r.text(left+20,top+371,L"[J] Закрыть",RGB(148,170,151));
         }
     }
     if (console)
     {
-        r.rect(0, 0, w, 230, RGB(12, 17, 20));
-        r.text(20, 20, L"PROMZONA / native console");
-        r.text(20, 60, L"weapons · health · money N · hour N · rain 0/1 · wanted 0..6 · spawn tank/helicopter/btr · recover");
-        r.text(20, 105, L"> " + command + L"_");
-        r.text(20, 155, message, RGB(224, 172, 91));
+        int height = std::min(290, std::max(135, h/2));
+        r.rect(0, 0, w, height, RGB(12, 20, 20));
+        r.text(16, 8, L"КОНСОЛЬ   ·   help   ·   ↑↓ история   ·   Tab дополнить   ·   PgUp/PgDn журнал", RGB(169,195,178));
+        int y = 44;
+        for (const auto &line : console->visibleLines(size_t((height-89)/24)))
+        {
+            r.text(18,y,line,RGB(224,222,201));
+            y += 24;
+        }
+        auto prompt = console->input();
+        prompt.insert(console->caret(),1,L'│');
+        r.text(16,height-36,L"> " + prompt, RGB(245,196,104));
     }
     else if (!message.empty())
-        r.text(25, 140, message, RGB(224, 172, 91));
+        r.text(25, menu ? h-30 : 140, message, RGB(224, 172, 91));
     GdiFlush(); // Finish drawing into the DIB before OpenGL reads its memory.
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     UseProgram(r.ui);
     ActiveTexture(TEXTURE0);
+    const auto transform = GetUniformLocation(r.ui,"uSample");
+    if (menu && progress < 0)
+    {
+        const float aspect = float(w)/h;
+        Uniform3f(transform,std::min(1.f,aspect/r.menuAspect),std::min(1.f,r.menuAspect/aspect),.7f);
+        glBindTexture(GL_TEXTURE_2D,r.menuArt);
+        r.uiQuad.draw();
+    }
+    Uniform3f(transform,1,1,1);
     glBindTexture(GL_TEXTURE_2D, r.uiTexture);
     r.hudPixelsUploaded = 0;
     glPixelStorei(GL_UNPACK_ROW_LENGTH,w);

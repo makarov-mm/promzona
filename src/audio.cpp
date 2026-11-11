@@ -2,6 +2,20 @@
 #include <fstream>
 namespace pz
 {
+AudioLevels AudioLevels::load(const std::filesystem::path &path)
+{
+    AudioLevels levels;
+    std::ifstream file(path);
+    if (!(file >> levels.master >> levels.radio) || levels.master < 0 || levels.master > 100 ||
+        levels.radio < 0 || levels.radio > 50)
+        return {};
+    return levels;
+}
+bool AudioLevels::save(const std::filesystem::path &path) const
+{
+    std::ofstream file(path);
+    return bool(file << master << ' ' << radio << '\n' << std::flush);
+}
 // Port of CityAudio.Spatial: right on screen is forward cross world-up.
 StereoGain spatialAudio(Vec2 source, Vec2 listener, double heading, double gain)
 {
@@ -78,7 +92,9 @@ void AudioMixer::addClip(std::string name, std::vector<float> samples)
     std::lock_guard lock(mutex_);
     if (clips_.contains(name))
         throw std::invalid_argument("Cannot replace an active audio clip");
-    clips_.emplace(std::move(name), std::move(samples));
+    auto it = clips_.emplace(std::move(name), std::move(samples)).first;
+    if (it->first == "radio0") tracks_[0] = &it->second;
+    if (it->first == "radio1") tracks_[1] = &it->second;
 }
 void AudioMixer::trim()
 {
@@ -96,6 +112,8 @@ void AudioMixer::play(const SoundEvent &event)
     auto clip = clips_.find(event.name);
     if (clip == clips_.end())
         return;
+    if (event.speaker >= 0)
+        std::erase_if(voices_, [&](const Voice &v) { return v.speaker == event.speaker; });
     trim();
     Voice v;
     v.samples = &clip->second;
@@ -132,14 +150,6 @@ void AudioMixer::update(World &world, double cameraHeading)
             if (!v.loop)
                 v.pan = spatialAudio(v.ui ? listener_ : v.source, listener_, heading_, v.gain);
         }
-        std::vector<const Car *> engines;
-        for (auto &c : world.cars)
-            if (!c.destroyed && !c.falling && (c.body.p - listener_).length2() < 55 * 55)
-                engines.push_back(&c);
-        std::ranges::sort(engines, [&](auto a, auto b)
-                          { return (a->body.p - listener_).length2() < (b->body.p - listener_).length2(); });
-        if (engines.size() > 10)
-            engines.resize(10);
         auto loop = [&](int id, std::string_view name, StereoGain pan, double rate)
         {
             auto clip = clips_.find(name);
@@ -161,15 +171,37 @@ void AudioMixer::update(World &world, double cameraHeading)
             voice->rate = rate;
             voice->touched = true;
         };
-        for (auto c : engines)
+        // Keep the nearest motors, but an emergency vehicle can be heard from the next street.
+        std::array<const Car *, 10> engines{};
+        std::array<double, 10> distances{};
+        size_t count = 0;
+        for (const auto &c : world.cars)
         {
-            double gain = world.controlledCar >= 0 && c == &world.cars[world.controlledCar] ? .38 : .24;
-            const auto *medical = c->kind == 4 ? world.ambulanceCall(c->id) : nullptr;
-            if((c->responding && c->kind!=12 && c->kind!=13 && c->kind!=14) ||
-               (medical && medical->stage == World::RescueStage::driving && !medical->braking))
-                loop(0x10000+int(c->id),"siren",spatialAudio(c->body.p, listener_, heading_, .26),1);
-            loop(int(c->id), "engine", spatialAudio(c->body.p, listener_, heading_, gain),
-                 .75 + std::min(1.5, c->body.v.length() * .05));
+            if (c.destroyed || c.falling) continue;
+            double distance = (c.body.p - listener_).length2();
+            if (distance >= 100 * 100) continue;
+            const auto *medical = c.kind == 4 ? world.ambulanceCall(c.id) : nullptr;
+            if ((c.responding && c.kind != 12 && c.kind != 13 && c.kind != 14) ||
+                (medical && medical->stage == World::RescueStage::driving && !medical->braking))
+                loop(0x10000 + int(c.id), "siren", spatialAudio(c.body.p, listener_, heading_, .26), 1);
+            if (distance >= 55 * 55 || (count == engines.size() && distance >= distances.back())) continue;
+            if (count < engines.size()) ++count;
+            size_t at = count - 1;
+            while (at && distance < distances[at - 1])
+            {
+                distances[at] = distances[at - 1];
+                engines[at] = engines[at - 1];
+                --at;
+            }
+            distances[at] = distance;
+            engines[at] = &c;
+        }
+        for (size_t i = 0; i < count; ++i)
+        {
+            const auto &c = *engines[i];
+            double gain = int(c.id) == world.controlledCar ? .38 : .24;
+            loop(int(c.id), "engine", spatialAudio(c.body.p, listener_, heading_, gain),
+                 .75 + std::min(1.5, c.body.v.length() * .05));
         }
         if (world.rain > .01)
             loop(-2, "rain", {float(world.rain * .28), float(world.rain * .28)}, 1);
@@ -181,10 +213,23 @@ void AudioMixer::update(World &world, double cameraHeading)
             play(event);
     world.sounds.clear();
 }
-void AudioMixer::pause(bool paused)
+void AudioMixer::setLevels(AudioLevels levels)
+{
+    std::lock_guard lock(mutex_);
+    levels_.master = std::clamp(levels.master, 0, 100);
+    levels_.radio = std::clamp(levels.radio, 0, 50);
+}
+void AudioMixer::nextTrack()
+{
+    std::lock_guard lock(mutex_);
+    track_ = (track_ + 1) % tracks_.size();
+    trackCursor_ = 0;
+}
+void AudioMixer::pause(bool paused, bool worldPaused)
 {
     std::lock_guard lock(mutex_);
     playing_ = !paused;
+    worldPaused_ = worldPaused;
 }
 void AudioMixer::clear()
 {
@@ -204,23 +249,49 @@ void AudioMixer::mix(std::span<float> stereo)
     std::fill(stereo.begin(), stereo.end(), 0.f);
     if (!playing_)
         return;
-    for (auto &v : voices_)
-        for (size_t k = 0; k < stereo.size(); k += 2)
-        {
-            if (v.cursor >= v.samples->size())
+    if (!worldPaused_)
+    {
+        for (auto &v : voices_)
+            for (size_t k = 0; k < stereo.size(); k += 2)
             {
-                if (!v.loop)
-                    break;
-                v.cursor = std::fmod(v.cursor, double(v.samples->size()));
+                if (v.cursor >= v.samples->size())
+                {
+                    if (!v.loop)
+                        break;
+                    v.cursor = std::fmod(v.cursor, double(v.samples->size()));
+                }
+                auto at = static_cast<size_t>(v.cursor);
+                float s = (*v.samples)[at];
+                stereo[k] += s * v.pan.left;
+                stereo[k + 1] += s * v.pan.right;
+                v.cursor += v.rate;
             }
-            auto at = static_cast<size_t>(v.cursor);
-            float s = (*v.samples)[at];
-            stereo[k] += s * v.pan.left;
-            stereo[k + 1] += s * v.pan.right;
-            v.cursor += v.rate;
+        std::erase_if(voices_, [](auto &v) { return !v.loop && v.cursor >= v.samples->size(); });
+    }
+    if (levels_.radio && (tracks_[0] || tracks_[1]))
+    {
+        size_t frame = 0;
+        while (frame < stereo.size() / 2)
+        {
+            if (!tracks_[track_]) track_ = 1 - track_;
+            const auto &music = *tracks_[track_];
+            size_t n = std::min(music.size() - trackCursor_, stereo.size() / 2 - frame);
+            for (size_t i = 0; i < n; ++i)
+            {
+                float value = music[trackCursor_ + i] * (levels_.radio * .01f);
+                stereo[2 * (frame + i)] += value;
+                stereo[2 * (frame + i) + 1] += value;
+            }
+            frame += n;
+            trackCursor_ += n;
+            if (trackCursor_ == music.size())
+            {
+                track_ = 1 - track_;
+                trackCursor_ = 0;
+            }
         }
-    std::erase_if(voices_, [](auto &v) { return !v.loop && v.cursor >= v.samples->size(); });
+    }
     for (auto &sample : stereo)
-        sample = std::tanh(sample * .65f * .8f);
+        sample = std::tanh(sample * (levels_.master * .008f));
 }
 } // namespace pz

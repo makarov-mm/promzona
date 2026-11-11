@@ -58,7 +58,12 @@ bool World::scenerySolid(Vec2 p, double y, double radius) const
     double ground = terrain.height(p);
     const auto *s = levelAt(p, radius);
     if (!s)
-        return y < ground + radius;
+    {
+        if (y >= ground + radius) return false;
+        if (y >= ground - CityLayout::canalDeckThickness - radius || !layout.bridge(p))
+            return true;
+        return y < terrain.bedHeight(p.x, p.z) + radius;
+    }
     double floor = s->floor(terrain, p);
     bool wall = std::abs(p.z - s->centreZ(p.x)) > RoadLevel::halfWidth - .14 - radius &&
                 std::abs(p.x - s->x) < RoadLevel::length - 3;
@@ -71,11 +76,12 @@ bool World::scenerySolid(Vec2 p, double y, double radius) const
                (s->roof(p.x) && y > floor + RoadLevel::clearance - radius && y < ground + radius);
     return y < ground + radius || (y > floor - .55 - radius && y < floor + radius);
 }
-std::optional<Vec2> World::vehicleExit(const Car &car) const
+std::optional<Vec2> World::vehicleExit(const Car &car, std::optional<Vec2> toward) const
 {
     const double height = car.body.height + .05;
+    const double first = toward && rotate(*toward - car.body.p, -car.body.angle).x < 0 ? -1. : 1.;
     for (double along : {0., -.6, .7, -1.3, 1.3})
-        for (double side : {1., -1.})
+        for (double side : {first, -first})
         {
             Vec2 at = car.body.p + rotate({side * (car.body.halfW + .9), along * car.body.halfH}, car.body.angle);
             auto overlaps = [&](const Body &body) {
@@ -85,7 +91,10 @@ std::optional<Vec2> World::vehicleExit(const Car &car) const
                 return std::abs(d.x) < body.halfW + .35 && std::abs(d.z) < body.halfH + .35;
             };
             if (scenerySolid(at, height, .35) || insideBuilding(at, height, .35) ||
-                std::ranges::any_of(staticBodies, overlaps) ||
+                std::ranges::any_of(staticBodies, [&](const Body &b) {
+                    // Small loose litter can be stepped over when leaving the car.
+                    return b.invMass < 1. && overlaps(b);
+                }) ||
                 std::ranges::any_of(cars,[&](const Car &other){return &other != &car && overlaps(other.body);}) ||
                 std::ranges::any_of(people,[&](const Person &p){return !p.dead && p.riding < 0 && overlaps(p.body);}) ||
                 (controlledCar < 0 && overlaps(player))) continue;

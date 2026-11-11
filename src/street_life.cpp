@@ -16,7 +16,7 @@ void World::generateStreetLife()
         auto &p = people[i];
         p.ownedScooter = -1;
         p.courier = p.inCompany = false;
-        p.watchUntil = p.voiceAt = p.fleeUntil = 0;
+        p.watchUntil = p.voiceAt = p.idleVoiceAt = p.fleeUntil = 0;
         p.deliveryUntil = 0;
         if (p.dead || p.riding >= 0 ||
             ((job.passenger() || job.kind == JobKind::elimination) && job.actor == int(i)))

@@ -3,6 +3,7 @@ in vec2 uv;
 out vec4 color;
 uniform sampler2D sceneImage;
 uniform sampler2D glowImage;
+uniform bool enableBloom;
 uniform vec3 conditions; // daylight, rain, low sun
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
@@ -29,7 +30,7 @@ void main() {
     float warm = conditions.z * (1.0 - conditions.y);
     // Scene is already tone-mapped. Preserve blacks and highlights.
     c += c * (1.0 - c) * (vec3(.07, .005, -.075) * warm + .09 * night + .05 * conditions.y);
-    vec3 halo = texture(glowImage, uv).rgb;
+    vec3 halo = enableBloom ? texture(glowImage, uv).rgb : vec3(0.0);
     c += (1.0 - c) * halo * (.065 + .20 * night + .07 * conditions.y);
     color = vec4(clamp(c,0.,1.), 1);
 }

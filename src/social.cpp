@@ -1,4 +1,5 @@
 #include "promzona/world.hpp"
+#include "promzona/minimap.hpp"
 
 namespace pz
 {
@@ -76,6 +77,24 @@ void World::socialIntent(Person &p, Vec2 &dir, double &speed)
         speed = 0;
         return;
     }
+    bool elder = p.style == 2 || p.style == 8;
+    if (p.inCompany || elder)
+    {
+        bool audible = (position() - p.body.p).length2() < 28 * 28;
+        if (!audible || p.fear > .08 || p.alertUntil > time || p.burnUntil > time || p.watchUntil > time)
+            p.idleVoiceAt = 0;
+        else if (time >= p.idleVoiceAt)
+        {
+            // Use a separate sequence: recording selection must not change city traffic.
+            Random voice(seed ^ (p.body.id * 2654435761u) ^ unsigned(std::fmod(time, 86400.)));
+            if (p.idleVoiceAt > 0 && p.voiceAt <= time && !paramedicCall(int(&p - people.data())))
+            {
+                auto clip = std::string(p.inCompany ? "tough_" : "elder_") + std::to_string(voice.index(6));
+                sounds.push_back({clip, p.body.p, .5, false, int(&p - people.data())});
+            }
+            p.idleVoiceAt = time + 30. + 60. * voice.next();
+        }
+    }
     if (p.fear > .15 && p.fleeUntil > time)
     {
         auto away = p.body.p - p.danger;
@@ -152,7 +171,7 @@ bool World::talk()
         const auto &p = people[i];
         auto delta = p.body.p - player.p;
         double d = delta.length();
-        if (d < .01 || d > nearest || paramedicCall(i) || dot(delta, facing) < d * .35 || p.dead ||
+        if (d < .01 || d > nearest || i == patrol.officer || paramedicCall(i) || dot(delta, facing) < d * .35 || p.dead ||
             p.riding >= 0 || (p.ownedScooter >= 0 && scooters[p.ownedScooter].rider == i) ||
             p.body.roadLevel != player.roadLevel || std::abs(p.body.height - player.height) > .9 ||
             !blastVisible(player.p, player.height, p.body.p, p.body.height))
@@ -166,18 +185,19 @@ bool World::talk()
     auto offer = conversation.actor == actor && time < conversation.offerUntil ? conversation.offer
                                                                                : StreetOffer::none;
     conversation = {actor, time + .5, time + 2.5, time + 4., StreetOffer::none};
-    auto directionTo = [&](ServiceKind kind)
+    auto directionTo = [&](ServiceKind kind, const wchar_t *place)
     {
         int site = nearestSite(kind, p.body.p);
         if (site < 0)
             return std::wstring(L"Не здешний я.");
         Vec2 delta = sites[site].entrance - p.body.p;
         if (delta.length() < 10)
-            return std::wstring(L"Да вот же, рядом.");
-        const wchar_t *way = std::abs(delta.x) > std::abs(delta.z)
-                                 ? (delta.x < 0 ? L"на запад" : L"на восток")
-                                 : (delta.z < 0 ? L"на север" : L"на юг");
-        return std::wstring(kind == ServiceKind::clinic ? L"До поликлиники " : L"До киоска ") +
+            return std::wstring(place) + L"пара шагов.";
+        const Vec2 onMap = Minimap::offset(delta);
+        const wchar_t *way = std::abs(onMap.x) > std::abs(onMap.z)
+                                 ? (onMap.x < 0 ? L"на запад" : L"на восток")
+                                 : (onMap.z < 0 ? L"на север" : L"на юг");
+        return std::wstring(place) +
                std::to_wstring(int(std::round(delta.length() / 10)) * 10) + L" м " + way + L".";
     };
     if (p.fear > .25 || p.burnUntil > time || p.alertUntil > time)
@@ -212,9 +232,11 @@ bool World::talk()
         notify(ill ? L"Брат, отвезёшь в клинику? [F] Согласиться" : L"Таксуешь? Подбросишь? [F] Согласиться");
     }
     else if (p.style == 2 || p.style == 8 || p.health < .7)
-        notify(directionTo(ServiceKind::clinic));
+        notify(directionTo(ServiceKind::clinic, L"До поликлиники "));
+    else if (p.body.id % 5 == 3)
+        notify(directionTo(ServiceKind::market, L"До рынка "));
     else if (p.body.id % 3 == 0)
-        notify(directionTo(ServiceKind::kiosk));
+        notify(directionTo(ServiceKind::kiosk, L"До киоска "));
     else
         notify(p.body.id % 2 ? L"Бомбилы совсем обнаглели — по двадцатке за квартал."
                              : L"Нормально всё. Живём.");

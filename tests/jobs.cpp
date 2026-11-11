@@ -1,4 +1,5 @@
 #include "promzona/world.hpp"
+#include "promzona/game_console.hpp"
 #include "json.hpp"
 #include <iostream>
 #include <fstream>
@@ -87,6 +88,90 @@ void test(World &w)
           "nearest clinic after death");
     check(w.startContract(JobKind::vehicle), "contract for save");
 }
+void shopAndGarage(const std::filesystem::path &path)
+{
+    World w;
+    w.generate(42);
+    const int market = w.nearestSite(ServiceKind::market, {});
+    visit(w, market);
+    w.money = 119;
+    w.inventory.clear();
+    w.interactJob();
+    check(w.openMarket == market, "E opens the counter on foot");
+    check(!w.buyAtMarket(ShopItem::pistol) && w.money == 119, "no charge for a refused purchase");
+    w.money = 600;
+    check(w.buyAtMarket(ShopItem::pistol) && w.money == 480 && w.inventory.ammo(WeaponId::pistol) == 30,
+          "first pistol includes ammunition");
+    for (int i = 0; i < 30; ++i) w.inventory.consume(WeaponId::pistol);
+    check(w.buyAtMarket(ShopItem::pistol) && w.money == 440 && w.inventory.ammo(WeaponId::pistol) == 30,
+          "empty owned pistol receives the ammunition price");
+    check(w.buyAtMarket(ShopItem::automatic) && w.money == 90 && w.inventory.ammo(WeaponId::automatic) == 30,
+          "automatic sold with thirty rounds");
+    w.health = .7;
+    check(w.buyAtMarket(ShopItem::pills) && w.health == 1 && w.money == 65, "pills restore health");
+    check(!w.buyAtMarket(ShopItem::pills) && w.money == 65, "full health does not cost money");
+    check(w.buyAtMarket(ShopItem::energy) && w.energySeconds == 25 && w.money == 50, "energy purchase");
+    check(!w.buyAtMarket(ShopItem::energy) && w.money == 50, "active energy cannot be bought twice");
+    w.player.height += 4;
+    w.servicesStep(.1);
+    check(w.openMarket < 0 && !w.buyAtMarket(ShopItem::energy), "leaving the counter closes the shop");
+
+    const int garage = w.nearestSite(ServiceKind::garage, {});
+    visit(w, garage);
+    w.useOwnedGarage();
+    check(w.ownedGarage < 0 && w.money == 50, "insufficient funds leave ownership unchanged");
+    w.money = 500;
+    w.useOwnedGarage();
+    check(w.ownedGarage == garage && w.money == 100, "garage purchased at its entrance");
+    w.controlledCar = 0;
+    auto &car = w.cars[0];
+    const auto &site = w.sites[garage];
+    car.body.p = site.entrance + (site.entrance - site.centre).unit()*4;
+    car.body.height = w.terrain.height(car.body.p) + .8;
+    car.body.roadLevel = -1;
+    car.health = .5;
+    w.wanted = 2;
+    check(!w.serviceGarage(), "upper street workshop ignores traffic on another level");
+    car.body.roadLevel = 0;
+    car.body.v = {3,0};
+    check(!w.serviceGarage(), "moving vehicle cannot buy service");
+    car.body.v = {};
+    check(w.garageQuote() == 90, "scaled repair and respray have one quote");
+    w.money = 89;
+    w.interactJob();
+    check(car.health == .5 && car.paint == 0 && w.wanted > 0 && w.money == 89, "unpaid repair changes nothing");
+    w.money = 100;
+    w.interactJob();
+    check(car.health == 1 && car.paint > 0 && w.wanted == 0 && w.money == 10, "repair and repaint in game");
+    w.interactJob();
+    check(w.money == 10, "serviced car is not billed again");
+    auto population = w.cars.size();
+    w.useOwnedGarage();
+    check(w.controlledCar < 0 && car.personal && w.ownedVehicleCount() == 1 && w.cars.size() == population,
+          "parking retains the same physical vehicle");
+    w.save(path);
+    World restored;
+    restored.load(path);
+    check(restored.ownedGarage == garage && restored.cars[0].personal && restored.cars[0].paint == car.paint &&
+          restored.cars[0].id == car.id && (restored.cars[0].body.p - car.body.p).length2() < .001 &&
+          restored.money == 10 && restored.inventory.ammo(WeaponId::automatic) == 30,
+          "owned garage, physical car, paint, money and purchases survive load");
+    restored.player.p = {car.body.p.x > 0 ? -400. : 400., 40};
+    restored.player.height = restored.terrain.height(restored.player.p) + .85;
+    for (int frame = 0; frame < 60; ++frame) restored.step({}, 1./60);
+    check((restored.cars[0].body.p - car.body.p).length() < .4, "distant traffic leaves the owned car parked");
+    w.controlledCar = 0;
+    car.personal = false;
+    int count = 0;
+    for (auto &other : w.cars)
+        if (other.id != car.id && other.kind <= 1 && count < World::garageCapacity)
+        {
+            other.personal = true;
+            ++count;
+        }
+    w.useOwnedGarage();
+    check(count == 3 && w.controlledCar == 0 && !car.personal, "fourth car refused without ejecting its driver");
+}
 void peaceContracts(const std::filesystem::path &path)
 {
     World w;
@@ -156,6 +241,97 @@ void peaceContracts(const std::filesystem::path &path)
     tick(.1);
     check(w.money == 800 && w.jobsCompleted == 2, "broadcast payout once");
 }
+void careerSeries(const std::filesystem::path &path)
+{
+    World w;
+    w.generate(17);
+    check(w.startSeries() && w.job.fare == 300 && w.job.deadline == w.time + 600, "start series at first vehicle");
+    w.finishJob(false);
+    check(w.seriesStage == 0 && w.jobEarnings == 0 && w.startSeries(), "failed stage can be replayed");
+    auto deliver = [&](World &city, double health)
+    {
+        city.controlledCar = city.job.actor;
+        auto &car = city.cars.at(city.controlledCar);
+        car.body.p = city.sites.at(city.job.destination).entrance;
+        car.body.height = city.terrain.height(car.body.p) + .8;
+        car.body.v = {};
+        car.health = health;
+        city.servicesStep(1.1);
+    };
+    deliver(w, .49);
+    check(w.job.acquired && w.seriesStage == 0, "damaged car cannot complete first stage");
+    deliver(w, .5);
+    check(w.seriesStage == 1 && w.lastPay == 300 && w.jobEarnings == 300, "first reward credited");
+    check(w.startContract(JobKind::elimination), "ordinary contract remains available");
+    w.killPerson(w.people.at(w.job.actor), {}, true);
+    check(w.seriesStage == 1 && w.jobEarnings == 650, "ordinary contract does not advance series");
+    check(w.startSeries() && w.job.kind == JobKind::elimination && w.job.deadline == w.time + 510, "second stage selected");
+    w.save(path);
+    World resumed;
+    resumed.load(path);
+    check(resumed.job.series && resumed.seriesStage == 1 && resumed.jobEarnings == 650, "active series restored after loading");
+    resumed.killPerson(resumed.people.at(resumed.job.actor), {}, false);
+    check(resumed.seriesStage == 1 && resumed.startSeries(), "third-party kill does not advance stage");
+    resumed.killPerson(resumed.people.at(resumed.job.actor), {}, true);
+    check(resumed.lastPay == 500 && resumed.startSeries() && resumed.job.deadline == resumed.time + 420,
+          "third stage unlocked");
+    deliver(resumed, .69);
+    check(resumed.seriesStage == 2 && resumed.job.acquired, "last vehicle needs seventy percent health");
+    deliver(resumed, .70);
+    check(resumed.lastPay == 1200 && resumed.jobEarnings == 2350 && resumed.seriesStage == 0 &&
+          resumed.seriesCompleted == 1 && resumed.startSeries(), "final bonus paid once and new series available");
+}
+void consoleAndHail(const std::filesystem::path &path)
+{
+    World w;
+    w.generate(17);
+    GameConsole console;
+    for (wchar_t c : std::wstring_view(L"moey 75")) console.insert(c);
+    console.move(-5);
+    console.insert(L'n');
+    console.execute(w, console.submit());
+    check(w.money == 75, "middle-of-command insertion uses caret");
+    for (wchar_t c : std::wstring_view(L"spe")) console.insert(c);
+    console.history(-1);
+    check(console.input() == L"money 75", "up recalls previous command");
+    console.history(1);
+    console.complete();
+    check(console.input() == L"speed ", "down restores draft before completion");
+    console.insert(L'2');
+    console.execute(w, console.submit());
+    console.execute(w, L"speed nan");
+    console.execute(w, L"money 9 extra");
+    check(w.simulationSpeed == 2 && w.money == 75, "invalid command does not mutate world");
+    console.execute(w, L"cycle off");
+    w.inventory.clear();
+    console.execute(w, L"weapon pistol 12");
+    check(w.inventory.ammo(WeaponId::pistol) == 12, "weapon command sets requested ammunition");
+    console.execute(w, L"help");
+    console.scroll(6);
+    check(console.visibleLines(3).size() == 3, "help history scrolls");
+    console.execute(w, L"clear");
+    check(console.visibleLines(3).empty(), "clear resets visible output");
+    auto count = w.people.size();
+    w.updateHailers();
+    int actor = w.hailers.front().actor;
+    check(actor >= 0 && w.waitingForTaxi(actor) && w.people.size() == count, "street hail selects an existing pedestrian");
+    w.save(path);
+    World restored;
+    restored.load(path);
+    check(restored.waitingForTaxi(actor) && !restored.dayNightCycle && restored.simulationSpeed == 2, "street hail and world settings persist");
+    auto &car = restored.cars.at(restored.controlledCar);
+    auto &p = restored.people.at(actor);
+    car.body.angle = 0;
+    car.body.p = p.body.p - Vec2{car.body.halfW + 1.25, 0};
+    car.body.height = p.body.height - .05;
+    car.body.v = {5, 0};
+    check(restored.hailerInReach() < 0, "cannot take a hail at speed");
+    car.body.v = {};
+    check(restored.hailerInReach() == actor, "waiting passenger reachable when parked");
+    restored.interactJob();
+    check(restored.job.actor == actor && restored.job.ride.car == restored.controlledCar &&
+          !restored.waitingForTaxi(actor), "E accepts hail and begins normal boarding");
+}
 void passengerContracts(const std::filesystem::path &path)
 {
     World w;
@@ -199,6 +375,38 @@ void passengerContracts(const std::filesystem::path &path)
         if (kind == JobKind::patient) check(rider.health == 1, "clinic treats delivered patient");
     }
     board(JobKind::taxi);
+    auto &taxi = w.cars.at(w.controlledCar);
+    const int originalPay = w.expectedPay();
+    taxi.health -= .13;
+    w.servicesStep(.01);
+    check(w.job.ride.scares == 1 && w.expectedPay() < originalPay, "collision reduces expected fare");
+    w.addCrime(.1);
+    w.addCrime(.1);
+    check(w.job.ride.scares == 2, "same event does not double-charge passenger");
+    w.time = w.job.deadline + 1;
+    check(w.expectedPay() <= originalPay / 4 + 3, "late and frightened passenger pays less");
+    w.save(path);
+    World resumed;
+    resumed.load(path);
+    check(resumed.job.ride.scares == 2 && resumed.expectedPay() == w.expectedPay(), "adjusted fare survives reload");
+    nlohmann::json old;
+    { std::ifstream in(path); in >> old; }
+    for (auto key : {"hailers","nextHail","seriesStage","seriesCompleted","jobEarnings","dayNightCycle","simulationSpeed"})
+        old.erase(key);
+    for (auto key : {"healthAtLastScare","crimeAt","scares"}) old["job"]["ride"].erase(key);
+    { std::ofstream out(path); out << old; }
+    resumed.load(path);
+    resumed.servicesStep(.01);
+    check(resumed.job.acquired && resumed.job.ride.scares == 0 && resumed.job.fare == w.job.fare &&
+          resumed.seriesStage == 0 && resumed.dayNightCycle && resumed.simulationSpeed == 1,
+          "older mid-trip save retains the fare and starts tracking damage at its actual vehicle health");
+    taxi.body.v = {3, 0};
+    w.interactJob();
+    check(w.job.acquired, "cannot eject passenger while moving");
+    taxi.body.v = {};
+    w.interactJob();
+    check(w.job.kind == JobKind::none && w.jobsFailed == 1 && w.jobEarnings == 0, "early drop-off has no fare");
+    board(JobKind::taxi);
     int passenger = w.job.actor;
     w.controlledCar = -1;
     w.servicesStep(5);
@@ -215,6 +423,9 @@ int main()
                  std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
     try
     {
+        careerSeries(path);
+        consoleAndHail(path);
+        shopAndGarage(path);
         peaceContracts(path);
         passengerContracts(path);
         World w;
@@ -246,6 +457,8 @@ int main()
         }
         auto old = j;
         old["format"] = "promzona-cpp-5";
+        old.erase("ownedGarage");
+        for (auto &c : old["cars"]) { c.erase("paint"); c.erase("personal"); }
         for (auto &p : old["people"]) p.erase("defence");
         auto &pickups = old["pickups"];
         auto first = std::remove_if(pickups.begin(), pickups.end(),

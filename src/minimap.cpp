@@ -34,6 +34,31 @@ void Minimap::rebuild(const World &world)
             double x = layout.coordinate(col) + layout.spacing / 2;
             box({x - layout.bankHalf(), -beach}, {x + layout.bankHalf(), beach}, water);
         }
+    if (layout.revision() == CityLayout::districtRevision)
+    {
+        // Only the coastal strip needs terrain sampling. Use the same water datum as the mesh.
+        const int inner = int(std::floor(city * scale));
+        for (int row = 0; row < stride_; ++row)
+        {
+            const double z = (extent_ - row) / scale;
+            auto paintShore = [&](int first, int last)
+            {
+                for (int col = first; col < last; ++col)
+                {
+                    const double x = (extent_ - col) / scale;
+                    atlas_[size_t(row) * stride_ + col] =
+                        world.terrain.bedHeight(x, z) > CityLayout::waterLevel ? 0xab976c : water;
+                }
+            };
+            if (std::abs(row - extent_) > inner)
+                paintShore(0, stride_);
+            else
+            {
+                paintShore(0, extent_ - inner);
+                paintShore(extent_ + inner + 1, stride_);
+            }
+        }
+    }
     for (int j = 0; j < layout.nodes(); ++j)
         for (int i = 0; i < layout.nodes(); ++i)
         {
@@ -44,13 +69,29 @@ void Minimap::rebuild(const World &world)
             if (layout.road(i, j, 1))
                 box(p - Vec2{h, h}, p + Vec2{layout.spacing + h, h}, 0x5c5e58);
         }
+    if (layout.revision() == CityLayout::districtRevision)
+        box({layout.railStart(), layout.railZ() - 1}, {layout.railEnd(), layout.railZ() + 1}, 0x786a54);
     for (const auto &b : world.buildings)
-        box(b.p - b.half, b.p + b.half, 0xa1a087);
+    {
+        auto color = b.kind == BuildingKind::apartment ? 0xa1a087
+                     : b.kind == BuildingKind::cottage ? 0xa99177
+                     : b.kind == BuildingKind::garage  ? 0x85877a
+                                                       : 0x928071;
+        box(b.p - b.half, b.p + b.half, color);
+    }
     for (const auto &level : world.roadLevels)
         for (int k = 0; k <= 2 * RoadLevel::length; ++k)
         {
             double x = level.x - RoadLevel::length + k, z = level.centreZ(x);
             box({x, z - 2.8}, {x + 1, z + 2.8}, level.tunnel ? 0x778792 : 0xb1a887);
+        }
+    for (const auto &line : world.lines)
+        for (int stop = 0; stop < int(line.stops.size()); ++stop)
+        {
+            auto p = line.curb(stop);
+            int x = coordinate(p.x), z = coordinate(p.z);
+            rect(x-2,z-2,x+2,z+2,0x2d575d);
+            rect(x-1,z-1,x+1,z+1,0x8ce1d3);
         }
     for (const auto &s : world.sites)
     {
@@ -61,7 +102,7 @@ void Minimap::rebuild(const World &world)
             rect(x - 1, y - 3, x + 1, y + 3, 0x78cdf9);
         }
         else
-            rect(x - 1, y - 1, x + 1, y + 1, s.food() ? 0x6ed386 : 0xc29851);
+            rect(x - 1, y - 1, x + 1, y + 1, s.kind == ServiceKind::market ? 0xc987d8 : s.food() ? 0x6ed386 : 0xc29851);
     }
 }
 

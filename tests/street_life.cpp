@@ -118,12 +118,28 @@ void voiceTest()
     World w;
     w.controlledCar = -1;
     w.people.emplace_back();
+    auto &elder = w.people.front();
+    elder.style = 2;
+    Vec2 dir{0,1};
+    double speed = 1.;
+    w.socialIntent(elder, dir, speed);
+    check(elder.idleVoiceAt >= 30. && w.sounds.empty(), "pedestrians wait before speaking");
+    w.time = elder.idleVoiceAt + .1;
+    w.socialIntent(elder, dir, speed);
+    check(w.sounds.size() == 1 && w.sounds.back().name.starts_with("elder_") &&
+          w.sounds.back().speaker == 0, "nearby pensioner speaks from their own position");
+    w.scarePerson(elder, {}, 2.);
+    check(w.sounds.size() == 2 && w.sounds.back().name.starts_with("fear_"),
+          "a startle can immediately interrupt an idle line");
+    w.sounds.clear();
     AudioMixer audio;
     audio.addClip("voice", std::vector<float>(64, .5f));
     audio.addClip("impact", std::vector<float>(64, .3f));
     w.sounds.push_back({"voice", {}, 1, false, 0});
     audio.update(w, 0);
     check(audio.voiceCount() == 1, "speaker did not start talking");
+    audio.play({"voice", {}, 1, false, 0});
+    check(audio.voiceCount() == 1, "a second line replaces the same speaker's first line");
     w.people[0].dead = true;
     w.sounds.push_back({"voice", {}, 1, false, 0});
     w.sounds.push_back({"impact", {}, 1});
@@ -228,6 +244,20 @@ void conversationTest()
     check(w.talk() && w.money == 3 && w.sounds.back().name == "spend", "gift did not debit once");
     w.time += 1;
     p.style = 0;
+    const auto originalId = p.body.id;
+    p.body.id = 3;
+    int market = w.nearestSite(ServiceKind::market, p.body.p);
+    check(market >= 0, "no market for the local to point to");
+    auto &entrance = w.sites[market].entrance;
+    const auto originalEntrance = entrance;
+    entrance = p.body.p + Vec2{0, 15};
+    check(w.talk() && w.notice == L"До рынка 20 м на север.", "market directions disagree with map north");
+    w.time += 1;
+    entrance = p.body.p + Vec2{-15, 0};
+    check(w.talk() && w.notice == L"До рынка 20 м на восток.", "market directions disagree with map east");
+    entrance = originalEntrance;
+    p.body.id = originalId;
+    w.time += 1;
     check(w.talk() && w.conversation.offer == World::StreetOffer::taxi, "walk-up taxi offer missing");
     w.time += 1;
     check(w.talk() && w.job.kind == JobKind::taxi && w.job.actor == who,

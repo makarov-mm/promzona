@@ -5,6 +5,7 @@ flat in vec4 vDetail;
 out vec4 fragColor;
 uniform sampler2D uColor, uNormal, uOrm, uRug;
 uniform int uHasNormal, uHasOrm, uSkin, uSurface, uDetail;
+uniform int uPaintIndex, uPaintMask;
 uniform vec3 uEye, uSun, uFog, uTint;
 uniform float uDay, uRain, uEmissive, uAlpha, uTime, uHour;
 uniform float uRoughness, uMetallic, uDetailStart, uDetailEnd;
@@ -184,12 +185,25 @@ void main() {
         float seam = max(smoothstep(.48-width.x,.5,grid.x),smoothstep(.48-width.y,.5,grid.y));
         tex.rgb *= 1.0-.2*seam;
     }
-    if (uSurface == 5) tex.rgb *= .93+.07*grain*fade;
+    if (uSurface == 5) {
+        float dry = smoothstep(-2.77,-1.65,vWorld.y);
+        float ripples = sin(vWorld.z*6.8+vWorld.x*.9+sin(vWorld.x*.7)*.9);
+        tex.rgb *= mix(.65,1.,dry)*(.95+.05*grain*fade+.035*ripples*(1.-dry));
+    }
     if (uSurface == 7) {
         float phase = (abs(n.x)>.5 ? vWorld.z : vWorld.x)*25.0;
         tex.rgb *= .9+.1*sin(phase)*(1.0-smoothstep(1.0,PI,fwidth(phase)));
     }
-    if (uSurface == 4) n = normalize(vec3(.035*cos(vWorld.x*1.7+vWorld.z*.7+uTime*.8),1,.045*sin(vWorld.z*1.1-vWorld.x*.3+uTime*.65)));
+    if (uSurface == 4) {
+        vec2 p = vWorld.xz;
+        float swell = dot(p, vec2(.33, .19)) + .72*sin(p.y*.08) + uTime*.63;
+        float chop = dot(p, vec2(-.57, .93)) + .8*sin(p.x*.14) - uTime*.91;
+        float ripple = dot(p, vec2(1.45, .39)) + .54*sin(p.y*.32) + uTime*1.32;
+        vec3 phases = vec3(swell, chop, ripple);
+        vec3 waves = cos(phases) * (1.-smoothstep(vec3(.55), vec3(PI), fwidth(phases)));
+        vec2 slope = waves.x*vec2(.024,.014) + waves.y*vec2(-.011,.019) + waves.z*vec2(.016,.004);
+        n = normalize(vec3(slope.x, 1., slope.y));
+    }
     if (uHasNormal != 0) {
         // Cotangent frame handles mirrored UVs and both orientations of a facade.
         vec3 q1 = dFdx(vWorld), q2 = dFdy(vWorld);
@@ -199,7 +213,18 @@ void main() {
         float scale = inversesqrt(max(max(dot(t,t),dot(b,b)),1e-12));
         n = normalize(mat3(t*scale,b*scale,n)*(texture(uNormal,vUv).xyz*2.0-1.0));
     }
-    vec3 albedo = pow(max(tex.rgb*uTint,vec3(.001)),vec3(2.2));
+    vec3 baseColor = tex.rgb*uTint;
+    if (uPaintIndex > 0 && (vehicleMaterial == 1 || uPaintMask > 0)) {
+        const vec3 colors[12] = vec3[12](
+            vec3(.19,.49,.55),vec3(.66,.22,.16),vec3(.40,.48,.25),vec3(.83,.72,.47),
+            vec3(.28,.38,.66),vec3(.72,.71,.65),vec3(.48,.18,.29),vec3(.22,.40,.32),
+            vec3(.78,.47,.22),vec3(.34,.32,.48),vec3(.48,.59,.66),vec3(.28,.26,.24));
+        float lightness = dot(baseColor,vec3(.2126,.7152,.0722));
+        float chroma = max(max(baseColor.r,baseColor.g),baseColor.b)-min(min(baseColor.r,baseColor.g),baseColor.b);
+        float coverage = uPaintMask == 2 ? smoothstep(.025,.14,chroma)*smoothstep(.055,.19,lightness) : 1.;
+        baseColor = mix(baseColor,colors[uPaintIndex-1]*(.50+.75*lightness),coverage);
+    }
+    vec3 albedo = pow(max(baseColor,vec3(.001)),vec3(2.2));
     vec3 orm = uHasOrm != 0 ? texture(uOrm,vUv).rgb : vec3(1,uRoughness,uMetallic);
     float ao = clamp(orm.r,.15,1), metal = clamp(orm.b,0,1);
     float rough = mix(clamp(orm.g,.08,1),.24,uRain*max(n.y,0));

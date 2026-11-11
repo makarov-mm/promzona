@@ -7,13 +7,17 @@ void World::generateServices()
 {
     sites.clear();
     job = {};
-    jobsCompleted = jobsFailed = lastPay = 0;
+    jobsCompleted = jobsFailed = lastPay = seriesStage = seriesCompleted = 0;
+    jobEarnings = 0;
+    hailers = {};
+    nextHail = 0;
     energySeconds = clinicCredit = purchaseAt = noticeUntil = 0;
     notice.clear();
     for (int j = 1; j < nodes - 2; ++j)
         for (int i = 1; i < nodes - 2; ++i)
         {
             Vec2 block = nodePoint(i + j * nodes) + Vec2{18, 18};
+            if (layout.station(i, j)) stationEntrance = block + Vec2{0, 9.25};
             if (layout.clinic(i, j))
             {
                 auto building = std::ranges::find_if(
@@ -123,6 +127,7 @@ int World::counterInReach(bool parkedAllowed) const
 
 bool World::buyFood()
 {
+    if (transitPassenger()) return false;
     int site = counterInReach(false);
     if (site < 0)
         return false;
@@ -144,16 +149,9 @@ bool World::buyFood()
     return true;
 }
 
-void World::clinicRespawn(Vec2 fallen)
+std::optional<Vec2> World::clearEntrance(Vec2 door) const
 {
-    conversation = {};
-    releaseScooter(playerScooter, {});
-    if (drone.active)
-        stopDrone(L"Связь с дроном прервана", 20);
-    int index = nearestSite(ServiceKind::clinic, fallen);
-    player.p = index < 0 ? Vec2{7, 7} : sites[index].entrance;
     // Leave room for a passer-by or a car parked across the doorway.
-    Vec2 door = player.p;
     for (int n = 0; n < 25; ++n)
     {
         Vec2 p = door + Vec2{((n + 2) % 5 - 2) * .65, (n / 5) * .50};
@@ -169,10 +167,22 @@ void World::clinicRespawn(Vec2 fallen)
             !std::ranges::any_of(cars, [&](const Car &c) { return occupied(c.body); }) &&
             !std::ranges::any_of(people, [&](const Person &q) { return !q.dead && occupied(q.body); }))
         {
-            player.p = p;
-            break;
+            return p;
         }
     }
+    return std::nullopt;
+}
+
+void World::clinicRespawn(Vec2 fallen)
+{
+    conversation = {};
+    openMarket = -1;
+    releaseScooter(playerScooter, {});
+    if (drone.active)
+        stopDrone(L"Связь с дроном прервана", 20);
+    int index = nearestSite(ServiceKind::clinic, fallen);
+    player.p = index < 0 ? Vec2{7, 7} : sites[index].entrance;
+    player.p = clearEntrance(player.p).value_or(player.p);
     player.v = {};
     player.w = 0;
     player.wake();
@@ -187,9 +197,24 @@ void World::clinicRespawn(Vec2 fallen)
 
 void World::interactJob()
 {
+    if (transitPassenger()) return;
     if (drone.active || health <= 0) return;
-    if (job.passenger()) { interactPassengerJob(); return; }
+    if (openMarket >= 0) { openMarket = -1; return; }
+    if (int market = marketInReach(); market >= 0) { openMarket = market; return; }
+    if (job.passenger() && (job.acquired || (position() - jobTarget()).length2() <= 100))
+    {
+        interactPassengerJob();
+        return;
+    }
     if (job.peace()) { interactPeaceJob(); return; }
+    if (int actor = hailerInReach(); actor >= 0 &&
+        startPassengerJob(people[actor].health <= .7 ? JobKind::patient : JobKind::taxi, actor))
+    {
+        interactPassengerJob();
+        return;
+    }
+    if (serviceGarage()) return;
+    if (job.passenger()) { interactPassengerJob(); return; }
     int source = counterInReach(true);
     if (source < 0)
         return;
@@ -218,6 +243,26 @@ void World::interactJob()
     notify(L"Посылка получена. Адрес отмечен на карте");
 }
 
+bool World::startSeries()
+{
+    if (!startContract(seriesStage == 1 ? JobKind::elimination : JobKind::vehicle))
+        return false;
+    job.series = true;
+    job.fare = 300 + seriesStage * 200;
+    job.deadline = time + 600 - seriesStage * 90;
+    return true;
+}
+
+int World::expectedPay() const
+{
+    if (job.kind == JobKind::none) return 0;
+    if (job.kind != JobKind::courier && !job.passenger())
+        return job.fare + (job.series && seriesStage == 2 ? 500 : 0);
+    const bool late = time > job.deadline && (!job.passenger() || job.acquired);
+    const double comfort = std::max(.30, 1. - .25 * job.ride.scares);
+    return std::max(5, 5 * int(std::round(job.fare * (late ? .5 : 1.) * comfort / 5.)));
+}
+
 bool World::startContract(JobKind kind)
 {
     if (job.kind != JobKind::none)
@@ -236,7 +281,7 @@ bool World::startContract(JobKind kind)
         {
             auto &c = cars[i];
             double score = std::abs((c.body.p - position()).length() - 130);
-            if (i != controlledCar && c.kind == 0 && !c.destroyed && !c.falling && !c.fireTime &&
+            if (i != controlledCar && !c.personal && !c.responding && c.line < 0 && c.kind <= 2 && !c.destroyed && !c.falling && !c.fireTime &&
                 !c.body.roadLevel && c.health >= .75 && score < best)
             {
                 best = score;
@@ -264,8 +309,8 @@ bool World::startContract(JobKind kind)
         for (int i = 0; i < int(people.size()); ++i)
         {
             auto &p = people[i];
-            double score = std::abs((p.body.p - position()).length() - 150);
-            if (!p.dead && p.riding < 0 && !p.body.roadLevel && score < best)
+            double score = std::abs((p.body.p - position()).length() - 150) + (p.sidearm == WeaponId::none ? 100 : 0);
+            if (i != patrol.officer && !paramedicCall(i) && !p.dead && !p.courier && p.ownedScooter < 0 && p.riding < 0 && !p.body.roadLevel && score < best)
             {
                 actor = i;
                 best = score;
@@ -301,9 +346,13 @@ void World::finishJob(bool success)
     const Job finished = job;
     if (success)
     {
-        lastPay = job.fare;
-        if ((job.kind == JobKind::courier || job.passenger()) && time > job.deadline)
-            lastPay = std::max(5, 5 * int(std::round(lastPay / 10.)));
+        lastPay = expectedPay();
+        jobEarnings += lastPay;
+        if (job.series && ++seriesStage == 3)
+        {
+            seriesStage = 0;
+            ++seriesCompleted;
+        }
         money = std::min(999999999, money + lastPay);
         ++jobsCompleted;
         notify(L"Заказ выполнен  +$" + std::to_wstring(lastPay));
@@ -320,6 +369,8 @@ void World::finishJob(bool success)
 
 void World::servicesStep(double dt)
 {
+    updateHailers();
+    if (openMarket >= 0 && marketInReach() != openMarket) openMarket = -1;
     energySeconds = std::max(0., energySeconds - dt);
     if (controlledCar < 0 && !player.roadLevel && health < 1)
     {
@@ -367,7 +418,7 @@ void World::servicesStep(double dt)
     }
     if (controlledCar == job.actor)
         job.acquired = true;
-    bool delivered = controlledCar == job.actor && c.health >= .5 && !c.fireTime && !c.body.roadLevel &&
+    bool delivered = controlledCar == job.actor && c.health >= deliveryHealth() && !c.fireTime && !c.body.roadLevel &&
                      c.grounded() && c.body.v.length() < .8 &&
                      (position() - sites[job.destination].entrance).length() < 10;
     job.stopped = delivered ? job.stopped + dt : 0;
@@ -379,6 +430,8 @@ bool World::validJob() const
 {
     if (job.fare < 0 || job.fare > 100000 || job.stopped < 0 || job.deadline < 0)
         return false;
+    if (job.series && job.kind != (seriesStage == 1 ? JobKind::elimination : JobKind::vehicle))
+        return false;
     auto site = [&](int i) { return i >= 0 && i < int(sites.size()); };
     switch (job.kind)
     {
@@ -388,7 +441,8 @@ bool World::validJob() const
     case JobKind::patient:
         if (job.actor < 0 || job.actor >= int(people.size()) || job.ride.car < -1 ||
             job.ride.car >= int(cars.size()) || (job.acquired && job.ride.car < 0) ||
-            job.ride.away < 0 || job.ride.boardBy < 0) return false;
+            job.ride.away < 0 || job.ride.boardBy < 0 || job.ride.scares < 0 || job.ride.scares > 3 ||
+            !(job.ride.healthAtLastScare >= 0 && job.ride.healthAtLastScare <= 1) || !std::isfinite(job.ride.crimeAt)) return false;
         if (job.ride.car >= 0 && (cars[job.ride.car].responding || cars[job.ride.car].line >= 0 ||
             cars[job.ride.car].kind > 2)) return false;
         if (job.kind == JobKind::patient)

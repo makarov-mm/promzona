@@ -92,7 +92,19 @@ AttackHit World::traceAttack(Vec2 from, Vec2 dir, double y, double slope, double
                              bool includePlayer, const Person *shooter) const
 {
     AttackHit hit{HitKind::none, -1, range};
-    for (double at = .25; at <= range; at += .25)
+    // The visible water is a horizontal plane clipped by the bed. A nearer deck,
+    // bank, vehicle or person still wins the same closest-hit test.
+    if (slope < 0 && y >= CityLayout::waterLevel)
+    {
+        double at = (CityLayout::waterLevel - y) / slope;
+        if (at <= range)
+        {
+            Vec2 point = from + dir * at;
+            if (terrain.bedHeight(point.x, point.z) < CityLayout::waterLevel)
+                hit = {HitKind::water, -1, at};
+        }
+    }
+    for (double at = .25; at <= hit.distance; at += .25)
         if (scenerySolid(from + dir * at, y + slope * at, .03))
         {
             hit = {HitKind::scenery, -1, at};
@@ -148,6 +160,13 @@ void World::addCrime(double severity)
 {
     if (!std::isfinite(severity) || severity <= 0 || health <= 0)
         return;
+    if (job.passenger() && job.acquired && job.ride.car == controlledCar &&
+        job.ride.scares < 3 && time - job.ride.crimeAt > .01)
+    {
+        ++job.ride.scares;
+        job.ride.crimeAt = time;
+        notify(L"Пассажир испуган. Оплата снижена");
+    }
     wanted = wantedFromPoints(wantedPoints(wanted) + severity);
     wantedCooldown = 8;
 }
@@ -178,6 +197,7 @@ void World::killPerson(Person &p, Vec2 velocity, bool playerCaused)
     if (p.ownedScooter >= 0 && scooters[p.ownedScooter].rider >= 0)
         releaseScooter(p.ownedScooter, velocity);
     p.riding = -1;
+    p.waitingLine = p.waitingStop = -1;
     p.dead = true;
     addMark({p.body.p, p.body.p, time, 85., p.body.roadLevel, MarkKind::blood});
     p.rescueAfter = time + 7.;
@@ -228,7 +248,7 @@ void World::vehicleImpact(Car &c, double hit)
         return;
     c.impactCooldown = .4;
     sounds.push_back({"impact", c.body.p, std::min(1., hit / 10)});
-    if (controlledCar >= 0 && &c == &cars[controlledCar] && hit > 2.5)
+    if (controlledCar >= 0 && !transitPassenger() && &c == &cars[controlledCar] && hit > 2.5)
         reportCrime(std::min(.3, hit * .018));
     damageCar(c, hit * .025);
     c.verticalVelocity = std::max(c.verticalVelocity, hit > 6 ? std::min(2.8, (hit - 6) * .14) : 0.);
@@ -327,7 +347,7 @@ void World::shoot(double heading, double pitch)
 {
     if (shotCooldown > 0 || health <= 0)
         return;
-    if (controlledCar >= 0 && cars[controlledCar].destroyed) return;
+    if (transitPassenger() || (controlledCar >= 0 && cars[controlledCar].destroyed)) return;
     bool mounted = controlledCar >= 0 && cars[controlledCar].mountedGun();
     bool cannon = mounted && cars[controlledCar].kind == 11;
     auto w = mounted ? weapon(cannon ? WeaponId::bazooka : WeaponId::automatic) : inventory.active();
@@ -353,7 +373,10 @@ void World::shoot(double heading, double pitch)
         double muzzle = controlledCar >= 0 ? cars[controlledCar].body.halfH + .3 : .8;
         auto hit = traceAttack(start, dir, y, slope, muzzle, controlledCar);
         if (hit.kind != HitKind::none)
+        {
+            if (hit.kind == HitKind::water) splash(start + dir * hit.distance, 2.);
             explode(start + dir * std::max(0., hit.distance - .18), y + hit.distance * slope, 1, false, true);
+        }
         else
         {
             if (rockets.size() >= 16)
@@ -363,6 +386,8 @@ void World::shoot(double heading, double pitch)
         return;
     }
     auto hit = traceAttack(start, dir, y, slope, w ? w->range : 1.55, controlledCar);
+    if (w && hit.kind == HitKind::water)
+        splash(start + dir * hit.distance, mounted ? .75 : .35);
     for (int i = 1; w && i < std::min(80, int(hit.distance * 2)); i++)
         particles.push_back(
             {{float(start.x + dir.x * i * .5), float(y + slope * i * .5), float(start.z + dir.z * i * .5)},
@@ -448,8 +473,9 @@ void World::combatStep(double dt)
             double step = std::min({.5, remaining, weapon(WeaponId::bazooka)->range - r.travel});
             auto hit =
                 traceAttack(r.p, r.direction, r.height, r.slope, step + .001, r.travel < 5 ? r.ownerCar : -1);
-            if (hit.distance < step)
+            if (hit.kind != HitKind::none && hit.distance <= step)
             {
+                if (hit.kind == HitKind::water) splash(r.p + r.direction * hit.distance, 2.);
                 r.p += r.direction * (hit.distance - .18);
                 r.height += r.slope * hit.distance;
                 impact = true;
@@ -485,7 +511,7 @@ void World::combatStep(double dt)
         if (c.fireTime <= 0)
             continue;
         c.fireTime += dt;
-        if (controlledCar >= 0 && &c == &cars[controlledCar])
+        if (controlledCar >= 0 && !transitPassenger() && &c == &cars[controlledCar])
         {
             if (time - c.lastDamageAt > 4 && c.body.v.length() > 2 && c.grounded())
                 c.safeDrivingTime += dt;

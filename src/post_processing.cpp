@@ -19,6 +19,7 @@ void PostProcessing::initialize(GLuint glowProgram, GLuint resolveProgram)
     UseProgram(resolve_);
     Uniform1i(GetUniformLocation(resolve_, "sceneImage"), 0);
     Uniform1i(GetUniformLocation(resolve_, "glowImage"), 1);
+    bloom_ = GetUniformLocation(resolve_, "enableBloom");
     conditions_ = GetUniformLocation(resolve_, "conditions");
     UseProgram(0);
 }
@@ -62,26 +63,30 @@ void PostProcessing::resize(int w, int h)
     glBindTexture(GL_TEXTURE_2D, 0);
     BindFramebuffer(FRAMEBUFFER, 0);
 }
-void PostProcessing::present(int width, int height, float day, float rain, float sunHeight)
+void PostProcessing::present(int width, int height, float day, float rain, float sunHeight, bool bloom)
 {
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
     glDisable(GL_CULL_FACE);
     BindVertexArray(vao_);
     ActiveTexture(TEXTURE0);
-    UseProgram(glow_);
-    Uniform1f(threshold_, .55f + .24f * day);
-    glViewport(0, 0, glowW_, glowH_);
-    for (int i = 0; i < 3; ++i)
+    if (bloom)
     {
-        BindFramebuffer(FRAMEBUFFER, fb_[i == 1 ? 2 : 1]);
-        glBindTexture(GL_TEXTURE_2D, color_[i]);
-        Uniform1i(pass_, i);
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        UseProgram(glow_);
+        Uniform1f(threshold_, .55f + .24f * day);
+        glViewport(0, 0, glowW_, glowH_);
+        for (int i = 0; i < 3; ++i)
+        {
+            BindFramebuffer(FRAMEBUFFER, fb_[i == 1 ? 2 : 1]);
+            glBindTexture(GL_TEXTURE_2D, color_[i]);
+            Uniform1i(pass_, i);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+        }
     }
     BindFramebuffer(FRAMEBUFFER, 0);
     glViewport(0, 0, width, height);
     UseProgram(resolve_);
+    Uniform1i(bloom_, bloom);
     float lowSun = (sunHeight - .15f) * 4.f;
     Uniform3f(conditions_, day, rain, std::exp(-lowSun * lowSun) * day);
     glBindTexture(GL_TEXTURE_2D, color_[0]);

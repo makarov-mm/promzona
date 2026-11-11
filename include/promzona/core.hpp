@@ -117,11 +117,14 @@ struct Car
     bool terrainActive{}, falling{}, destroyed{}, recovering{}, braking{}, wreckSupported{};
     double health{1}, fireTime{}, routeDistance{}, wheelTravel{}, turretYaw{}, turretPitch{}, lastDamageAt{-100}, safeDrivingTime{},
         impactCooldown{};
+    int paint{};
+    bool personal{};
     bool responding{}, seesSuspect{}, firePlayerCaused{}, summoned{};
     double nextShot{}, nextSightCheck{};
     std::uint32_t model{}, id{};
     int routeFrom{}, routeTo{}, previousNode{-1}, routePhase{};
-    int routeLevel{};
+    int routeLevel{}, laneIndex{};
+    double blockedSince{-1}, nextLaneDecision{}, senseAt{}, trafficLimit{100};
     int line{-1}, nextStop{};
     double along{}, dwell{}, serviceTarget{7}, checkTrafficAt{};
     std::optional<Path> route;

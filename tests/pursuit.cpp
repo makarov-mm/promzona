@@ -32,6 +32,97 @@ int unit(World &w, int kind)
             return int(i);
     throw std::runtime_error("unit missing");
 }
+void arrestTest()
+{
+    World w;
+    w.generate(20261105);
+    w.controlledCar = -1;
+    w.wanted = 2;
+    w.wantedCooldown = 120;
+    w.money = 400;
+    w.inventory.give(WeaponId::pistol);
+    w.updateDispatch();
+    int unitId = unit(w, 3);
+    auto &car = w.cars[unitId];
+    // Dispatch put the patrol on a real road. Let the suspect wait by its passenger door.
+    car.body.v = {};
+    auto exit = w.vehicleExit(car);
+    check(exit.has_value(), "patrol has no clear door");
+    w.player.p = *exit + (*exit - car.body.p).unit() * 2.5;
+    w.player.v = {};
+    w.player.height = w.terrain.height(w.player.p) + .85;
+    w.updatePatrol();
+    int officer = w.patrol.officer;
+    check(officer >= 0 && w.patrol.stage == World::PatrolStage::approaching, "officer failed to dismount");
+    auto &cop = w.people[officer];
+    check(!w.canTakePassengerJob(officer), "taxi can recruit arresting officer");
+    w.player.p = cop.body.p + (cop.body.p - car.body.p).unit() * 1.1;
+    w.player.height = w.terrain.height(w.player.p) + .85;
+    auto advance = [&](int steps) { for (int i = 0; i < steps; ++i) w.arrestStep(.02); };
+    w.aiming = true;
+    advance(100);
+    check(w.patrol.hold == 0, "armed suspect arrested");
+    w.aiming = false;
+    w.player.roadLevel = cop.body.roadLevel + 1;
+    advance(100);
+    check(w.patrol.hold == 0, "arrest through road deck");
+    w.player.roadLevel = cop.body.roadLevel;
+    w.wanted = 4;
+    advance(100);
+    check(w.patrol.hold == 0, "arrest during armed response");
+    w.wanted = 2;
+    Body barrier{};
+    barrier.p = (w.player.p + cop.body.p) * .5;
+    barrier.halfW = barrier.halfH = .15;
+    barrier.verticalExtent = 2;
+    barrier.height = cop.body.height;
+    barrier.circle = false;
+    w.staticBodies.push_back(barrier);
+    advance(76);
+    check(!w.arrests && w.patrol.hold < .1, "booked through a solid obstacle");
+    w.staticBodies.pop_back();
+    w.patrol.hold = 0;
+    advance(45);
+    check(w.patrol.hold > .85 && !w.arrests, "no continuous contact timer");
+    w.player.v = {3,0};
+    advance(30);
+    check(w.patrol.hold == 0, "moving suspect still in custody");
+    w.player.v = {};
+    advance(45);
+    auto path = std::filesystem::temp_directory_path() /
+        ("promzona-booking-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+    w.save(path);
+    World resumed;
+    try { resumed.load(path); }
+    catch (...) { std::filesystem::remove(path); throw; }
+    std::filesystem::remove(path);
+    check(resumed.patrol.officer == officer && resumed.patrol.hold == w.patrol.hold, "arrest timer lost on reload");
+    for (int i = 0; i < 34; ++i) resumed.arrestStep(.02);
+    check(resumed.arrests == 1 && resumed.money == 240 && resumed.lastFine == 160 &&
+          resumed.wanted == 0 && !resumed.inventory.active() &&
+          std::abs(resumed.clock.hour - (w.clock.hour + 5)) < .001 &&
+          (resumed.position() - resumed.stationEntrance).length() < 3, "wrong station, time or fine after booking");
+
+    w.controlledCar = 0;
+    auto &target = w.cars[0];
+    target.body.p = w.player.p + Vec2{6,0};
+    target.body.angle = 0;
+    target.body.v = {};
+    target.body.roadLevel = 0;
+    target.body.height = w.terrain.height(target.body.p) + .8;
+    auto door = w.passengerDoor(target, cop.body.p);
+    w.resumeWalk(cop, door + Vec2{-.4,0}, 0);
+    w.patrol.hold = 0;
+    target.recovering = true;
+    advance(150);
+    check(w.patrol.hold == 0, "arrested a recovering vehicle");
+    target.recovering = false;
+    w.money = 30;
+    advance(120);
+    check(!w.arrests, "car booked before door contact time");
+    advance(7);
+    check(w.arrests == 1 && w.money == 0 && w.lastFine == 30 && w.controlledCar < 0, "vehicle booking failed");
+}
 void test()
 {
     World w;
@@ -125,6 +216,7 @@ int main()
     try
     {
         test();
+        arrestTest();
         std::cout << "Dispatch, routes, save, mounted gun, flight, wreck and release passed\n";
     }
     catch (const std::exception &e)

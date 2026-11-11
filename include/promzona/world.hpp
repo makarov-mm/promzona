@@ -2,6 +2,7 @@
 #include "physics.hpp"
 #include "surface_effects.hpp"
 #include <deque>
+#include <set>
 #include "combat.hpp"
 #include "jobs.hpp"
 #include "transit.hpp"
@@ -62,9 +63,11 @@ struct Person
     int ownedScooter{-1};
     bool courier{}, inCompany{};
     Vec2 incident{}, danger{};
-    double watchUntil{}, voiceAt{}, fleeUntil{};
+    double watchUntil{}, voiceAt{}, idleVoiceAt{}, fleeUntil{};
     double deliveryDistance{}, deliveryUntil{};
-    double boardAfter{};
+    double boardAfter{}, waitUntil{};
+    int waitingLine{-1}, waitingStop{-1};
+    Vec2 platformTarget{};
     bool dead{};
     double rescueAfter{};
     double fear{}, heading{}, phase{}, distance{}, health{1}, burnUntil{};
@@ -146,6 +149,8 @@ struct World
     Terrain terrain;
     std::vector<RoadLevel> roadLevels;
     Clock clock;
+    bool dayNightCycle{true};
+    double simulationSpeed{1};
     Inventory inventory;
     std::vector<Building> buildings;
     std::vector<std::vector<unsigned>> roofCells;
@@ -187,6 +192,19 @@ struct World
     Vec2 landingSite(Vec2 near, Vec2 away);
     void takeFlight(int flock, Vec2 from, Vec2 away);
     std::vector<TransitLine> lines;
+    int playerTransitSeat{-1};
+    bool transitExitRequested{};
+    double nextPlatformScan{};
+    bool transitPassenger() const { return controlledCar >= 0 && playerTransitSeat >= 0; }
+    int boardableTransit() const;
+    bool rideTransit();
+    bool leaveTransitAt(const Car &car, int stop);
+    void disembarkPlayer(const Car &car, Vec2 at);
+    void updatePlatforms();
+    static double placeTransitRider(Body &body, const Car &car, int seat);
+    std::optional<Vec2> platformExit(const Car &car, int stop) const;
+    int freeTransitSeat(const Car &car) const;
+    void walkersNear(Vec2 pos, double radius, std::vector<int> &out) const;
     void generateTransit();
     void runTransit(Car &car, Input controls, bool driving, bool local, double dt);
     void alignTram(Car &car, double dt);
@@ -194,33 +212,52 @@ struct World
     void seatPassenger(Person &person);
     std::vector<ServiceSite> sites;
     Job job;
+    struct StreetHail { int actor{-1}; double until{}; };
+    std::array<StreetHail, 3> hailers{};
+    double nextHail{};
+    void updateHailers();
+    int hailerInReach() const;
+    bool waitingForTaxi(int actor) const;
     ReconDrone drone;
     void toggleDrone(double heading);
     void stopDrone(const wchar_t *message, double delay);
     void stepDrone(const PlayerInput &input, double dt);
     void refreshDroneObstacles(Vec2 centre);
     bool droneClear(Vec2 point, double height, double radius) const;
-    int jobsCompleted{}, jobsFailed{}, lastPay{};
+    int jobsCompleted{}, jobsFailed{}, lastPay{}, seriesStage{}, seriesCompleted{};
+    std::int64_t jobEarnings{};
     double energySeconds{}, clinicCredit{}, purchaseAt{}, noticeUntil{};
     std::wstring notice;
     std::vector<Particle> particles;
     std::deque<SurfaceMark> surfaceMarks;
+    std::deque<WaterRipple> ripples;
+    void splash(Vec2 point, double strength);
     std::vector<TireContact> tireContacts;
+    std::vector<RoadPuddle> puddles;
+    std::vector<int> puddleCells;
+    void generatePuddles();
+    bool inRoadPuddle(Vec2 wheel) const;
     void addMark(SurfaceMark mark);
     void updateTireMarks(Vec2 focus, double dt);
     std::vector<Rocket> rockets;
-    enum class FixtureKind { bin, hydrant, dumpster };
+    enum class FixtureKind { bin, hydrant, dumpster, bench, phoneBooth, drinkMachine, mailbox,
+                             bag, bottle, packet, can, garbageBag, count };
     struct StreetFixture {
         size_t body{};
         Vec2 home;
         FixtureKind kind{};
         double standingHeight{}, lift{}, tilt{}, spin{}, sprayUntil{};
         bool displaced{};
+        double homeAngle{};
     };
     std::vector<StreetFixture> fixtures;
     std::vector<int> fixtureByBody;
     double nextFixtureRestore{};
-    void registerFixture(Body &body);
+    std::vector<std::vector<size_t>> fixtureCells;
+    std::set<size_t> displacedFixtures;
+    void registerFixture(Body &body, FixtureKind kind);
+    void generateStreetFurniture();
+    void fixturesNear(Vec2 centre, double radius, std::vector<size_t> &out) const;
     void updateFixtures(Vec2 focus, double dt);
     void supportFixture(StreetFixture &fixture);
     std::vector<Body> staticBodies;
@@ -236,7 +273,8 @@ struct World
     double playerDistance{};
     ContactWorld physics;
     std::vector<SoundEvent> sounds;
-    void generate(std::uint32_t newSeed, std::function<void(float)> progress = {});
+    void generate(std::uint32_t newSeed, std::function<void(float)> progress = {},
+                  int layoutRevision = CityLayout::districtRevision);
     void step(PlayerInput input, double dt);
     Vec2 position() const { return controlledCar >= 0 ? cars[controlledCar].body.p : player.p; }
     double ground() const
@@ -254,9 +292,20 @@ struct World
     void supportPerson(Body &body, Vec2 previousPosition, double dt);
     void appendLevelContacts(std::uint32_t &id);
     int chooseWalkNext(int n, int previous);
-    std::optional<Vec2> vehicleExit(const Car &car) const;
+    std::optional<Vec2> vehicleExit(const Car &car, std::optional<Vec2> toward = {}) const;
     void enterExit();
     void generateServices();
+    void generateShops();
+    int marketInReach() const;
+    int garageInReach() const;
+    int ownedGarage{-1}, openMarket{-1};
+    static constexpr int garagePrice = 400, garageCapacity = 3;
+    int ownedVehicleCount() const;
+    int garageQuote() const;
+    bool serviceGarage();
+    void useOwnedGarage();
+    int shopPrice(ShopItem item) const;
+    bool buyAtMarket(ShopItem item);
     int nearestSite(ServiceKind kind, Vec2 from) const;
     int counterInReach(bool parkedAllowed) const;
     bool buyFood();
@@ -273,6 +322,9 @@ struct World
     void stepPeaceJob(double dt);
     bool validPeaceJob() const;
     bool startContract(JobKind kind);
+    bool startSeries();
+    double deliveryHealth() const { return job.series ? (50 + 10 * seriesStage) / 100. : .5; }
+    int expectedPay() const;
     void finishJob(bool success);
     Vec2 jobTarget() const;
     void servicesStep(double dt);
@@ -285,6 +337,19 @@ struct World
     std::array<int, nodes * nodes> pursuitDistances{};
     double dispatchAt{};
     void updateDispatch();
+    enum class PatrolStage { stopping, approaching, returning, seated };
+    struct ArrestPatrol {
+        int car{-1}, officer{-1};
+        PatrolStage stage{};
+        double hold{}, deadline{};
+    } patrol;
+    Vec2 stationEntrance{};
+    int arrests{}, lastFine{};
+    double patrolScanAt{};
+    void updatePatrol();
+    void officerIntent(Vec2 &direction, double &speed) const;
+    void arrestStep(double dt);
+    std::optional<Vec2> clearEntrance(Vec2 door) const;
     enum class RescueStage { standby, driving, care, returning };
     struct Rescue {
         int car{-1}, medic{-1}, patient{-1}, destination{-1};
@@ -324,9 +389,10 @@ struct World
     void addCrime(double severity);
     void reportCrime(double severity, double radius = 45, bool sight = true);
     int wantedLevel() const { return wanted <= .001 ? 0 : int(std::ceil(wanted)); }
+    std::function<void()> captureSave(const std::filesystem::path &path) const;
     void save(const std::filesystem::path &path) const;
     void load(const std::filesystem::path &path);
-    void command(const std::string &text);
+    std::wstring command(const std::string &text);
     static Vec2 nodePoint(int n)
     {
         return {(n % nodes - (nodes - 1) * .5) * spacing, (n / nodes - (nodes - 1) * .5) * spacing};
@@ -335,6 +401,14 @@ struct World
     int chooseNext(int n, int previous);
     void newRoute(Car &car);
     bool intersectionClear(const Car &car) const;
+    // Actors are binned by city block for nearby drivers' periodic perception.
+    struct TrafficCell { int car{-1}, person{-1}; };
+    std::vector<TrafficCell> trafficCells;
+    std::vector<int> nextTrafficCar, nextTrafficPerson;
+    double trafficIndexAt{};
+    void indexTraffic();
+    void senseTraffic(Car &car, bool local);
+    bool tryChangeLane(Car &car, int destination);
     Vec2 pickupSite();
 };
 } // namespace pz

@@ -1,10 +1,13 @@
 #pragma once
+#include "game_console.hpp"
+#include "front_end.hpp"
 #include "assets.hpp"
 #include "world.hpp"
 #include <memory>
 namespace pz
 {
-enum class SceneMode { original, enhanced, scaled };
+
+struct AudioLevels;
 struct View
 {
     Vec3 eye{0, 12, -20}, target{};
@@ -27,12 +30,14 @@ class Renderer
     explicit Renderer(const std::filesystem::path &content);
     ~Renderer();
     void sceneMode(SceneMode mode);
+    void graphics(const GraphicsPreferences &settings);
     void profileGpu();
     std::string gpuReport() const;
     void prepare(const World &world);
     void render(const World &world, const View &view, int width, int height);
-    void overlay(const World *world, int width, int height, double fps, bool menu, bool console,
-                 const std::wstring &command, const std::wstring &message, float progress = -1, bool jobsOpen = false);
+    void overlay(const World *world, int width, int height, double fps, bool menu, const GameConsole *console,
+                  const std::wstring &message, const AudioLevels &levels, float progress = -1, bool jobsOpen = false,
+                  const FrontEnd *front = nullptr);
     void screenshot(const std::filesystem::path &file, int width, int height);
     std::string graphicsInfo() const;
     std::string sceneryStats() const;

@@ -8,13 +8,16 @@ enum class ServiceKind
     clinic,
     kiosk,
     vending,
-    garage
+    garage,
+    market
 };
+enum class ShopItem { pistol, automatic, pills, energy };
 struct ServiceSite
 {
     ServiceKind kind;
     Vec2 centre, entrance;
     double halfWidth{}, halfDepth{}, height{};
+    bool existingBuilding{};
     bool food() const { return kind == ServiceKind::kiosk || kind == ServiceKind::vending; }
     int price() const { return kind == ServiceKind::kiosk ? 15 : 5; }
 };
@@ -42,6 +45,8 @@ struct PassengerRide
 {
     int car{-1}, line{-1};
     double boardBy{}, away{};
+    double healthAtLastScare{1}, crimeAt{-1};
+    int scares{};
 };
 struct Job
 {
@@ -51,6 +56,7 @@ struct Job
     double deadline{}, stopped{};
     PeaceRoute route{};
     PassengerRide ride{};
+    bool series{};
     bool passenger() const { return kind == JobKind::taxi || kind == JobKind::patient; }
     bool peace() const { return kind == JobKind::leaflets || kind == JobKind::broadcast; }
     int stopCount() const { return kind == JobKind::leaflets ? 4 : 3; }

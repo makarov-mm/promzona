@@ -64,14 +64,14 @@ Path RoadLevel::route(bool east) const
     }
     return Path(std::move(points));
 }
-std::vector<RoadLevel> generateRoadLevels(CityLayout &l, std::uint32_t seed)
+std::vector<RoadLevel> planRoadLevels(const CityLayout &l, std::uint32_t seed)
 {
     std::vector<RoadLevel> levels;
     if (l.nodes() != 49)
         return levels;
-    LayoutRandom random(std::bit_cast<std::int32_t>(seed ^ 0x64726177u));
-    for (auto [col, row] : std::array<std::pair<int, int>, 4>{{{8, 8}, {24, 16}, {40, 32}, {8, 40}}})
-    {
+    const bool districts = l.revision() == CityLayout::districtRevision;
+    LayoutRandom random(std::bit_cast<std::int32_t>(seed ^ (districts ? 0x4c371u : 0x64726177u)));
+    auto add = [&](int col, int row) {
         row += random.index(3) - 1;
         RoadLevel s;
         s.id = int(levels.size()) + 1;
@@ -80,6 +80,24 @@ std::vector<RoadLevel> generateRoadLevels(CityLayout &l, std::uint32_t seed)
         s.z = l.coordinate(row);
         s.leftNode = col - 4 + row * l.nodes();
         s.rightNode = col + 4 + row * l.nodes();
+        levels.push_back(s);
+    };
+    if (districts)
+        for (int col : {8, 24, 40})
+            for (int row : {8, 23, 38})
+                add(col, row);
+    else
+        for (auto [col,row] : std::array<std::pair<int,int>,4>{{{8,8},{24,16},{40,32},{8,40}}})
+            add(col,row);
+    return levels;
+}
+
+std::vector<RoadLevel> generateRoadLevels(CityLayout &l, std::uint32_t seed)
+{
+    auto levels = planRoadLevels(l, seed);
+    for (const auto &s : levels)
+    {
+        int row = s.leftNode / l.nodes(), col = s.leftNode % l.nodes() + 4;
         // An entrance is a branch of the road graph, never an unmarked barrier across traffic.
         // Remove streets which would enter the side of an open cutting/merge ramp.
         for (int i = col - 4; i < col + 4; ++i)
@@ -101,7 +119,6 @@ std::vector<RoadLevel> generateRoadLevels(CityLayout &l, std::uint32_t seed)
                 l.setRoad(i, row + 2, 1, true);
             }
         }
-        levels.push_back(s);
     }
     auto reserved = [&](const Building &b)
     {

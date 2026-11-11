@@ -87,6 +87,8 @@
     <ClInclude Include="include/promzona\fleet.hpp" />
     <ClInclude Include="include/promzona\gl.hpp" />
     <ClInclude Include="include/promzona\hud_damage.hpp" />
+    <ClInclude Include="include/promzona\game_console.hpp" />
+    <ClInclude Include="include/promzona\front_end.hpp" />
     <ClInclude Include="include/promzona\jobs.hpp" />
     <ClInclude Include="include/promzona\layout.hpp" />
     <ClInclude Include="include/promzona\math.hpp" />
@@ -121,7 +123,10 @@
     <ClCompile Include="src\effect_batch.cpp" />
     <ClCompile Include="src\post_processing.cpp" />
     <ClCompile Include="src\emergency.cpp" />
+    <ClCompile Include="src\game_console.cpp" />
+    <ClCompile Include="src\front_end.cpp" />
     <ClCompile Include="src\jobs.cpp" />
+    <ClCompile Include="src\shops.cpp" />
     <ClCompile Include="src\layout.cpp" />
     <ClCompile Include="src\main.cpp" />
     <ClCompile Include="src\minimap.cpp" />
@@ -129,6 +134,7 @@
     <ClCompile Include="src\peace_jobs.cpp" />
     <ClCompile Include="src\physics.cpp" />
     <ClCompile Include="src\pursuit.cpp" />
+    <ClCompile Include="src\arrest.cpp" />
     <ClCompile Include="src\renderer.cpp" />
     <ClCompile Include="src\road_levels.cpp" />
     <ClCompile Include="src\save.cpp" />
@@ -141,6 +147,7 @@
     <ClCompile Include="src\vegetation.cpp" />
     <ClCompile Include="src\wildlife.cpp" />
     <ClCompile Include="src\world.cpp" />
+    <ClCompile Include="src\traffic_lanes.cpp" />
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="src\app.manifest" />

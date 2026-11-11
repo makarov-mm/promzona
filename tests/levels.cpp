@@ -1,5 +1,6 @@
 #include "promzona/city_mesh.hpp"
 #include <iostream>
+#include <fstream>
 #include <queue>
 #include <stdexcept>
 using namespace pz;
@@ -28,7 +29,7 @@ void place(World &w, Car &c, Vec2 p, int level)
 }
 void generated(World &w)
 {
-    check(w.roadLevels.size() == 4, "two overpasses and two tunnels generated");
+    check(w.roadLevels.size() == 9, "five overpasses and four tunnels generated");
     for (const auto &p : w.people)
     {
         check(p.node != p.next, "pedestrian starts on a usable sidewalk route");
@@ -238,6 +239,26 @@ int main()
         std::filesystem::remove(file);
         check(loaded.cars[0].body.roadLevel == t.id, "save/load retains support level");
         near(loaded.ground(), w.ground(), 1e-8, "save/load retains absolute altitude");
+        check(loaded.layout.revision()==CityLayout::districtRevision && loaded.roadLevels.size()==9,
+              "new saves retain revised city graph");
+        World legacy;
+        legacy.generate(123,{},0);
+        legacy.save(file);
+        std::string json;
+        {
+            std::ifstream input(file);
+            json.assign(std::istreambuf_iterator<char>(input), {});
+        }
+        const std::string field = "\"layoutRevision\":0,";
+        const auto offset = json.find(field);
+        check(offset != std::string::npos, "revision field present in new save");
+        json.erase(offset,field.size());
+        std::ofstream(file) << json;
+        loaded.load(file);
+        std::filesystem::remove(file);
+        check(loaded.layout.revision()==0 && loaded.roadLevels.size()==4 &&
+              loaded.layout.buildings.size()==legacy.layout.buildings.size(),
+              "pre-revision saves reconstruct the original map");
         std::cout << checks << " multilevel checks passed\n";
     }
     catch (const std::exception &e)

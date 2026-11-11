@@ -24,5 +24,6 @@ struct RoadLevel
 };
 // The base revision-0 generator remains independently comparable with C# fixtures.
 // This pass reserves corridors, connects their endpoints and removes unsafe junctions.
+std::vector<RoadLevel> planRoadLevels(const CityLayout &layout, std::uint32_t seed);
 std::vector<RoadLevel> generateRoadLevels(CityLayout &layout, std::uint32_t seed);
 } // namespace pz

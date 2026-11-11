@@ -30,6 +30,8 @@
     <ClInclude Include="include/promzona\fleet.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\gl.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\hud_damage.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\game_console.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\front_end.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\jobs.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\layout.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\math.hpp"><Filter>Заголовки</Filter></ClInclude>
@@ -64,7 +66,10 @@
     <ClCompile Include="src\effect_batch.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\post_processing.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\emergency.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\game_console.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\front_end.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\jobs.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\shops.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\layout.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\main.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\minimap.cpp"><Filter>Исходники</Filter></ClCompile>
@@ -72,6 +77,7 @@
     <ClCompile Include="src\peace_jobs.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\physics.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\pursuit.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\arrest.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\renderer.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\road_levels.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\save.cpp"><Filter>Исходники</Filter></ClCompile>
@@ -84,6 +90,7 @@
     <ClCompile Include="src\vegetation.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\wildlife.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\world.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\traffic_lanes.cpp"><Filter>Исходники</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
     <Manifest Include="src\app.manifest"><Filter>Ресурсы</Filter></Manifest>

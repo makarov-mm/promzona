@@ -10,7 +10,7 @@ class PostProcessing
 {
     GLuint vao_{}, glow_{}, resolve_{}, depth_{};
     std::array<GLuint, 3> fb_{}, color_{};
-    GLint pass_{}, threshold_{}, conditions_{};
+    GLint pass_{}, threshold_{}, conditions_{}, bloom_{};
     int w_{}, h_{}, glowW_{}, glowH_{};
 
   public:
@@ -18,7 +18,7 @@ class PostProcessing
     void resize(int width, int height);
     void releaseTargets();
     GLuint sceneTarget() const { return fb_[0]; }
-    void present(int width, int height, float day, float rain, float sunHeight);
+    void present(int width, int height, float day, float rain, float sunHeight, bool bloom);
     ~PostProcessing();
 };
 

@@ -183,7 +183,7 @@ void World::stepDrone(const PlayerInput &input, double dt)
     if (drone.scanTime >= 2)
     {
         drone.scanTime = 0;
-        sounds.push_back({"pickup", player.p, .5, true});
+        sounds.push_back({drone.scanned == 2 ? "cash" : "energy", player.p, .5, true});
         if (++drone.scanned == 3)
         {
             money += 200;

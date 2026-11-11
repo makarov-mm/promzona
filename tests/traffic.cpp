@@ -1,4 +1,5 @@
 #include "promzona/city_mesh.hpp"
+#include <chrono>
 #include <iostream>
 #include <stdexcept>
 using namespace pz;
@@ -51,6 +52,138 @@ void pathClear(const World &w, const Path &path, int level = 0)
         }
         check(w.surface(p, level) > CityLayout::waterLevel, "route does not enter canal or ocean");
     }
+}
+void distantQueueAndSave()
+{
+    World w;
+    w.generate(20261105);
+    // An uphill block away from the spawn in this seed. Keep the full population
+    // and normal distant update so this also exercises the on-disk save contract.
+    constexpr int from = 17 * World::nodes + 20;
+    auto origin = World::nodePoint(from);
+    auto &driver = w.cars[1];
+    auto &parked = w.cars[2];
+    auto place = [&](Car &car, double x) {
+        car.body.p = origin + Vec2{x,CityLayout::lane};
+        car.body.angle = -pi/2;
+        car.body.height = w.surface(car.body.p,0) + .8;
+        car.body.roadLevel = 0;
+        car.body.v = {};
+    };
+    driver.laneIndex = 0;
+    driver.routeFrom = from;
+    driver.routeTo = from + 1;
+    driver.routePhase = 1;
+    w.newRoute(driver);
+    place(driver,9);
+    place(parked,27);
+    w.ownedGarage = w.nearestSite(ServiceKind::garage, {});
+    parked.personal = true;
+    check((w.position()-driver.body.p).length() > 150, "fixture uses distant simulation");
+    bool merged = false, passed = false;
+    for (int step=0; step<120*20 && !passed; ++step)
+    {
+        w.step({},1./120);
+        const auto &active = w.cars[1];
+        if (!merged && active.laneIndex == 1 && active.body.p.z > origin.z+CityLayout::lane+.3)
+        {
+            check(w.time >= 2 && active.routePhase == 0, "driver waits for the obstruction before merging");
+            auto saved = std::filesystem::temp_directory_path() / ("promzona-merge-" +
+                std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+            auto position = active.body.p;
+            double along = active.routeDistance, cooldown = active.nextLaneDecision;
+            w.save(saved);
+            w.load(saved);
+            std::filesystem::remove(saved);
+            const auto &copy = w.cars[1];
+            check(copy.laneIndex == 1 && copy.nextLaneDecision == cooldown &&
+                  copy.routeDistance == along &&
+                  (copy.route->sample(copy.routeDistance).first-position).length() < 1e-8,
+                  "mid-merge save retains path, position and decision cooldown");
+            merged = true;
+        }
+        auto delta = w.cars[1].body.p-w.cars[2].body.p;
+        if (std::abs(delta.x) < 2)
+            check(std::abs(delta.z) > w.cars[1].body.halfW+w.cars[2].body.halfW,
+                  "distant driver passes clear of the parked car");
+        passed = merged && delta.x > 2.5;
+    }
+    check(passed, "distant traffic can finish a pass after reloading mid-merge");
+}
+void laneChecks(World &w)
+{
+    w.cars.resize(2);
+    w.people.clear();
+    w.controlledCar = -1;
+    w.player.p = {10000, 10000};
+    auto &driver = w.cars[0], &other = w.cars[1];
+    driver = {};
+    other = {};
+    driver.routeFrom = 1200;
+    driver.routeTo = w.layout.neighbours(1200).front();
+    driver.routePhase = 1;
+    w.newRoute(driver);
+    auto [start, heading] = driver.route->sample(0);
+    auto direction = forward(heading), right = perpendicular(direction);
+    driver.body.p = start;
+    driver.body.angle = -heading;
+    driver.body.height = other.body.height = 10;
+    auto destination = start + right * (CityLayout::laneOffset(1) - CityLayout::laneOffset(0));
+    auto change = [&] { w.indexTraffic(); return w.tryChangeLane(driver, 1); };
+
+    other.body.p = destination - direction * 20;
+    other.body.angle = -heading;
+    other.body.v = direction * 12;
+    check(!change(), "fast vehicle closing from behind has priority");
+    other.body.p = destination + direction * 4;
+    other.body.v = {};
+    check(!change(), "merging driver yields to occupied lane");
+    other.body.p = start + direction * 5;
+    other.routeFrom = driver.routeFrom;
+    other.routeTo = driver.routeTo;
+    other.laneIndex = 1;
+    check(!change(), "two drivers cannot claim the same gap");
+    other.body.roadLevel = 1;
+    other.body.height += 8;
+    w.people.emplace_back().body.p = destination + direction * 5;
+    w.people[0].body.height = driver.body.height;
+    check(!change(), "walker blocks a lane change");
+    w.people[0].riding = 1;
+    check(change(), "car on another level and passenger leave target lane free");
+    auto begin = driver.route->sample(0), end = driver.route->sample(driver.route->length());
+    check((begin.first-start).length() < 1e-8 && dot(forward(begin.second),direction) > .998 &&
+          dot(forward(end.second),direction) > .998, "merge starts in place and exits parallel to road");
+    check(std::abs(dot(end.first-destination,right)) < 1e-8, "merge arrives in the adjacent lane");
+    pathClear(w, *driver.route);
+    check(!w.tryChangeLane(driver,0), "cannot immediately change lanes again");
+    w.newRoute(driver);
+    check((driver.route->sample(0).first-end.first).length() < 1e-8, "crossing follows merged lane");
+
+    // Approach every elevated and sunken link from a normal outer lane. Force the
+    // route picker to take that link, then compare both ends of the transition.
+    int transitions = 0;
+    for (const auto &level : w.roadLevels)
+        for (int entry : {level.leftNode, level.rightNode})
+        {
+            int previous = w.layout.neighbours(entry).front();
+            for (int attempt=0; attempt<100; ++attempt)
+            {
+                Car probe;
+                probe.routeFrom = previous;
+                probe.routeTo = entry;
+                probe.laneIndex = 1;
+                w.newRoute(probe);
+                if (!w.levelEdge(probe.routeFrom,probe.routeTo)) continue;
+                auto corner = probe.route->sample(probe.route->length());
+                w.newRoute(probe);
+                check(probe.routePhase == 2 && probe.laneIndex == 0 &&
+                      (corner.first-probe.route->sample(0).first).length() < 1e-8,
+                      "outer lane joins the single lane of the deck or tunnel");
+                ++transitions;
+                break;
+            }
+        }
+    check(transitions == int(w.roadLevels.size())*2, "all level entrances exercised");
 }
 } // namespace
 int main()
@@ -140,6 +273,8 @@ int main()
             check(!(CityLayout::green(3, 5, 0, t) && CityLayout::green(3, 5, 1, t)),
                   "cross traffic never both green");
 
+        distantQueueAndSave();
+
         // Keep one car in physical simulation for four simulated minutes.
         // This catches steering/endpoint failures which path geometry checks miss.
         w.cars.resize(1);
@@ -180,6 +315,7 @@ int main()
         check(transitions > 30 && distance > 500,
               "local car continues through junctions instead of circling endpoint");
         check(maxError < w.layout.roadHalf(), "local car stays on carriageway");
+        laneChecks(w);
         std::cout << checks << " traffic/geometry checks passed\n";
     }
     catch (const std::exception &e)

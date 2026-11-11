@@ -102,6 +102,42 @@ int main(int argc, char **argv)
             ++cities;
         }
         check(tag == "end" && cities == 12 && streams == 6, "complete independent C# fixtures");
+        for (int seed : {0, 123456, 20261105})
+        {
+            CityLayout city;
+            city.generate(seed, 49, true, {}, CityLayout::districtRevision);
+            check(city.district(12, 12) == District::cottages && city.district(22, 25) == District::centre &&
+                      city.district(36, 11) == District::courtyard &&
+                      city.district(9, 34) == District::garages &&
+                      city.district(24, 40) == District::estate &&
+                      city.district(24, 43) == District::industry,
+                  "revised map has six distinct districts");
+            check(std::ranges::count(city.buildings, BuildingKind::wagon, &Building::kind) == 3 &&
+                      std::ranges::count(city.buildings, BuildingKind::buffer, &Building::kind) == 1,
+                  "freight wagons and buffer stop generated once");
+            for (int i = city.yardWest(); i < city.yardEast() - 1; ++i)
+            {
+                check(!city.road(i, city.yardRow() + 2, 1), "freight spur reserved from road traffic");
+                check(city.road(i, city.yardRow(), 1), "road continues along yard entrance");
+            }
+            Vec2 street{0, city.coordinate(48)}, beach{0, city.edge() - 30};
+            check(!city.sandyGround(street, city.roadDistance(street)) &&
+                      city.sandyGround(beach, city.roadDistance(beach)),
+                  "coastal road stays asphalt");
+            Terrain coast;
+            coast.generate(seed, 49, city.buildings, true, &city);
+            for (int k = 0; k < 3; ++k)
+            {
+                const double x = city.railEnd() - 11.6 - k * city.spacing;
+                const double rail = coast.bedHeight(x, city.railZ());
+                for (double z : {-7., -.762, .762, 7.})
+                    check(std::abs(coast.bedHeight(x, city.railZ() + z) - rail) < .15,
+                          "wagon rails and loading apron share a level cross-section");
+            }
+            const double mouth = city.coordinate(city.nodes() / 3) + 18;
+            check(coast.bedHeight(mouth, city.edge() + 1) < CityLayout::waterLevel,
+                  "canal outlet opens beneath the sea surface");
+        }
         // Heights sampled by rendering and physics must represent the same supported surface.
         CityLayout l;
         l.generate(20261105);

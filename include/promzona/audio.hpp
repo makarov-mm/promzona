@@ -5,6 +5,12 @@
 #include <mutex>
 namespace pz
 {
+struct AudioLevels
+{
+    int master{65}, radio{20};
+    static AudioLevels load(const std::filesystem::path &path);
+    bool save(const std::filesystem::path &path) const;
+};
 struct StereoGain
 {
     float left{}, right{};
@@ -27,7 +33,10 @@ class AudioMixer
     std::map<std::string, std::vector<float>, std::less<>> clips_;
     std::vector<Voice> voices_;
     std::mutex mutex_;
-    bool playing_{};
+    bool playing_{}, worldPaused_{};
+    AudioLevels levels_;
+    std::array<const std::vector<float> *, 2> tracks_{};
+    size_t track_{}, trackCursor_{};
     Vec2 listener_;
     double heading_{};
     void trim();
@@ -38,7 +47,9 @@ class AudioMixer
     void addClip(std::string name, std::vector<float> samples);
     void update(World &world, double cameraHeading);
     void play(const SoundEvent &event);
-    void pause(bool paused);
+    void pause(bool paused, bool worldPaused = false);
+    void setLevels(AudioLevels levels);
+    void nextTrack();
     void clear();
     void mix(std::span<float> stereo);
     size_t voiceCount();

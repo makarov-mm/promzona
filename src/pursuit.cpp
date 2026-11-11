@@ -162,7 +162,7 @@ bool World::deployResponder(int kind)
     // Stable slots are also used in saves and ray-hit results.
     size_t slot = trafficPopulation;
     for (; slot < cars.size(); ++slot)
-        if (!cars[slot].summoned && int(slot) != controlledCar && !cars[slot].responding &&
+        if (int(slot) != patrol.car && !cars[slot].summoned && !cars[slot].personal && int(slot) != controlledCar && !cars[slot].responding &&
             (cars[slot].body.p - focus).length2() > 340 * 340)
             break;
     if (slot == cars.size() && cars.size() - std::ranges::count(cars, true, &Car::summoned) >=
@@ -214,7 +214,7 @@ bool World::deployResponder(int kind)
 
 bool World::spawnVehicle(unsigned model)
 {
-    if (model != 6 && model != 7 && model != 10)
+    if (model >= std::size(fleet) || fleet[model].kind == 9 || fleet[model].kind == 10)
         return false;
     const Vec2 focus = position();
     size_t slot = cars.size();

@@ -18,6 +18,7 @@ enum class HitKind
 {
     none,
     scenery,
+    water,
     car,
     person,
     player

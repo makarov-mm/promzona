@@ -18,12 +18,27 @@ struct SurfaceMark
     MarkKind kind{};
     std::array<Vec3, 4> corners{};
 };
+struct WaterRipple
+{
+    static constexpr double lifetime = 3.;
+    Vec2 centre;
+    double born{}, strength{};
+};
+struct RoadPuddle
+{
+    static constexpr double radiusX = 1.48, radiusZ = .96;
+    Vec2 centre;
+    std::array<Vec3, 4> corners;
+};
+
 struct TireContact
 {
     Vec2 wheels[2]{};
     int level{};
     MarkKind kind{};
     bool active{};
+    double wetUntil{}, nextSqueal{}, nextSplash{};
+    bool skidding{}, inPuddle{};
 };
 
 // The same world column keeps its absolute raindrop height while the camera moves.

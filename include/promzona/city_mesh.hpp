@@ -23,8 +23,18 @@ enum CitySurface
     Roof = 23,
     Foundation = 24,
     Sign = 25, // three existing texture signs
-    SurfaceCount = 28
+    Rust = 28, Canvas, SeaCanvas, Ballast, WorkshopSteel, StationSign,
+    SurfaceCount
 };
 using CityChunk = std::array<MeshData, SurfaceCount>;
+inline void addCityTriangle(MeshData &mesh, Vec3 a, Vec3 b, Vec3 c)
+{
+    const auto base = static_cast<std::uint32_t>(mesh.vertices.size());
+    const auto normal = cross(b - a, c - a).unit();
+    mesh.vertices.push_back({a, normal, {.5f, 1.f}});
+    mesh.vertices.push_back({b, normal, {1.f, 0.f}});
+    mesh.vertices.push_back({c, normal, {0.f, 0.f}});
+    mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2});
+}
 CityChunk cityChunk(const World &world, double x0, double z0, double size = 144);
 } // namespace pz

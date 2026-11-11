@@ -16,6 +16,8 @@ struct BuildingPlan
     Vec3 origin;
     float halfWidth{}, halfDepth{}, height{};
     bool windowsOnZ{};
+    BuildingKind kind{BuildingKind::apartment};
+    int front{1};
     std::uint32_t seed{};
     std::vector<FacadeWindow> windows;
 };

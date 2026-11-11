@@ -18,17 +18,20 @@ if(MSVC)
   endif()
   add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 endif()
-add_library(promzona_core src/core.cpp src/physics.cpp src/layout.cpp src/minimap.cpp src/control_hints.cpp src/road_levels.cpp src/surfaces.cpp src/architecture.cpp src/detail_stream.cpp src/vegetation.cpp src/city_mesh.cpp src/world.cpp src/street_life.cpp src/street_fixtures.cpp src/surface_effects.cpp src/wildlife.cpp src/social.cpp src/emergency.cpp src/drone.cpp src/pursuit.cpp src/jobs.cpp src/peace_jobs.cpp src/passenger_jobs.cpp src/civilian_combat.cpp src/civilian_cover.cpp src/transit.cpp src/combat.cpp src/animation.cpp src/save.cpp src/audio.cpp)
+add_library(promzona_core src/core.cpp src/physics.cpp src/layout.cpp src/minimap.cpp src/control_hints.cpp src/road_levels.cpp src/surfaces.cpp src/architecture.cpp src/detail_stream.cpp src/vegetation.cpp src/city_mesh.cpp src/world.cpp src/traffic_lanes.cpp src/street_life.cpp src/street_fixtures.cpp src/surface_effects.cpp src/wildlife.cpp src/social.cpp src/emergency.cpp src/drone.cpp src/pursuit.cpp src/arrest.cpp src/jobs.cpp src/game_console.cpp src/front_end.cpp src/shops.cpp src/peace_jobs.cpp src/passenger_jobs.cpp src/civilian_combat.cpp src/civilian_cover.cpp src/transit.cpp src/combat.cpp src/animation.cpp src/save.cpp src/audio.cpp)
 target_sources(promzona_core PRIVATE
   include/promzona/animation.hpp include/promzona/audio.hpp include/promzona/architecture.hpp include/promzona/detail_stream.hpp include/promzona/visibility.hpp include/promzona/surface_effects.hpp include/promzona/vegetation.hpp include/promzona/sun_shadow.hpp
   include/promzona/city_mesh.hpp include/promzona/combat.hpp
   include/promzona/core.hpp include/promzona/layout.hpp include/promzona/minimap.hpp include/promzona/control_hints.hpp include/promzona/hud_damage.hpp include/promzona/road_levels.hpp
-  include/promzona/math.hpp include/promzona/physics.hpp include/promzona/world.hpp include/promzona/fleet.hpp include/promzona/jobs.hpp include/promzona/transit.hpp)
+  include/promzona/math.hpp include/promzona/physics.hpp include/promzona/world.hpp include/promzona/fleet.hpp include/promzona/jobs.hpp include/promzona/game_console.hpp include/promzona/front_end.hpp include/promzona/transit.hpp)
 set_property(TARGET promzona_core PROPERTY FOLDER Libraries)
 target_include_directories(promzona_core PUBLIC include PRIVATE third_party)
 option(BUILD_TESTING "Build PROMZONA native tests" ON)
 if(BUILD_TESTING)
   enable_testing()
+  add_executable(promzona_front_end_tests tests/front_end.cpp)
+  target_link_libraries(promzona_front_end_tests PRIVATE promzona_core)
+  add_test(NAME native_front_end COMMAND promzona_front_end_tests)
   add_executable(promzona_emergency_tests tests/emergency.cpp)
   target_link_libraries(promzona_emergency_tests PRIVATE promzona_core)
   add_test(NAME native_emergency_response COMMAND promzona_emergency_tests)
@@ -78,7 +81,7 @@ if(BUILD_TESTING)
     "\"${CMAKE_SOURCE_DIR}/tests/vehicle-reference.txt\"")
   set_property(TARGET promzona_layout_tests PROPERTY VS_DEBUGGER_COMMAND_ARGUMENTS
     "\"${CMAKE_SOURCE_DIR}/tests/layout-reference.txt\"")
-  set_target_properties(promzona_emergency_tests promzona_street_tests promzona_drone_tests promzona_transit_tests promzona_pursuit_tests promzona_jobs_tests promzona_streaming_tests promzona_environment_tests promzona_architecture_tests promzona_level_tests promzona_tests promzona_traffic_tests promzona_layout_tests promzona_combat_tests
+  set_target_properties(promzona_front_end_tests promzona_emergency_tests promzona_street_tests promzona_drone_tests promzona_transit_tests promzona_pursuit_tests promzona_jobs_tests promzona_streaming_tests promzona_environment_tests promzona_architecture_tests promzona_level_tests promzona_tests promzona_traffic_tests promzona_layout_tests promzona_combat_tests
     PROPERTIES FOLDER Tests VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 endif()
 if(WIN32)

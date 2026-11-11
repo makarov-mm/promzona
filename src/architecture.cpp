@@ -63,6 +63,168 @@ void rail(MeshData &mesh, Vec3 a, Vec3 b, float radius)
     face(mesh, a - u, b - u, b + u, a + u);
     face(mesh, a - v, b - v, b + v, a + v);
 }
+// Special buildings share the footprint and overall height used for contacts.
+void districtBuilding(CityChunk &data, const BuildingPlan &p, int style)
+{
+    const float x = p.halfWidth, z = p.halfDepth, h = p.height, front = float(p.front);
+    auto part = [&](int mat, float dx, float y, float dz, float hx, float hy, float hz)
+    { box(data[mat], p.origin + Vec3{dx, y, dz}, {hx, hy, hz}); };
+    auto point = [&](float dx, float y, float dz) { return p.origin + Vec3{dx, y, dz}; };
+    auto disk = [&](float bottom, float top, float lo, float hi, int mat)
+    {
+        constexpr int segments = 16;
+        for (int k = 0; k < segments; ++k)
+        {
+            double a = 2 * pi * k / segments, b = 2 * pi * (k + 1) / segments;
+            auto rim = [&](double t, float y, float r)
+            { return point(float(std::cos(t)) * r, y, float(std::sin(t)) * r); };
+            auto A = rim(a, top, hi), B = rim(b, top, hi);
+            face(data[mat], rim(b, bottom, lo), rim(a, bottom, lo), A, B, 1, 2);
+            addCityTriangle(data[mat], point(0, top, 0), B, A);
+        }
+    };
+    auto pitchedRoof = [&](float eave, int material)
+    {
+        const float ex = x + .16f, ez = z + .16f;
+        auto a = point(-ex, eave, -ez), b = point(ex, eave, -ez), c = point(ex, eave, ez),
+             d = point(-ex, eave, ez);
+        auto l = point(-ex, h, 0), r = point(ex, h, 0);
+        face(data[material], a, l, r, b, ex, ez);
+        face(data[material], d, c, r, l, ex, ez);
+        addCityTriangle(data[material], a, d, l);
+        addCityTriangle(data[material], c, b, r);
+    };
+    using K = BuildingKind;
+    switch (p.kind)
+    {
+    case K::cottage:
+    {
+        float eave = h - 1.25f;
+        part(Facade + style, 0, eave / 2, 0, x, eave / 2, z);
+        pitchedRoof(eave, style % 2 ? Rust : Roof);
+        part(Facade + 4, -x * .55f, h - .36f, .4f, .19f, .54f, .25f);
+        part(Foundation, 0, .14f, 0, x + .035f, .14f, z + .035f);
+        part(Door, 0, 1, front * (z + .025f), .42f, 1, .035f);
+        auto window = [&](Vec3 centre, Vec3 normal)
+        {
+            Vec3 right{normal.z, 0, -normal.x};
+            panel(data[Frame], centre, right, normal, .59f, .71f);
+            panel(data[Windows], centre + normal * .015f, right, normal, .50f, .62f,
+                  {float(p.seed % 65521), float(p.seed % 5), 1, 0});
+        };
+        for (int side : {-1, 1})
+            for (int w : {-1, 1})
+            {
+                window(point(w * x * .63f, 1.75f, side * (z + .05f)), {0, 0, float(side)});
+                window(point(side * (x + .05f), 1.75f, w * z * .51f), {float(side), 0, 0});
+            }
+        break;
+    }
+    case K::garage:
+        part(Facade + 3, 0, h / 2, 0, x, h / 2, z);
+        part(Roof, 0, h - .07f, 0, x + .08f, .09f, z + .10f);
+        for (int side : {-1, 1})
+            part(style % 2 ? WorkshopSteel : Balcony + style % 3, side * x * .44f, 1.12f, front * (z + .04f),
+                 x * .43f, 1.08f, .045f);
+        part(Frame, -.14f, 1.13f, front * (z + .095f), .07f, .025f, .022f);
+        break;
+    case K::hall:
+    case K::shed:
+    case K::pump:
+    {
+        float eave = h - .65f;
+        part(Facade + (p.kind == K::hall ? 4 : 3), 0, eave / 2, 0, x, eave / 2, z);
+        pitchedRoof(eave, WorkshopSteel);
+        part(Door, 0, eave * .32f, -z - .04f, std::min(x * .65f, 2.4f), eave * .32f, .05f);
+        for (int side : {-1, 1})
+            for (float bayX = -x + 1.4f; bayX < x - 1; bayX += 2.4f)
+                part(Glass, bayX, eave * .80f, side * (z + .03f), .88f, .35f, .035f);
+        break;
+    }
+    case K::chimney:
+        for (int i = 0; i < 8; ++i)
+        {
+            float a = float(i) / 8, b = float(i + 1) / 8;
+            disk(h * a, h * b, x * (1 - .38f * a), x * (1 - .38f * b), i >= 4 && i % 2 ? Paint : Rust);
+        }
+        break;
+    case K::tank:
+        disk(.06f, h - .3f, x, x, Frame);
+        disk(h - .3f, h, x, .2f, Metal);
+        for (int i = 1; i <= 3; ++i)
+            disk(i * h * .235f, i * h * .235f + .07f, x + .035f, x + .035f, Metal);
+        break;
+    case K::wagon:
+        part(Metal, 0, .87f, 0, x, .14f, z - .12f);
+        for (int side : {-1, 1})
+        {
+            for (int axle : {-1, 1})
+            {
+                float axleX = side * x * .70f + axle * .85f;
+                part(Frame, axleX, .53f, 0, .18f, .15f, 1.02f);
+                for (int wheel : {-1, 1})
+                {
+                    const auto centre = point(axleX, .51f, wheel * .762f);
+                    auto rim = [&](int segment, float offset)
+                    {
+                        double angle = segment * pi / 6;
+                        return centre +
+                               Vec3{float(.42 * std::cos(angle)), float(.42 * std::sin(angle)), offset};
+                    };
+                    for (int k = 0; k < 12; ++k)
+                    {
+                        auto a = rim(k, .09f), b = rim(k + 1, .09f);
+                        auto c = rim(k + 1, -.09f), d = rim(k, -.09f);
+                        face(data[Metal], d, c, b, a);
+                        if (wheel > 0)
+                            addCityTriangle(data[Metal], centre + Vec3{0, 0, .09f}, a, b);
+                        else
+                            addCityTriangle(data[Metal], centre - Vec3{0, 0, .09f}, c, d);
+                    }
+                }
+            }
+            part(Rust, 0, (h + 1) * .5f, side * (z - .06f), x, (h - 1) * .5f, .07f);
+            part(Rust, side * (x - .06f), (h + 1) * .5f, 0, .07f, (h - 1) * .5f, z);
+            for (float rib = -x + .25f; rib < x; rib += 2)
+                part(Metal, rib, (h + 1) * .5f, side * z, .043f, (h - 1) * .5f, .055f);
+        }
+        break;
+    case K::buffer:
+        for (int side : {-1, 1})
+            part(Metal, 0, h * .40f, side * .76f, x * .5f, h * .40f, .14f);
+        part(Rust, 0, h * .85f, 0, x, h * .15f, z);
+        break;
+    case K::stall:
+        // Open timber counter with four wrapped parcels and a striped canvas awning.
+        part(Balcony + 1, 0, .43f, front * (z - .07f), x, .43f, .06f);
+        part(Door, 0, .92f, 0, x, .06f, z);
+        for (int a : {-1, 1})
+            for (int b : {-1, 1})
+                part(Metal, a * (x - .08f), h * .5f, b * (z - .08f), .035f, h * .5f, .035f);
+        for (int i = 0; i < 6; ++i)
+        {
+            float strip = (x + .14f) / 3;
+            float dx = -x - .14f + (i + .5f) * strip;
+            int canvas = i % 2 ? Paint : Canvas;
+            part(canvas, dx, h + .025f, 0, strip/2, .025f, z + .2f);
+            part(canvas, dx, h - .075f, front * (z + .18f), strip/2, .075f, .02f);
+        }
+        for (int n = 0; n < 4; ++n)
+        {
+            float dx = x * (n - 1.5f) * .44f;
+            float halfHeight = n % 2 ? .09f : .13f;
+            part(n % 2 ? Balcony + 2 : Facade + 2, dx, .98f + halfHeight, 0, .20f, halfHeight, .16f);
+            part(Canvas, dx, .985f + 2 * halfHeight, 0, .035f, .005f, .16f);
+        }
+        break;
+    case K::fence:
+    case K::crate:
+        part(p.kind == K::fence ? Facade + 3 : Balcony + 1, 0, h / 2, 0, x, h / 2, z);
+        break;
+    case K::apartment:
+        break;
+    }
+}
 } // namespace
 BuildingPlan planBuilding(const Building &b, double ground)
 {
@@ -74,6 +236,9 @@ BuildingPlan planBuilding(const Building &b, double ground)
     p.windowsOnZ = b.half.x >= b.half.z;
     p.seed = hash(std::uint32_t(std::llround(b.p.x * 10)) ^ hash(std::uint32_t(std::llround(b.p.z * 10))) ^
                   std::uint32_t(b.style));
+    p.kind = b.kind;
+    p.front = b.front;
+    if (p.kind != BuildingKind::apartment) return p;
     float half = p.windowsOnZ ? p.halfWidth : p.halfDepth;
     int columns = std::max(1, int((2 * half - 1.2f) / bay));
     for (int side : {-1, 1})
@@ -104,6 +269,7 @@ BuildingPlan planBuilding(const Building &b, double ground)
 }
 void buildingCore(CityChunk &data, const BuildingPlan &p, int facade)
 {
+    if (p.kind != BuildingKind::apartment) { districtBuilding(data,p,facade); return; }
     auto centre = p.origin + Vec3{0, p.height * .5f, 0};
     box(data[Facade + clamp(facade, 0, 7)], centre, {p.halfWidth, p.height * .5f, p.halfDepth}, 3.2f);
     box(data[Roof], p.origin + Vec3{0, p.height + .12f, 0}, {p.halfWidth + .12f, .12f, p.halfDepth + .12f});
@@ -114,6 +280,7 @@ void buildingCore(CityChunk &data, const BuildingPlan &p, int facade)
 }
 void buildingDetails(CityChunk &data, const BuildingPlan &p)
 {
+    if (p.kind != BuildingKind::apartment) return;
     // Parapet, drainpipe, entrance canopy and roof ventilation: metre-sized silhouettes.
     for (int side : {-1, 1})
     {

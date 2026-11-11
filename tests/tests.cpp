@@ -234,6 +234,76 @@ int main(int argc, char **argv)
         auto farAudio = spatialAudio({0, 100}, {}, 0, 1);
         auto nearAudio = spatialAudio({0, 3}, {}, 0, 1);
         check(farAudio.left < nearAudio.left * .1, "distance attenuates audio");
+        AudioMixer radio;
+        radio.addClip("radio0", {.5f, .2f});
+        radio.addClip("radio1", {-.4f});
+        radio.addClip("click", {.5f});
+        radio.play({"click", {}, 1., true});
+        radio.pause(false, true);
+        std::array<float, 8> song{};
+        radio.mix(song);
+        check(song[0] > song[2] && song[2] > 0 && song[4] < 0 && song[6] == song[0] &&
+              song[0] == song[1] && radio.voiceCount() == 1, "radio crosses a track boundary in the menu");
+        radio.pause(true);
+        radio.mix(song);
+        check(std::ranges::all_of(song, [](float s){return s == 0;}), "unfocused radio is silent");
+        std::array<float, 2> one{};
+        radio.pause(false, true);
+        radio.mix(one);
+        check(one[0] > 0 && one[0] < .04, "unfocused mixer preserved the radio cursor");
+        radio.nextTrack(); // currently queued on track 1, switch back to the start of track 0
+        radio.mix(one);
+        check(one[0] > .04, "manual advance restarts the selected track");
+        radio.setLevels({65, 0});
+        radio.pause(false);
+        radio.mix(song);
+        check(song[0] > 0 && song[2] == 0 && radio.voiceCount() == 0, "radio mute leaves effects audible");
+        AudioMixer oneTrack;
+        oneTrack.addClip("radio1", {.5f});
+        oneTrack.pause(false);
+        oneTrack.mix(song);
+        check(std::ranges::all_of(song, [](float s){return s>0;}), "one available track loops without silence");
+        oneTrack.setLevels({0, 50});
+        oneTrack.mix(song);
+        check(song[0] == 0, "master mute includes music");
+
+        auto levelsPath = save.parent_path() / "promzona-test-audio.txt";
+        check(AudioLevels{75, 10}.save(levelsPath), "write volume preferences");
+        auto levels = AudioLevels::load(levelsPath);
+        check(levels.master == 75 && levels.radio == 10, "read independent volume preferences");
+        { std::ofstream file(levelsPath); file << "95 garbage"; }
+        levels = AudioLevels::load(levelsPath);
+        check(levels.master == 65 && levels.radio == 20, "malformed volume settings restore defaults");
+        std::filesystem::remove(levelsPath);
+
+        World street;
+        street.controlledCar = -1;
+        street.cars.resize(12);
+        for (size_t i=0; i<street.cars.size(); ++i) {
+            street.cars[i].id = unsigned(i);
+            street.cars[i].body.p = {double(i+1),0};
+        }
+        auto &unit = street.cars.back();
+        unit.kind = 3;
+        unit.responding = true;
+        unit.body.p.x = 80;
+        AudioMixer traffic;
+        traffic.addClip("siren", {.5f});
+        traffic.pause(false);
+        traffic.update(street, 0);
+        traffic.mix(one);
+        check(traffic.voiceCount() == 1 && one[0] > one[1], "siren beyond ten motors follows approaching car");
+        traffic.update(street, pi);
+        traffic.mix(one);
+        check(one[1] > one[0], "turning the camera reverses siren pan");
+        unit.body.p.x = 105;
+        traffic.update(street, 0);
+        check(traffic.voiceCount() == 0, "out-of-range siren stops");
+        unit.body.p.x = 20;
+        unit.destroyed = true;
+        traffic.update(street, 0);
+        check(traffic.voiceCount() == 0, "destroyed patrol has no siren");
+
         AudioMixer mixer;
         mixer.addClip("test", std::vector<float>(100, .5f));
         for (int i = 0; i < 100; i++)

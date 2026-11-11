@@ -43,7 +43,7 @@ class EffectBatch
     ~EffectBatch();
     void initialize(GLuint shader);
     void clearWeatherCache() { rainCells_.fill({}); }
-    void draw(GLuint shader, const World &w, const View &view, const Mat4 &vp);
+    void draw(GLuint shader, const World &w, const View &view, const Mat4 &vp, bool particles);
     size_t size() const { return quads_.size(); }
 };
 } // namespace pz

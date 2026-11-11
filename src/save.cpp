@@ -23,12 +23,23 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Flock, landing, flying, landedAt)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Rocket, p, direction, height, slope, travel, ownerCar)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ReconDrone, active, position, velocity, altitude, heading, pitch, battery,
                                    health, scanTime, readyAt, nextShot, targets, scanned)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(World::StreetHail, actor, until)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(PeaceRoute, sites, completed, enabled, noise, soundAt, interactAt, previous)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(PassengerRide, car, line, boardBy, away)
+void to_json(json &j, const PassengerRide &ride)
+{
+    j = {{"car", ride.car}, {"line", ride.line}, {"boardBy", ride.boardBy}, {"away", ride.away},
+         {"healthAtLastScare", ride.healthAtLastScare}, {"crimeAt", ride.crimeAt}, {"scares", ride.scares}};
+}
+void from_json(const json &j, PassengerRide &ride)
+{
+    ride = {j.at("car").get<int>(), j.at("line").get<int>(), j.at("boardBy").get<double>(),
+            j.at("away").get<double>(), j.value("healthAtLastScare", 1.), j.value("crimeAt", -1.), j.value("scares", 0)};
+}
 void to_json(json &j, const Job &v)
 {
     j = {{"kind", v.kind}, {"actor", v.actor}, {"destination", v.destination}, {"fare", v.fare},
          {"acquired", v.acquired}, {"deadline", v.deadline}, {"stopped", v.stopped}};
+    if (v.series) j["series"] = true;
     if (v.passenger()) j["ride"] = v.ride;
     if (v.peace()) j["route"] = v.route;
 }
@@ -37,6 +48,7 @@ void from_json(const json &j, Job &v)
     v = {j.at("kind").get<JobKind>(), j.at("actor").get<int>(), j.at("destination").get<int>(),
          j.at("fare").get<int>(), j.at("acquired").get<bool>(), j.at("deadline").get<double>(),
          j.at("stopped").get<double>()};
+    v.series = j.value("series", false);
     if (v.passenger()) j.at("ride").get_to(v.ride);
     if (v.peace()) j.at("route").get_to(v.route);
 }
@@ -87,6 +99,8 @@ json carState(const Car &c)
     WRITE(impactCooldown);
     WRITE(responding);
     WRITE(summoned);
+    WRITE(personal);
+    WRITE(paint);
     WRITE(nextShot);
     WRITE(firePlayerCaused);
     WRITE(routeDistance);
@@ -100,6 +114,9 @@ json carState(const Car &c)
     WRITE(previousNode);
     WRITE(routePhase);
     WRITE(routeLevel);
+    WRITE(laneIndex);
+    WRITE(blockedSince);
+    WRITE(nextLaneDecision);
     WRITE(line); WRITE(along); WRITE(nextStop); WRITE(dwell);
 #undef WRITE
     j["route"] = c.route ? json(c.route->points()) : json(nullptr);
@@ -131,6 +148,8 @@ void loadCar(const json &j, Car &c)
     READ(lastDamageAt);
     READ(safeDrivingTime);
     READ(impactCooldown);
+    c.personal = j.value("personal", false);
+    c.paint = j.value("paint", 0);
     c.summoned = j.value("summoned", false);
     c.responding = j.value("responding", false);
     c.nextShot = j.value("nextShot", 0.);
@@ -146,6 +165,11 @@ void loadCar(const json &j, Car &c)
     READ(previousNode);
     READ(routePhase);
     READ(routeLevel);
+    c.laneIndex = j.value("laneIndex", 0);
+    c.blockedSince = j.value("blockedSince", -1.);
+    c.nextLaneDecision = j.value("nextLaneDecision", 0.);
+    c.senseAt = 0;
+    c.trafficLimit = 100;
     c.line=j.value("line",-1); c.along=j.value("along",0.);
     c.nextStop=j.value("nextStop",0); c.dwell=j.value("dwell",0.);
 #undef READ
@@ -165,21 +189,45 @@ void validateJson(const json &j, int depth = 0)
         for (auto &value : j)
             validateJson(value, depth + 1);
 }
-void validateBody(const Body &b)
+void validateBody(const Body &b, bool generatedMass)
 {
     if (std::max(std::abs(b.p.x), std::abs(b.p.z)) > World::landEdge + 100 || b.v.length() > 1000 ||
-        std::abs(b.w) > 1000 || b.invMass < 0 || b.invMass > 10 || b.invI < 0 || b.invI > 100 ||
+        std::abs(b.w) > 1000 || b.invMass < 0 || b.invI < 0 ||
+        (!generatedMass && (b.invMass > 10 || b.invI > 100)) ||
         b.halfW <= 0 || b.halfH <= 0 || b.radius <= 0 || b.verticalExtent <= 0 || b.friction < 0 ||
         b.restitution < 0 || b.sleepTimer < 0)
         throw std::runtime_error("Invalid body in save");
 }
+void writeSnapshot(const std::filesystem::path &path, const json &j)
+{
+    if (!path.parent_path().empty())
+        std::filesystem::create_directories(path.parent_path());
+    auto temporary = path;
+    temporary += ".tmp";
+    std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+    if (!out)
+        throw std::runtime_error("Cannot create save");
+    out << j.dump();
+    out.flush();
+    if (!out)
+        throw std::runtime_error("Cannot write save");
+    out.close();
+    auto backup = path;
+    backup += ".bak";
+    if (!out)
+        throw std::runtime_error("Cannot close save");
+    if (std::filesystem::exists(path))
+        std::filesystem::copy_file(path, backup, std::filesystem::copy_options::overwrite_existing);
+    std::filesystem::rename(temporary, path);
+}
 } // namespace
 
 // Independent versioned format. It never overwrites the managed game's saves.
-void World::save(const std::filesystem::path &path) const
+std::function<void()> World::captureSave(const std::filesystem::path &path) const
 {
-    json j = {{"format", "promzona-cpp-7"}, {"job", job}, {"jobsCompleted", jobsCompleted},
-              {"jobsFailed", jobsFailed}, {"lastPay", lastPay}, {"energySeconds", energySeconds},
+    json j = {{"format", "promzona-cpp-7"}, {"layoutRevision", layout.revision()}, {"job", job}, {"jobsCompleted", jobsCompleted},
+              {"hailers", hailers}, {"nextHail", nextHail}, {"dayNightCycle", dayNightCycle}, {"simulationSpeed", simulationSpeed}, {"seriesStage", seriesStage}, {"seriesCompleted", seriesCompleted}, {"jobEarnings", jobEarnings},
+              {"ownedGarage", ownedGarage}, {"jobsFailed", jobsFailed}, {"lastPay", lastPay}, {"energySeconds", energySeconds},
               {"clinicCredit", clinicCredit}, {"purchaseAt", purchaseAt},
               {"seed", seed},
               {"hour", clock.hour},
@@ -208,6 +256,7 @@ void World::save(const std::filesystem::path &path) const
               {"fireClock", fireClock},
               {"nextFlameSound", nextFlameSound}};
     j["drone"] = drone;
+    j["transitStopLayout"] = 1;
     auto &moved = j["streetFixtures"] = json::array();
     for (size_t i=0; i<fixtures.size(); ++i)
     {
@@ -221,12 +270,19 @@ void World::save(const std::filesystem::path &path) const
     j["streetLife"] = {{"scooters", scooters}, {"animals", animals}, {"flocks", flocks},
                        {"playerScooter", playerScooter}, {"random", streetRandom.state}, {"clock", animalClock}};
 
+    j["arrests"] = arrests;
+    j["lastFine"] = lastFine;
+    if (patrol.car >= 0)
+        j["arrestPatrol"] = {{"car",patrol.car},{"officer",patrol.officer},{"stage",int(patrol.stage)},
+                             {"hold",patrol.hold},{"deadline",patrol.deadline}};
     j["rescues"] = json::array();
     for (const auto &r : rescues)
         if (r.car >= 0)
             j["rescues"].push_back({{"car",r.car},{"medic",r.medic},{"patient",r.patient},{"stage",int(r.stage)},
                 {"destination",r.destination},{"deadline",r.deadline},{"treatment",r.treatment},{"braking",r.braking}});
     j["rescueClock"] = {nextRescueDispatch,casualtyCursor};
+    if (transitPassenger())
+        j["transitPassenger"] = {{"seat",playerTransitSeat},{"requestedExit",transitExitRequested}};
     j["riders"]=json::array();
     for(size_t i=0;i<people.size();++i)
     {
@@ -244,41 +300,19 @@ void World::save(const std::filesystem::path &path) const
                 {"aim",p.aimSeconds},{"shot",p.shotAt},{"burst",p.burstLeft}};
         if (!p.dead && p.sidearm != WeaponId::none && p.cover.found)
             j["people"][i]["defence"]["cover"] = p.cover;
+        if (p.waitingLine >= 0)
+            j["people"][i]["platform"] = {p.waitingLine, p.waitingStop, p.waitUntil};
         if(p.riding>=0 || p.boardAfter>time)
             j["riders"].push_back({{"person",i},{"car",p.riding},{"seat",p.seat},{"stop",p.alight},{"retry",p.boardAfter}});
     }
     for (auto &c : cars)
         j["cars"].push_back(carState(c));
-    if (!path.parent_path().empty())
-        std::filesystem::create_directories(path.parent_path());
-    auto temporary = path;
-    temporary += ".tmp";
-    std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
-    if (!out)
-        throw std::runtime_error("Cannot create save");
-    out << j.dump();
-    out.flush();
-    if (!out)
-        throw std::runtime_error("Cannot write save");
-    out.close();
-    auto backup = path;
-    backup += ".bak";
-    std::error_code ec;
-    if (std::filesystem::exists(path))
-    {
-        std::filesystem::remove(backup, ec);
-        std::filesystem::rename(path, backup);
-    }
-    try
-    {
-        std::filesystem::rename(temporary, path);
-    }
-    catch (...)
-    {
-        if (std::filesystem::exists(backup))
-            std::filesystem::rename(backup, path);
-        throw;
-    }
+    return [path, snapshot = std::move(j)] { writeSnapshot(path, snapshot); };
+}
+
+void World::save(const std::filesystem::path &path) const
+{
+    captureSave(path)();
 }
 
 void World::load(const std::filesystem::path &path)
@@ -293,7 +327,7 @@ void World::load(const std::filesystem::path &path)
         throw std::runtime_error("Unsupported save format");
     validateJson(j);
     World next;
-    next.generate(j.at("seed").get<std::uint32_t>());
+    next.generate(j.at("seed").get<std::uint32_t>(), {}, j.value("layoutRevision", 0));
     if (j.at("cars").size() < trafficPopulation || j.at("cars").size() > trafficPopulation + maxResponseVehicles + maxSpawnVehicles || j.at("people").size() != next.people.size())
         throw std::runtime_error("Invalid saved population");
     std::vector<Car> legacyFleet;
@@ -302,6 +336,14 @@ void World::load(const std::filesystem::path &path)
     next.cars.resize(j.at("cars").size());
     for (size_t i = 0; i < next.cars.size(); ++i)
         loadCar(j.at("cars")[i], next.cars[i]);
+    next.ownedGarage = j.value("ownedGarage", -1);
+    if (next.ownedGarage < -1 || next.ownedGarage >= int(next.sites.size()) ||
+        (next.ownedGarage >= 0 && next.sites[next.ownedGarage].kind != ServiceKind::garage) ||
+        std::ranges::count(next.cars, true, &Car::personal) > (next.ownedGarage < 0 ? 0 : garageCapacity))
+        throw std::runtime_error("Invalid saved garage");
+    for (const auto &car : next.cars)
+        if (car.paint < 0 || car.paint > 12 || (car.personal && (car.kind > 1 || car.destroyed)))
+            throw std::runtime_error("Invalid saved personal vehicle or paint");
     auto summoned = size_t(std::ranges::count(next.cars, true, &Car::summoned));
     if (summoned > maxSpawnVehicles || next.cars.size() - summoned > trafficPopulation + maxResponseVehicles)
         throw std::runtime_error("Invalid vehicle pool counts");
@@ -316,6 +358,27 @@ void World::load(const std::filesystem::path &path)
     if (!legacy)
     {
         READ(job); READ(jobsCompleted); READ(jobsFailed); READ(lastPay);
+        if (j.contains("hailers"))
+        {
+            if (j.at("hailers").size() != next.hailers.size()) throw std::runtime_error("Invalid street hail count");
+            j.at("hailers").get_to(next.hailers);
+            std::set<int> waiting;
+            for (const auto &h : next.hailers)
+                if (h.actor < -1 || h.actor >= int(next.people.size()) || h.until < 0 ||
+                    (h.actor >= 0 && !waiting.insert(h.actor).second))
+                    throw std::runtime_error("Invalid street hailer");
+            next.nextHail = j.value("nextHail", 0.);
+        }
+        next.seriesStage = j.value("seriesStage", 0);
+        next.seriesCompleted = j.value("seriesCompleted", 0);
+        next.jobEarnings = j.value("jobEarnings", std::int64_t{0});
+        if (next.seriesStage < 0 || next.seriesStage > 2 || next.seriesCompleted < 0 ||
+            std::int64_t(next.seriesCompleted) * 3 + next.seriesStage > next.jobsCompleted ||
+            next.jobEarnings < 0 || next.jobEarnings > std::int64_t(next.jobsCompleted) * 100000)
+            throw std::runtime_error("Invalid saved contract career");
+        if (next.job.passenger() && next.job.acquired && next.job.ride.car >= 0 &&
+            next.job.ride.car < int(next.cars.size()) && !j.at("job").at("ride").contains("healthAtLastScare"))
+            next.job.ride.healthAtLastScare = next.cars[next.job.ride.car].health;
         READ(energySeconds); READ(clinicCredit); READ(purchaseAt);
         if (!next.validJob() || next.jobsCompleted < 0 || next.jobsCompleted > 10000000 ||
             next.jobsFailed < 0 || next.jobsFailed > 10000000 || next.lastPay < 0 || next.lastPay > 100000 ||
@@ -330,6 +393,10 @@ void World::load(const std::filesystem::path &path)
     READ(money);
     READ(wanted);
     READ(time);
+    next.dayNightCycle = j.value("dayNightCycle", true);
+    next.simulationSpeed = j.value("simulationSpeed", 1.);
+    if (!(next.simulationSpeed >= .1 && next.simulationSpeed <= 3))
+        throw std::runtime_error("Invalid simulation speed");
     READ(rain);
     READ(rainTarget);
     READ(weatherClock);
@@ -358,9 +425,9 @@ void World::load(const std::filesystem::path &path)
     if (!next.random.state)
         throw std::runtime_error("Invalid random state");
     std::set<std::uint32_t> ids;
-    auto body = [&](const Body &b)
+    auto body = [&](const Body &b, bool generatedMass = false)
     {
-        validateBody(b);
+        validateBody(b, generatedMass);
         if (b.roadLevel != 0 && !next.levelById(b.roadLevel))
             throw std::runtime_error("Invalid support level");
         if (!ids.insert(b.id).second)
@@ -393,12 +460,14 @@ void World::load(const std::filesystem::path &path)
                 (b.roadLevel && !next.levelById(b.roadLevel)))
                 throw std::runtime_error("Invalid street fixture state");
             f.displaced=true;
+            next.displacedFixtures.insert(size_t(&f-next.fixtures.data()));
             next.supportFixture(f);
         }
     }
     body(next.player);
+    // Scenery mass and inertia are regenerated from the seed even when its pose is restored.
     for (auto &b : next.staticBodies)
-        body(b);
+        body(b, true);
     for (auto &c : next.cars)
     {
         body(c.body);
@@ -406,20 +475,32 @@ void World::load(const std::filesystem::path &path)
         if (!node(c.routeFrom) || !node(c.routeTo) || c.routePhase < 0 || c.routePhase > 2 || c.kind < 0 ||
             c.kind > 14 || c.mass <= 0 || c.mass > 100000 || c.wheelbase <= 0 || c.model >= std::size(fleet) || c.nextShot < 0 ||
             c.health > 1 || c.health < -.5 || c.lift < 0 || c.fireTime < 0 || c.safeDrivingTime < 0 ||
-            c.impactCooldown < 0)
+            c.impactCooldown < 0 || c.laneIndex < 0 || c.laneIndex > 1 ||
+            (c.routePhase == 2 && c.laneIndex != 0) || c.nextLaneDecision < 0)
             throw std::runtime_error("Invalid saved vehicle");
         if (c.id != size_t(&c-next.cars.data()) || c.line < -1 || c.line >= int(next.lines.size()) ||
             ((c.kind==9 || c.kind==10) != (c.line>=0)))
             throw std::runtime_error("Invalid transit vehicle identity");
         if (c.summoned && (c.id < trafficPopulation || c.responding ||
-            (c.kind != 11 && c.kind != 12 && c.kind != 14)))
+            (c.line >= 0 || c.kind == 9 || c.kind == 10)))
             throw std::runtime_error("Invalid spawned vehicle");
         if(c.line>=0)
         {
             const auto &line=next.lines[c.line];
             if(c.kind!=line.kind || c.model!=unsigned(c.kind-1) || c.along<0 || c.along>=line.track.length() ||
-               c.nextStop<0 || c.nextStop>=int(line.stops.size()) || c.dwell<0 || c.dwell>5)
+               c.nextStop<0 || c.nextStop>=int(line.stops.size()) || c.dwell<0 || c.dwell>6)
                 throw std::runtime_error("Invalid saved transit line position");
+            if (!j.contains("transitStopLayout"))
+            {
+                // Older cities used fixed block midpoints, even on a steep foundation.
+                // Keep vehicles in place. Rejoin the revised timetable from their position.
+                auto nextStop = std::upper_bound(line.stops.begin(), line.stops.end(), c.along + .65);
+                int upcoming = nextStop == line.stops.end() ? 0 : int(nextStop-line.stops.begin());
+                int previous = (upcoming + int(line.stops.size()) - 1) % int(line.stops.size());
+                if (std::abs(std::remainder(c.along-line.stops[previous],line.track.length())) > .65)
+                    c.dwell = 0;
+                c.nextStop = upcoming;
+            }
         }
         if (c.routeLevel != 0 && !next.levelById(c.routeLevel))
             throw std::runtime_error("Invalid route level");
@@ -446,6 +527,17 @@ void World::load(const std::filesystem::path &path)
         p.boardAfter = 0;
         p.sidearm = p.dead ? WeaponId::none : Person::civilianWeapon(next.seed, p.body.id);
         const auto &entry = j.at("people").at(i);
+        if (entry.contains("platform"))
+        {
+            const auto &queue = entry.at("platform");
+            p.waitingLine = queue.at(0);
+            p.waitingStop = queue.at(1);
+            p.waitUntil = queue.at(2);
+            if (p.waitingLine < 0 || p.waitingLine >= int(next.lines.size()) || p.waitingStop < 0 ||
+                p.waitingStop >= int(next.lines[p.waitingLine].stops.size()) || p.dead || p.waitUntil < 0)
+                throw std::runtime_error("Invalid waiting passenger");
+            p.platformTarget = next.lines[p.waitingLine].curb(p.waitingStop);
+        }
         p.rescueAfter = entry.value("rescueAfter",0.);
         if (p.rescueAfter < 0) throw std::runtime_error("Invalid rescue delay");
         if (entry.value("disarmed",false)) p.sidearm = WeaponId::none;
@@ -496,8 +588,40 @@ void World::load(const std::filesystem::path &path)
         if(next.nextRescueDispatch<0 || next.casualtyCursor>=next.people.size())
             throw std::runtime_error("Invalid ambulance dispatch queue");
     }
+    next.arrests = j.value("arrests", 0);
+    next.lastFine = j.value("lastFine", 0);
+    if (next.arrests < 0 || next.lastFine < 0 || next.lastFine > 220)
+        throw std::runtime_error("Invalid arrest history");
+    if (j.contains("arrestPatrol"))
+    {
+        auto &a = next.patrol;
+        const auto &row = j.at("arrestPatrol");
+        a.car = row.at("car");
+        a.officer = row.at("officer");
+        int stage = row.at("stage");
+        a.hold = row.at("hold");
+        a.deadline = row.at("deadline");
+        if (a.car < 0 || a.car >= int(next.cars.size()) || a.officer < -1 || a.officer >= int(next.people.size()) ||
+            stage < 0 || stage > int(PatrolStage::seated) || (stage != int(PatrolStage::stopping) && a.officer < 0) ||
+            a.hold < 0 || a.hold > 2.53 || a.deadline < 0 ||
+            (a.officer >= 0 && next.paramedicCall(a.officer)))
+            throw std::runtime_error("Invalid arrest patrol");
+        const auto kind = next.cars[a.car].kind;
+        if (kind != 3 && kind != 6 && kind != 7) throw std::runtime_error("Invalid arrest vehicle");
+        a.stage = PatrolStage(stage);
+    }
     std::set<size_t> riders;
     std::set<std::pair<int,int>> seats;
+    if (j.contains("transitPassenger"))
+    {
+        const auto &ride = j.at("transitPassenger");
+        next.playerTransitSeat = ride.at("seat");
+        next.transitExitRequested = ride.at("requestedExit");
+        if (next.controlledCar < 0 || next.cars[next.controlledCar].line < 0 ||
+            next.playerTransitSeat < 0 || next.playerTransitSeat >= 8)
+            throw std::runtime_error("Invalid player transit seat");
+        seats.emplace(next.controlledCar,next.playerTransitSeat);
+    }
     for(const auto &row:j.value("riders",json::array()))
     {
         size_t index=row.at("person");
@@ -516,7 +640,9 @@ void World::load(const std::filesystem::path &path)
             const auto *crew = next.paramedicCall(int(index));
             bool medical = crew && crew->car==car && seat==0 && stop==-1 &&
                            (crew->stage==RescueStage::standby || crew->stage==RescueStage::driving);
-            if ((!hired && !transit && !medical) || p.dead || !seats.emplace(car,seat).second)
+            bool officer = next.patrol.officer == int(index) && next.patrol.car == car && seat == 0 && stop == -1 &&
+                           (next.patrol.stage == PatrolStage::seated || next.patrol.stage == PatrolStage::stopping);
+            if ((!hired && !transit && !medical && !officer) || p.dead || p.waitingLine >= 0 || !seats.emplace(car,seat).second)
                 throw std::runtime_error("Invalid passenger seat or destination");
         }
         p.riding=car; p.seat=seat; p.alight=stop; p.boardAfter=retry;
@@ -643,6 +769,13 @@ void World::load(const std::filesystem::path &path)
                 throw std::runtime_error("Invalid saved animal");
             next.animals[i] = a;
         }
+    }
+    if (next.patrol.officer >= 0)
+    {
+        const auto &p = next.people[next.patrol.officer];
+        bool riding = next.patrol.stage == PatrolStage::seated || next.patrol.stage == PatrolStage::stopping;
+        if (p.ownedScooter >= 0 || p.inCompany || p.courier || (!p.dead && p.riding != (riding ? next.patrol.car : -1)))
+            throw std::runtime_error("Conflicting arrest officer assignment");
     }
     for (const auto &r : next.rescues)
     {

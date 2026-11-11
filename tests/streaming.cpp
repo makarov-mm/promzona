@@ -69,7 +69,12 @@ void worker()
     size_t count{};
     for (const auto &cell : cells)
         count += cell.buildings.size();
-    check(count == world.buildings.size(), "every building belongs to exactly one cell");
+    auto apartments = std::ranges::count(world.buildings, BuildingKind::apartment, &Building::kind);
+    check(count == size_t(apartments), "every streamed apartment belongs to one cell");
+    for (const auto &cell : cells)
+        check(!cell.buildings.empty() && std::ranges::all_of(cell.buildings, [](const BuildingPlan &b) {
+            return b.kind == BuildingKind::apartment;
+        }), "district meshes baked into the core have no streaming jobs");
     // The worker must use its immutable snapshot even if the owner starts a new city.
     world.buildings.clear();
     std::vector<size_t> ids(cells.size());

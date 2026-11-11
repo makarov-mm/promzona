@@ -151,7 +151,7 @@ void EffectBatch::hydrants(const World &w, const Frustum &frustum, float day)
     }
 }
 
-void EffectBatch::draw(GLuint shader, const World &w, const View &view, const Mat4 &vp)
+void EffectBatch::draw(GLuint shader, const World &w, const View &view, const Mat4 &vp, bool particles)
 {
     quads_.clear();
     vertices_.clear();
@@ -161,46 +161,71 @@ void EffectBatch::draw(GLuint shader, const World &w, const View &view, const Ma
     up_ = cross(right_, forward_);
     Frustum frustum(vp);
     float day = float(w.clock.daylight());
-    marks(w, frustum, day);
-    rain(w, frustum, day);
-    hydrants(w,frustum,day);
-    for (const auto &p : w.particles)
+    // Low grazing angles reflect more sky. The cached corners follow the road grade.
+    for (const auto &puddle : w.puddles)
     {
-        auto delta = p.p - eye_;
-        if (dot(delta, delta) > 150 * 150 || !frustum.sphere(p.p, p.size * 2.f))
-            continue;
-        float fade = std::min(1.f, p.life * 9.f);
-        billboard(p.p, right_ * p.size, up_ * p.size, p.color, fade * .94f, 1.f);
+        Vec3 centre = (puddle.corners[0] + puddle.corners[2]) * .5f;
+        Vec3 delta = eye_ - centre;
+        if (dot(delta, delta) > 100 * 100 || !frustum.sphere(centre, 2.f)) continue;
+        float grazing = 1.f - std::clamp(delta.unit().y, 0.f, 1.f);
+        float reflection = grazing * grazing * grazing;
+        Vec3 sky = Vec3{.46f,.61f,.72f} * (.14f + .86f * day);
+        Vec3 base = Vec3{.07f,.10f,.105f} * (.35f + .65f * day);
+        append(puddle.corners, base + (sky - base) * reflection, .78f, 4.f);
     }
-    // Render exhaust and wet-tyre spray locally. Their visual phase never changes the simulation RNG.
-    for (const auto &car : w.cars)
+    for (const auto &wave : w.ripples)
     {
-        if (car.destroyed || car.falling || car.kind == 9 || car.kind == 10 || car.kind == 12 ||
-            !car.grounded())
-            continue;
-        Vec3 p{float(car.body.p.x), float(car.body.height - .48), float(car.body.p.z)};
-        auto delta = p - eye_;
-        if (dot(delta, delta) > 55 * 55 || !frustum.sphere(p, 5.f))
-            continue;
-        auto dir = forward(car.heading());
-        Vec3 f{float(dir.x), 0, float(dir.z)}, side{f.z, 0, -f.x};
-        float speed = float(car.body.v.length());
-        Vec3 rear = p - f * float(car.body.halfH);
-        bool spray = w.rain > .25 && speed > 3 && w.precipitationSurface(car.body.p) < car.body.height + .25;
-        for (int i = 0; i < 5; ++i)
+        float age = float(w.time - wave.born);
+        float radius = float(std::sqrt(wave.strength)) * (.18f + 1.25f * age);
+        Vec3 p{float(wave.centre.x), float(CityLayout::waterLevel + .023), float(wave.centre.z)};
+        if (!frustum.sphere(p, radius)) continue;
+        float opacity = float(std::clamp(1. - age / WaterRipple::lifetime, 0., 1.));
+        billboard(p, {radius, 0, 0}, {0, 0, -radius}, Vec3{.58f,.81f,.84f} * (.25f + .75f * day),
+                  opacity * .78f, 5.f);
+    }
+    marks(w, frustum, day);
+    if (particles)
+    {
+        rain(w, frustum, day);
+        hydrants(w,frustum,day);
+        for (const auto &p : w.particles)
         {
-            double cycles = w.time * 1.35 + car.id * .373 + i * .2;
-            float age = float(cycles - std::floor(cycles));
-            float radius = .07f + age * .27f;
-            Vec3 at = rear - f * (age * (.65f + .17f * speed)) + Vec3{age * .14f, age * .65f, 0};
-            billboard(at + side * float(.6 * car.body.halfW), right_ * radius, up_ * radius,
-                      Vec3{.58f, .59f, .58f} * (.45f + .55f * day), .19f * (1 - age), 1.f);
-            if (spray)
-                for (int s : {-1, 1})
-                    billboard(at + side * float(s * car.body.halfW) - Vec3{0, .24f, 0},
-                              right_ * (radius * 1.4f), up_ * radius,
-                              Vec3{.60f, .70f, .76f} * (.45f + .55f * day), float(w.rain) * .22f * (1 - age),
-                              1.f);
+            auto delta = p.p - eye_;
+            if (dot(delta, delta) > 150 * 150 || !frustum.sphere(p.p, p.size * 2.f))
+                continue;
+            float fade = std::min(1.f, p.life * 9.f);
+            billboard(p.p, right_ * p.size, up_ * p.size, p.color, fade * .94f, 1.f);
+        }
+        // Render exhaust and wet-tyre spray locally. Their visual phase never changes the simulation RNG.
+        for (const auto &car : w.cars)
+        {
+            if (car.destroyed || car.falling || car.kind == 9 || car.kind == 10 || car.kind == 12 ||
+                !car.grounded())
+                continue;
+            Vec3 p{float(car.body.p.x), float(car.body.height - .48), float(car.body.p.z)};
+            auto delta = p - eye_;
+            if (dot(delta, delta) > 55 * 55 || !frustum.sphere(p, 5.f))
+                continue;
+            auto dir = forward(car.heading());
+            Vec3 f{float(dir.x), 0, float(dir.z)}, side{f.z, 0, -f.x};
+            float speed = float(car.body.v.length());
+            Vec3 rear = p - f * float(car.body.halfH);
+            bool spray = w.rain > .25 && speed > 3 && w.precipitationSurface(car.body.p) < car.body.height + .25;
+            for (int i = 0; i < 5; ++i)
+            {
+                double cycles = w.time * 1.35 + car.id * .373 + i * .2;
+                float age = float(cycles - std::floor(cycles));
+                float radius = .07f + age * .27f;
+                Vec3 at = rear - f * (age * (.65f + .17f * speed)) + Vec3{age * .14f, age * .65f, 0};
+                billboard(at + side * float(.6 * car.body.halfW), right_ * radius, up_ * radius,
+                          Vec3{.58f, .59f, .58f} * (.45f + .55f * day), .19f * (1 - age), 1.f);
+                if (spray)
+                    for (int s : {-1, 1})
+                        billboard(at + side * float(s * car.body.halfW) - Vec3{0, .24f, 0},
+                                  right_ * (radius * 1.4f), up_ * radius,
+                                  Vec3{.60f, .70f, .76f} * (.45f + .55f * day), float(w.rain) * .22f * (1 - age),
+                                  1.f);
+            }
         }
     }
     if (quads_.empty())
