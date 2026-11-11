@@ -58,7 +58,8 @@
       "metal": 0.65,
       "glass": true,
       "colorMap": "3-color.png",
-      "normalMap": "3-normal.png"
+      "normalMap": "3-normal.png",
+      "alpha": 0.48
     },
     {
       "name": "blue",
@@ -169,19 +170,19 @@
         "file": "lod0-m0-p0.glb",
         "material": 0,
         "part": 0,
-        "triangles": 744
+        "triangles": 837
       },
       {
         "file": "lod0-m3-p0.glb",
         "material": 3,
         "part": 0,
-        "triangles": 12
+        "triangles": 8
       },
       {
         "file": "lod0-m0-p1.glb",
         "material": 0,
         "part": 1,
-        "triangles": 108
+        "triangles": 327
       },
       {
         "file": "lod0-m2-p1.glb",
@@ -193,13 +194,13 @@
         "file": "lod0-m4-p0.glb",
         "material": 4,
         "part": 0,
-        "triangles": 324
+        "triangles": 420
       },
       {
         "file": "lod0-m5-p0.glb",
         "material": 5,
         "part": 0,
-        "triangles": 2900
+        "triangles": 324
       },
       {
         "file": "lod0-m1-p3.glb",
@@ -241,7 +242,7 @@
         "file": "lod0-m0-p2.glb",
         "material": 0,
         "part": 2,
-        "triangles": 108
+        "triangles": 313
       },
       {
         "file": "lod0-m2-p2.glb",
@@ -284,6 +285,42 @@
         "material": 1,
         "part": 0,
         "triangles": 216
+      },
+      {
+        "file": "lod0-m3-p1.glb",
+        "part": 1,
+        "material": 3,
+        "triangles": 2
+      },
+      {
+        "file": "lod0-m3-p2.glb",
+        "part": 2,
+        "material": 3,
+        "triangles": 2
+      },
+      {
+        "file": "lod0-m4-p1.glb",
+        "part": 1,
+        "material": 4,
+        "triangles": 48
+      },
+      {
+        "file": "lod0-m4-p2.glb",
+        "part": 2,
+        "material": 4,
+        "triangles": 48
+      },
+      {
+        "file": "lod0-m5-p1.glb",
+        "part": 1,
+        "material": 5,
+        "triangles": 1288
+      },
+      {
+        "file": "lod0-m5-p2.glb",
+        "part": 2,
+        "material": 5,
+        "triangles": 1288
       }
     ],
     [
@@ -291,19 +328,19 @@
         "file": "lod1-m0-p0.glb",
         "material": 0,
         "part": 0,
-        "triangles": 216
+        "triangles": 516
       },
       {
         "file": "lod1-m3-p0.glb",
         "material": 3,
         "part": 0,
-        "triangles": 12
+        "triangles": 8
       },
       {
         "file": "lod1-m0-p1.glb",
         "material": 0,
         "part": 1,
-        "triangles": 4
+        "triangles": 150
       },
       {
         "file": "lod1-m2-p1.glb",
@@ -315,13 +352,13 @@
         "file": "lod1-m4-p0.glb",
         "material": 4,
         "part": 0,
-        "triangles": 44
+        "triangles": 60
       },
       {
         "file": "lod1-m5-p0.glb",
         "material": 5,
         "part": 0,
-        "triangles": 256
+        "triangles": 36
       },
       {
         "file": "lod1-m1-p3.glb",
@@ -363,7 +400,7 @@
         "file": "lod1-m0-p2.glb",
         "material": 0,
         "part": 2,
-        "triangles": 4
+        "triangles": 158
       },
       {
         "file": "lod1-m2-p2.glb",
@@ -406,6 +443,42 @@
         "material": 1,
         "part": 0,
         "triangles": 32
+      },
+      {
+        "file": "lod1-m3-p1.glb",
+        "part": 1,
+        "material": 3,
+        "triangles": 2
+      },
+      {
+        "file": "lod1-m3-p2.glb",
+        "part": 2,
+        "material": 3,
+        "triangles": 2
+      },
+      {
+        "file": "lod1-m4-p1.glb",
+        "part": 1,
+        "material": 4,
+        "triangles": 8
+      },
+      {
+        "file": "lod1-m4-p2.glb",
+        "part": 2,
+        "material": 4,
+        "triangles": 8
+      },
+      {
+        "file": "lod1-m5-p1.glb",
+        "part": 1,
+        "material": 5,
+        "triangles": 112
+      },
+      {
+        "file": "lod1-m5-p2.glb",
+        "part": 2,
+        "material": 5,
+        "triangles": 108
       }
     ],
     [
@@ -413,25 +486,25 @@
         "file": "lod2-m0-p0.glb",
         "material": 0,
         "part": 0,
-        "triangles": 104
+        "triangles": 327
       },
       {
         "file": "lod2-m3-p0.glb",
         "material": 3,
         "part": 0,
-        "triangles": 12
+        "triangles": 8
       },
       {
         "file": "lod2-m0-p1.glb",
         "material": 0,
         "part": 1,
-        "triangles": 4
+        "triangles": 81
       },
       {
         "file": "lod2-m4-p0.glb",
         "material": 4,
         "part": 0,
-        "triangles": 22
+        "triangles": 38
       },
       {
         "file": "lod2-m5-p0.glb",
@@ -473,7 +546,7 @@
         "file": "lod2-m0-p2.glb",
         "material": 0,
         "part": 2,
-        "triangles": 4
+        "triangles": 81
       },
       {
         "file": "lod2-m1-p5.glb",
@@ -503,6 +576,30 @@
         "file": "lod2-m1-p0.glb",
         "material": 1,
         "part": 0,
+        "triangles": 8
+      },
+      {
+        "file": "lod2-m3-p1.glb",
+        "part": 1,
+        "material": 3,
+        "triangles": 2
+      },
+      {
+        "file": "lod2-m3-p2.glb",
+        "part": 2,
+        "material": 3,
+        "triangles": 2
+      },
+      {
+        "file": "lod2-m4-p1.glb",
+        "part": 1,
+        "material": 4,
+        "triangles": 8
+      },
+      {
+        "file": "lod2-m4-p2.glb",
+        "part": 2,
+        "material": 4,
         "triangles": 8
       }
     ]

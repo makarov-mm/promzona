@@ -62,6 +62,7 @@ struct Person
     int riding{-1}, seat{}, alight{};
     int ownedScooter{-1};
     bool courier{}, inCompany{};
+    enum class Uniform { none, medical, police } uniform{};
     Vec2 incident{}, danger{};
     double watchUntil{}, voiceAt{}, idleVoiceAt{}, fleeUntil{};
     double deliveryDistance{}, deliveryUntil{};
@@ -293,6 +294,15 @@ struct World
     void appendLevelContacts(std::uint32_t &id);
     int chooseWalkNext(int n, int previous);
     std::optional<Vec2> vehicleExit(const Car &car, std::optional<Vec2> toward = {}) const;
+    struct VehicleEntry {
+        int car{-1}, side{};
+        double progress{}, deadline{};
+    } vehicleEntry;
+    static Vec2 driverDoor(const Car &car, int side);
+    bool vehicleSpace(Vec2 at, double height, const Car *ignore, bool includePlayer) const;
+    bool entryPath(const Car &car, Vec2 door) const;
+    bool unloadCrew(Car &car);
+    void stepEntry(PlayerInput &input, double dt);
     void enterExit();
     void generateServices();
     void generateShops();
@@ -371,12 +381,16 @@ struct World
     bool deployResponder(int kind);
     void responseFire(Car &car);
     void flyPatrol(Car &car, const PlayerInput &input, double dt);
-    void recover();
+    double recoveryReadyAt{};
+    bool recover();
+    bool safeRecoveryPose(const Car &car, Vec2 at, double heading) const;
+    std::optional<Vec2> playerVehicleExit(const Car &car) const;
+    bool safeExitPoint(const Car &car, Vec2 at) const;
     void shoot(double heading, double pitch = 0);
     void explode(Vec2 p, double y, double strength = 1, bool vehicleBlast = false, bool playerCaused = false);
     void destroyCar(Car &car);
     void damageCar(Car &car, double amount, bool playerCaused = false);
-    void vehicleImpact(Car &car, double velocityChange);
+    void vehicleImpact(Car &car, double speedChange, Vec2 velocityChange = {});
     void killPerson(Person &person, Vec2 velocity = {}, bool playerCaused = false);
     AttackHit traceAttack(Vec2 from, Vec2 direction, double y, double slope, double range, int ignoreCar = -1,
                           bool includePlayer = false, const Person *shooter = nullptr) const;
@@ -393,6 +407,7 @@ struct World
     void save(const std::filesystem::path &path) const;
     void load(const std::filesystem::path &path);
     std::wstring command(const std::string &text);
+    static int nearestNode(Vec2 p);
     static Vec2 nodePoint(int n)
     {
         return {(n % nodes - (nodes - 1) * .5) * spacing, (n / nodes - (nodes - 1) * .5) * spacing};

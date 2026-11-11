@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param([ValidateSet('Debug','Release')][string]$Configuration = 'Release',
       [string]$RuntimePath,
-      [string[]]$Scenarios = @('day','drive','walk','night','storm','canal','canal-impact','bridge','overpass','underpass','portal','tunnel','facade','facade-night','park','park-unshadowed','park-evening','streaming','radio-menu','settings','save-slots','market','workshop','console','job-board','contract-series','street-hail','courier','pursuit','arrest','arrest-car','traffic-lanes','transit','tram-ride','trolley-ride','tank','drone','leaflets','taxi','wildlife','scooter','delivery-rider','ambulance','hydrant','phone-booth','soda-machine','puddle','estate','courtyard','cottages','centre','garages','rail-yard','seafront','canal-mouth'))
+      [string[]]$Scenarios = @('day','drive','walk','night','storm','canal','canal-impact','bridge','overpass','underpass','portal','tunnel','facade','facade-night','park','park-unshadowed','park-evening','streaming','radio-menu','settings','save-slots','market','workshop','console','job-board','contract-series','street-hail','courier','pursuit','arrest','arrest-car','traffic-lanes','transit','tram-ride','trolley-ride','carjack','recovery','rollover','tram-recovery','tunnel-exit','tank','drone','leaflets','taxi','wildlife','scooter','delivery-rider','ambulance','hydrant','phone-booth','soda-machine','puddle','estate','courtyard','cottages','centre','garages','rail-yard','seafront','canal-mouth'))
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $runtime = if ($RuntimePath) { (Resolve-Path -LiteralPath $RuntimePath).Path } else { Join-Path $root "artifacts/$Configuration" }
@@ -20,7 +20,7 @@ foreach ($scenario in $Scenarios) {
         $previous = Join-Path $directory $name
         if (Test-Path -LiteralPath $previous) { Remove-Item -LiteralPath $previous }
     }
-    $frames = if ($scenario -in 'tram-ride','trolley-ride') { 4200 } elseif ($scenario -in 'bridge','traffic-lanes','arrest','arrest-car') { 480 } elseif ($scenario -eq 'leaflets') { 210 } elseif ($scenario -eq 'streaming') { 900 } else { 180 }
+    $frames = if ($scenario -in 'tram-ride','trolley-ride') { 4200 } elseif ($scenario -in 'bridge','traffic-lanes','arrest','arrest-car','rollover','tram-recovery') { 480 } elseif ($scenario -eq 'leaflets') { 210 } elseif ($scenario -eq 'streaming') { 900 } else { 180 }
     $arguments = "--smoke --scenario $scenario --frames $frames --smoke-output `"$directory`" --screenshot `"$bmp`""
     $process = Start-Process -FilePath $exe -WorkingDirectory $env:TEMP -ArgumentList $arguments -WindowStyle Hidden -PassThru
     try {

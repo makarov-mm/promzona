@@ -90,6 +90,8 @@
     <ClCompile Include="src\vegetation.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\wildlife.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\world.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\vehicle_entry.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\vehicle_recovery.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\traffic_lanes.cpp"><Filter>Исходники</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>

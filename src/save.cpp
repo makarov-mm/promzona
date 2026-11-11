@@ -90,6 +90,8 @@ json carState(const Car &c)
     WRITE(falling);
     WRITE(destroyed);
     WRITE(recovering);
+    if (c.recovering || c.rollRate || c.pitchRate || c.overturnedTime)
+        j["attitude"] = {c.rollRate,c.pitchRate,c.overturnedTime,c.rightingTime,c.rightingRoll,c.rightingPitch};
     WRITE(braking);
     WRITE(wreckSupported);
     WRITE(health);
@@ -100,6 +102,7 @@ json carState(const Car &c)
     WRITE(responding);
     WRITE(summoned);
     WRITE(personal);
+    WRITE(driverless);
     WRITE(paint);
     WRITE(nextShot);
     WRITE(firePlayerCaused);
@@ -141,6 +144,16 @@ void loadCar(const json &j, Car &c)
     READ(falling);
     READ(destroyed);
     READ(recovering);
+    if (j.contains("attitude"))
+    {
+        auto a = j.at("attitude").get<std::array<double,6>>();
+        if (!std::ranges::all_of(a, [](double v){ return std::isfinite(v); }) ||
+            a[2] < 0 || a[2] > 4.1 || a[3] < 0 || a[3] > 2.2)
+            throw std::runtime_error("Invalid vehicle recovery state");
+        c.rollRate=a[0]; c.pitchRate=a[1]; c.overturnedTime=a[2];
+        c.rightingTime=a[3]; c.rightingRoll=a[4]; c.rightingPitch=a[5];
+    }
+    else if (c.recovering) c.beginRighting();
     READ(braking);
     READ(wreckSupported);
     READ(health);
@@ -149,6 +162,7 @@ void loadCar(const json &j, Car &c)
     READ(safeDrivingTime);
     READ(impactCooldown);
     c.personal = j.value("personal", false);
+    c.driverless = j.value("driverless", false);
     c.paint = j.value("paint", 0);
     c.summoned = j.value("summoned", false);
     c.responding = j.value("responding", false);
@@ -232,7 +246,7 @@ std::function<void()> World::captureSave(const std::filesystem::path &path) cons
               {"seed", seed},
               {"hour", clock.hour},
               {"cycleMinutes", clock.cycleMinutes},
-              {"time", time},
+              {"time", time}, {"recoveryReadyAt", recoveryReadyAt},
               {"health", health},
               {"money", money},
               {"wanted", wanted},
@@ -290,6 +304,7 @@ std::function<void()> World::captureSave(const std::filesystem::path &path) cons
         if (p.inCompany || p.watchUntil > time || p.voiceAt > time || p.fleeUntil > time)
             j["people"][i]["social"] = {{"company",p.inCompany},{"incident",p.incident},
                                         {"danger",p.danger},{"fleeUntil",p.fleeUntil},{"watchUntil",p.watchUntil},{"voiceAt",p.voiceAt}};
+        if (p.uniform != Person::Uniform::none) j["people"][i]["uniform"] = int(p.uniform);
         if (p.dead) j["people"][i]["rescueAfter"] = p.rescueAfter;
         if (!p.dead && p.sidearm == WeaponId::none && Person::civilianWeapon(seed,p.body.id) != WeaponId::none)
             j["people"][i]["disarmed"] = true;
@@ -393,6 +408,9 @@ void World::load(const std::filesystem::path &path)
     READ(money);
     READ(wanted);
     READ(time);
+    next.recoveryReadyAt = j.value("recoveryReadyAt", 0.);
+    if (!(next.recoveryReadyAt >= 0 && next.recoveryReadyAt <= next.time + 8.01))
+        throw std::runtime_error("Invalid vehicle recovery cooldown");
     next.dayNightCycle = j.value("dayNightCycle", true);
     next.simulationSpeed = j.value("simulationSpeed", 1.);
     if (!(next.simulationSpeed >= .1 && next.simulationSpeed <= 3))
@@ -527,6 +545,9 @@ void World::load(const std::filesystem::path &path)
         p.boardAfter = 0;
         p.sidearm = p.dead ? WeaponId::none : Person::civilianWeapon(next.seed, p.body.id);
         const auto &entry = j.at("people").at(i);
+        int uniform = entry.value("uniform", 0);
+        if (uniform < 0 || uniform > int(Person::Uniform::police)) throw std::runtime_error("Invalid crew uniform");
+        p.uniform = Person::Uniform(uniform);
         if (entry.contains("platform"))
         {
             const auto &queue = entry.at("platform");

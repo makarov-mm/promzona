@@ -210,6 +210,29 @@ void cylinder(MeshData &mesh, Vec3 a, Vec3 b, float radius, int sides)
         quad(mesh, b+r, b+s, b, b);
     }
 }
+// Model the cap in metres on the standing pose, then bind it to the same head
+// joint as the hair. The two human rigs have different joint-space origins.
+MeshData policeCap(const SkinData &skin)
+{
+    constexpr int head = 7;
+    if (skin.joints <= head) throw std::runtime_error("Human rig has no head joint");
+    const float *bone = skin.bones.data() + head * 16;
+    const Vec3 x{bone[0],bone[1],bone[2]}, y{bone[4],bone[5],bone[6]}, z{bone[8],bone[9],bone[10]};
+    const Vec3 origin{bone[12],bone[13],bone[14]};
+    MeshData mesh;
+    cylinder(mesh,{0,1.68f,.025f},{0,1.747f,.025f},.103f,12);
+    box(mesh,{0,1.688f,.121f},{.077f,.009f,.052f});
+    for (auto &vertex : mesh.vertices)
+    {
+        const auto delta = vertex.position - origin;
+        vertex.position = {dot(delta,x)/dot(x,x),dot(delta,y)/dot(y,y),dot(delta,z)/dot(z,z)};
+        const auto n = vertex.normal;
+        vertex.normal = Vec3{dot(n,x),dot(n,y),dot(n,z)}.unit();
+        vertex.joints = {float(head),0,0,0};
+        vertex.weights = {1,0,0,0};
+    }
+    return mesh;
+}
 GLuint bonePalette(const SkinData &s)
 {
     GLuint t;
@@ -225,7 +248,7 @@ struct Renderer::Impl
 {
     std::filesystem::path root;
     GLuint scene{}, ui{}, white{}, uiTexture{}, bones[2]{}, rug{}, shadowTexture{}, shadowFbo{};
-    Mesh uiQuad, cube, marker, skin[2];
+    Mesh uiQuad, cube, marker, skin[2], patrolCap[2];
     GLuint effectShader{};
     EffectBatch effects;
     SceneMode mode{SceneMode::enhanced};
@@ -261,6 +284,16 @@ struct Renderer::Impl
         };
         std::vector<std::vector<Batch>> lods;
         std::vector<Wheel> wheels;
+        std::array<Vec3,2> hinges{};
+        void readHinges(const nlohmann::json &manifest)
+        {
+            if (!manifest.contains("hinges")) return;
+            for (size_t i = 0; i < hinges.size(); ++i)
+            {
+                const auto &p = manifest.at("hinges").at(i);
+                hinges[i] = {p.at(0), p.at(1), p.at(2)};
+            }
+        }
     };
     std::vector<Batch> city;
     std::array<GLuint, 10> walls{}, normals{}, orm{};
@@ -378,6 +411,7 @@ struct Renderer::Impl
             auto name = i ? "woman" : "man";
             auto s = loadSkin(root / (std::string("Models/PeopleSkinned/") + name + ".cityskin"));
             skin[i].upload(s.mesh);
+            patrolCap[i].upload(policeCap(s));
             poses[i] = s.poses;
             bones[i] = bonePalette(s);
             peopleTexture[i] = texture(root / (std::string("Textures/People/") + name + "-palette.png"));
@@ -425,6 +459,7 @@ struct Renderer::Impl
     void loadAmbulance(Model &model, const std::filesystem::path &dir)
     {
         auto meta = nlohmann::json::parse(readText(dir / "manifest.json")).at("ambulance");
+        model.readHinges(meta);
         for (const auto &w : meta.at("wheels"))
         {
             auto p = w.at("pivot");
@@ -452,7 +487,7 @@ struct Renderer::Impl
             {
                 if (groups[i].indices.empty()) continue;
                 auto &b=lod.emplace_back();
-                b.part = i ? int(i+2) : 0;
+                b.part = i ? int(i+2) : name == std::string_view("left") ? 1 : name == std::string_view("right") ? 2 : 0;
                 b.color = image;
                 b.surface = 10; // Articulated vehicle palette; alpha holds the material ID.
                 b.mesh.upload(groups[i]);
@@ -468,6 +503,7 @@ struct Renderer::Impl
             rig->cycle = {clips.at("idle").at("seconds"), clips.at("walk").at("stride"),
                           clips.at("run").at("stride"), clips.at("fly").at("seconds")};
         }
+        model.readHinges(j);
         for (auto &wheel : j.value("wheels", nlohmann::json::array()))
         {
             auto p = wheel.at("pivot");
@@ -1379,75 +1415,17 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         }
         auto vehicleTransform = [](const Car &c) {
             Vec3 base{float(c.body.p.x), float(c.body.height - .8), float(c.body.p.z)};
+            if (c.roll != 0 || c.pitch != 0)
+            {
+                // Model origin is at tire level. Keep the lowest rotated hull corner on the road.
+                const double cp = std::cos(c.pitch);
+                base.y += float(std::abs(cp*std::sin(c.roll))*c.body.halfW +
+                                std::abs(std::sin(c.pitch))*c.body.halfH +
+                                std::max(0.,-cp*std::cos(c.roll))*c.body.verticalExtent);
+            }
             return Mat4::translate(base) * Mat4::yaw(float(c.heading())) *
                    Mat4::pitch(float(-c.terrainPitch + c.pitch)) * Mat4::roll(float(-c.terrainRoll + c.roll));
         };
-        for (auto &c : world.cars)
-        {
-            Vec3 p{float(c.body.p.x), float(c.body.height - .8), float(c.body.p.z)};
-            if (!visible(p, float(c.body.halfH + 2), 400))
-                continue;
-            auto transform = vehicleTransform(c);
-            auto &model = r.cars.at(c.model);
-            const auto *crew = c.model == ambulanceModel ? world.ambulanceCall(c.id) : nullptr;
-            const bool beacon = crew && crew->stage != World::RescueStage::standby && !c.destroyed;
-            float distance = (p - view.eye).length();
-            size_t lod = std::min(model.lods.size() - 1, size_t(distance > 150 * detailScale ? 2 : distance > 65 * detailScale ? 1 : 0));
-            for (int translucent = 0; translucent < (depthPass ? 1 : 2); ++translucent)
-            {
-                if (translucent)
-                {
-                    glEnable(GL_BLEND);
-                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                    glDepthMask(GL_FALSE);
-                }
-                for (auto &b : model.lods[lod])
-                {
-                    if ((b.alpha < .99f) != bool(translucent))
-                        continue;
-                    auto partTransform = transform;
-                    // Imported manifest joints: 0 body, 1/2 doors, 3+ wheels, 100+ special equipment.
-                    if (b.part >= 3 && b.part < 3 + int(model.wheels.size()))
-                    {
-                        const auto &wheel = model.wheels[b.part - 3];
-                        partTransform = transform * Mat4::translate(wheel.pivot) *
-                                        Mat4::yaw(wheel.front ? float(c.steering) : 0.f) *
-                                        Mat4::pitch(float(c.wheelTravel / std::max(.05f, wheel.radius))) *
-                                        Mat4::translate(wheel.pivot * -1.f);
-                    }
-                    if (c.kind==11 && b.part==100)
-                    {
-                        Vec3 centre{0,1.8f,.2f};
-                        partTransform=transform*Mat4::translate(centre)*Mat4::yaw(float(c.turretYaw))*Mat4::translate(centre*-1.f);
-                    }
-                    if(c.kind==14 && (b.part==100 || b.part==103))
-                    {
-                        Vec3 pivot{0,2.2f,.55f};
-                        auto pitch=b.part==103?Mat4::pitch(float(-c.turretPitch)):Mat4::identity();
-                        partTransform=transform*Mat4::translate(pivot)*Mat4::yaw(float(c.turretYaw))*pitch*Mat4::translate(pivot*-1.f);
-                    }
-                    if (c.kind==12 && (b.part==101 || b.part==102))
-                    {
-                        const bool mainRotor=b.part==101;
-                        const Vec3 pivot=mainRotor?Vec3{0,3.03f,0}:Vec3{.25f,2.5f,-3.9f};
-                        auto spin=mainRotor?Mat4::yaw(float(c.wheelTravel)):Mat4::pitch(float(-c.wheelTravel*3));
-                        partTransform=transform*Mat4::translate(pivot)*spin*Mat4::translate(pivot*-1.f);
-                    }
-                    if (c.paint && !depthPass)
-                    {
-                        Uniform1i(r.uniform("uPaintIndex"), c.paint);
-                        Uniform1i(r.uniform("uPaintMask"), b.paintMask);
-                    }
-                    r.draw(b, partTransform, beacon);
-                }
-                if (translucent)
-                {
-                    glDepthMask(GL_TRUE);
-                    glDisable(GL_BLEND);
-                }
-            }
-            if (c.paint && !depthPass) Uniform1i(r.uniform("uPaintIndex"), 0);
-        }
         auto person = [&](const Body &b, int style, double heading, double distance, bool dead, bool player, const Car *cabin=nullptr, WeaponId drawn=WeaponId::none, bool ridingScooter=false, bool courier=false, bool medic=false, bool officer=false)
         {
             Vec3 p{float(b.p.x), float(b.height - .85), float(b.p.z)};
@@ -1488,18 +1466,18 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             glBindTexture(GL_TEXTURE_2D, r.bones[k]);
             ActiveTexture(TEXTURE0);
             r.skin[k].draw();
+            if (officer && !dead)
+            {
+                r.material(r.white, 0, {.08f,.115f,.17f});
+                r.patrolCap[k].draw();
+            }
             Uniform1i(r.uniform("uSkin"), 0);
             if (officer && !dead && !cabin)
             {
                 auto uniform = Mat4::translate(p) * Mat4::yaw(motion.heading);
-                auto trim = [&](Vec3 at, Vec3 size, Vec3 tint) {
-                    r.setModel(uniform * Mat4::translate(at) * Mat4::scale(size));
-                    r.material(r.white, 0, tint);
-                    r.cube.draw();
-                };
-                trim({0,1.71f,0},{.215f,.075f,.225f},{.11f,.15f,.21f});
-                trim({0,1.69f,.115f},{.16f,.018f,.096f},{.055f,.065f,.075f});
-                trim({.088f,1.35f,.115f},{.034f,.048f,.012f},{.76f,.65f,.32f});
+                r.setModel(uniform * Mat4::translate({.088f,1.35f,.115f}) * Mat4::scale({.034f,.048f,.012f}));
+                r.material(r.white, 0, {.76f,.65f,.32f});
+                r.cube.draw();
             }
             if (medic && !dead && !cabin)
             {
@@ -1550,8 +1528,8 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         };
         for (auto &p : world.people)
             person(p.body, int(p.style), p.heading, p.distance, p.dead, false, p.riding >= 0 ? &world.cars[p.riding] : nullptr, p.aimSeconds > 0 ? p.sidearm : WeaponId::none,
-                   p.ownedScooter >= 0 && world.scooters[p.ownedScooter].rider >= 0, p.courier, world.paramedicCall(int(&p-world.people.data())) != nullptr,
-                   int(&p-world.people.data()) == world.patrol.officer);
+                   p.ownedScooter >= 0 && world.scooters[p.ownedScooter].rider >= 0, p.courier, p.uniform == Person::Uniform::medical || world.paramedicCall(int(&p-world.people.data())) != nullptr,
+                   p.uniform == Person::Uniform::police || int(&p-world.people.data()) == world.patrol.officer);
         if (world.controlledCar < 0)
         {
             auto gun = world.aiming ? world.inventory.active() : nullptr;
@@ -1560,6 +1538,99 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         }
         if (world.transitPassenger())
             person(world.player, 0, -world.player.angle, 0, false, true, &world.cars[world.controlledCar]);
+        // Light road vehicles use the existing seated rig. Only nearby cabins
+        // need a driver mesh; full-size opaque and public-service cabins have their own layout.
+        for (const auto &car : world.cars)
+        {
+            bool driving = int(car.id) == world.controlledCar && !world.transitPassenger();
+            if ((car.kind != 0 && car.kind != 3 && car.kind != 13) || car.destroyed ||
+                (!driving && (car.driverless || car.personal || car.summoned || car.id == 0 ||
+                              (world.patrol.car == int(car.id) && world.patrol.officer >= 0)))) continue;
+            Vec3 centre{float(car.body.p.x),float(car.body.height),float(car.body.p.z)};
+            if (!visible(centre,2,38)) continue;
+            Body seated = driving ? world.player : car.body;
+            if (!driving) seated.id = 0xa0000000u + car.id;
+            seated.p = car.body.p + rotate({-.45 * car.body.halfW,.13 * car.body.halfH},car.body.angle);
+            seated.height = car.body.height + .14;
+            person(seated,driving ? 0 : int(car.id % 2),car.heading(),0,false,driving,&car,
+                   WeaponId::none,false,false,false,!driving && car.kind != 0);
+        }
+        for (auto &c : world.cars)
+        {
+            Vec3 p{float(c.body.p.x), float(c.body.height - .8), float(c.body.p.z)};
+            if (!visible(p, float(c.body.halfH + 2), 400))
+                continue;
+            auto transform = vehicleTransform(c);
+            auto &model = r.cars.at(c.model);
+            const auto *crew = c.model == ambulanceModel ? world.ambulanceCall(c.id) : nullptr;
+            const bool beacon = crew && crew->stage != World::RescueStage::standby && !c.destroyed;
+            float distance = (p - view.eye).length();
+            size_t lod = std::min(model.lods.size() - 1, size_t(distance > 150 * detailScale ? 2 : distance > 65 * detailScale ? 1 : 0));
+            for (int translucent = 0; translucent < (depthPass ? 1 : 2); ++translucent)
+            {
+                if (translucent)
+                {
+                    glEnable(GL_BLEND);
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                    glDepthMask(GL_FALSE);
+                }
+                for (auto &b : model.lods[lod])
+                {
+                    if ((b.alpha < .99f) != bool(translucent))
+                        continue;
+                    auto partTransform = transform;
+                    // Imported manifest joints: 0 body, 1/2 doors, 3+ wheels, 100+ special equipment.
+                    if ((b.part == 1 || b.part == 2) && c.doorOpen > 0)
+                    {
+                        const int side = b.part == 1 ? -1 : 1;
+                        if (c.doorSide == 0 || c.doorSide == side)
+                        {
+                            const auto pivot = model.hinges[b.part - 1];
+                            partTransform = transform * Mat4::translate(pivot) * Mat4::yaw(float(-side * 1.05 * c.doorOpen)) *
+                                            Mat4::translate(pivot * -1.f);
+                        }
+                    }
+                    if (b.part >= 3 && b.part < 3 + int(model.wheels.size()))
+                    {
+                        const auto &wheel = model.wheels[b.part - 3];
+                        partTransform = transform * Mat4::translate(wheel.pivot) *
+                                        Mat4::yaw(wheel.front ? float(c.steering) : 0.f) *
+                                        Mat4::pitch(float(c.wheelTravel / std::max(.05f, wheel.radius))) *
+                                        Mat4::translate(wheel.pivot * -1.f);
+                    }
+                    if (c.kind==11 && b.part==100)
+                    {
+                        Vec3 centre{0,1.8f,.2f};
+                        partTransform=transform*Mat4::translate(centre)*Mat4::yaw(float(c.turretYaw))*Mat4::translate(centre*-1.f);
+                    }
+                    if(c.kind==14 && (b.part==100 || b.part==103))
+                    {
+                        Vec3 pivot{0,2.2f,.55f};
+                        auto pitch=b.part==103?Mat4::pitch(float(-c.turretPitch)):Mat4::identity();
+                        partTransform=transform*Mat4::translate(pivot)*Mat4::yaw(float(c.turretYaw))*pitch*Mat4::translate(pivot*-1.f);
+                    }
+                    if (c.kind==12 && (b.part==101 || b.part==102))
+                    {
+                        const bool mainRotor=b.part==101;
+                        const Vec3 pivot=mainRotor?Vec3{0,3.03f,0}:Vec3{.25f,2.5f,-3.9f};
+                        auto spin=mainRotor?Mat4::yaw(float(c.wheelTravel)):Mat4::pitch(float(-c.wheelTravel*3));
+                        partTransform=transform*Mat4::translate(pivot)*spin*Mat4::translate(pivot*-1.f);
+                    }
+                    if (c.paint && !depthPass)
+                    {
+                        Uniform1i(r.uniform("uPaintIndex"), c.paint);
+                        Uniform1i(r.uniform("uPaintMask"), b.paintMask);
+                    }
+                    r.draw(b, partTransform, beacon);
+                }
+                if (translucent)
+                {
+                    glDepthMask(GL_TRUE);
+                    glDisable(GL_BLEND);
+                }
+            }
+            if (c.paint && !depthPass) Uniform1i(r.uniform("uPaintIndex"), 0);
+        }
         for (const auto &s : world.scooters)
         {
             bool fallen = s.rider == Scooter::free;

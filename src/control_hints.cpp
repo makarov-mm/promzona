@@ -13,6 +13,7 @@ std::vector<ControlHint> controlHints(const World &world)
                 {L"K", L"Вернуться"}};
 
     if (world.openMarket >= 0) return {{L"1–4", L"Купить"}, {L"E", L"Закрыть прилавок"}};
+    if (world.vehicleEntry.car >= 0) return {{L"F / WASD", L"Отменить посадку"}};
     if (world.transitPassenger())
         return {{L"F / B", world.transitExitRequested ? L"Выход заказан" : L"Выйти на остановке"},
                 {L"Мышь", L"Осмотреться"}, {L"V", L"Камера"}};

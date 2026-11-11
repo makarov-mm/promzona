@@ -11,10 +11,6 @@ int gridIndex(double value)
 {
     return clamp(int(std::lround(value / World::spacing)) + World::nodes / 2, 0, World::nodes - 1);
 }
-int nearestNode(Vec2 pos)
-{
-    return gridIndex(pos.x) + gridIndex(pos.z) * World::nodes;
-}
 unsigned responderModel(int kind)
 {
     switch (kind)
@@ -32,6 +28,11 @@ unsigned responderModel(int kind)
     }
 }
 } // namespace
+int World::nearestNode(Vec2 pos)
+{
+    return gridIndex(pos.x) + gridIndex(pos.z) * World::nodes;
+}
+
 
 void World::indexRoofs()
 {
@@ -150,7 +151,7 @@ bool World::deployResponder(int kind)
     for (size_t i = trafficPopulation; i < cars.size(); ++i)
     {
         auto &unit = cars[i];
-        if (!unit.summoned && !unit.responding && int(i) != controlledCar && unit.kind == kind &&
+        if (!unit.driverless && !unit.summoned && !unit.responding && int(i) != controlledCar && unit.kind == kind &&
             !unit.destroyed && !unit.falling && unit.fireTime == 0 &&
             (unit.body.p - focus).length2() < 340 * 340)
         {

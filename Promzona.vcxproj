@@ -147,6 +147,8 @@
     <ClCompile Include="src\vegetation.cpp" />
     <ClCompile Include="src\wildlife.cpp" />
     <ClCompile Include="src\world.cpp" />
+    <ClCompile Include="src\vehicle_entry.cpp" />
+    <ClCompile Include="src\vehicle_recovery.cpp" />
     <ClCompile Include="src\traffic_lanes.cpp" />
   </ItemGroup>
   <ItemGroup>

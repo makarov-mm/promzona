@@ -240,8 +240,10 @@ void World::damageCar(Car &c, double amount, bool playerCaused)
 }
 // CityTraffic.AfterContacts measures the solver's change in velocity, rather than
 // speed alone: a fast car travelling without contact must not take damage.
-void World::vehicleImpact(Car &c, double hit)
+void World::vehicleImpact(Car &c, double hit, Vec2 change)
 {
+    if (c.recovering) return;
+    if (hit > 1.5 && std::isfinite(hit)) c.applyImpactRotation(change);
     if (c.destroyed || c.impactCooldown > 0)
         return;
     if (!std::isfinite(hit) || hit <= 1.5)

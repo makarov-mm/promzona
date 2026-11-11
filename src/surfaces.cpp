@@ -76,28 +76,36 @@ bool World::scenerySolid(Vec2 p, double y, double radius) const
                (s->roof(p.x) && y > floor + RoadLevel::clearance - radius && y < ground + radius);
     return y < ground + radius || (y > floor - .55 - radius && y < floor + radius);
 }
+bool World::vehicleSpace(Vec2 at, double height, const Car *ignore, bool includePlayer) const
+{
+    auto overlaps = [&](const Body &body) {
+        if (std::abs(body.height - height) > body.verticalExtent * .5 + .8) return false;
+        const Vec2 delta = at - body.p;
+        if (body.circle) return delta.length2() < (body.radius + .35) * (body.radius + .35);
+        const double bound = body.halfW + body.halfH + .7;
+        if (delta.length2() > bound * bound) return false;
+        auto d = rotate(delta, -body.angle);
+        return std::abs(d.x) < body.halfW + .35 && std::abs(d.z) < body.halfH + .35;
+    };
+    auto solidProp = [&](const Body &b) { return b.invMass < 1. && overlaps(b); };
+    bool nearby = staticQueryCount == staticBodies.size() && (at-staticQueryCentre).length2() < 110.*110.;
+    const bool blocked = nearby ? std::ranges::any_of(nearbyStaticBodies, [&](size_t i) {return solidProp(staticBodies[i]);})
+                                : std::ranges::any_of(staticBodies, solidProp);
+    return !(scenerySolid(at, height, .35) || insideBuilding(at, height, .35) ||
+        blocked ||
+        std::ranges::any_of(cars,[&](const Car &other){return &other != ignore && overlaps(other.body);}) ||
+        std::ranges::any_of(people,[&](const Person &p){return !p.dead && p.riding < 0 && overlaps(p.body);}) ||
+        (includePlayer && controlledCar < 0 && overlaps(player)));
+}
+
 std::optional<Vec2> World::vehicleExit(const Car &car, std::optional<Vec2> toward) const
 {
-    const double height = car.body.height + .05;
     const double first = toward && rotate(*toward - car.body.p, -car.body.angle).x < 0 ? -1. : 1.;
     for (double along : {0., -.6, .7, -1.3, 1.3})
         for (double side : {first, -first})
         {
             Vec2 at = car.body.p + rotate({side * (car.body.halfW + .9), along * car.body.halfH}, car.body.angle);
-            auto overlaps = [&](const Body &body) {
-                if (std::abs(body.height - height) > body.verticalExtent * .5 + .8) return false;
-                auto d = rotate(at - body.p, -body.angle);
-                if (body.circle) return d.length2() < (body.radius + .35) * (body.radius + .35);
-                return std::abs(d.x) < body.halfW + .35 && std::abs(d.z) < body.halfH + .35;
-            };
-            if (scenerySolid(at, height, .35) || insideBuilding(at, height, .35) ||
-                std::ranges::any_of(staticBodies, [&](const Body &b) {
-                    // Small loose litter can be stepped over when leaving the car.
-                    return b.invMass < 1. && overlaps(b);
-                }) ||
-                std::ranges::any_of(cars,[&](const Car &other){return &other != &car && overlaps(other.body);}) ||
-                std::ranges::any_of(people,[&](const Person &p){return !p.dead && p.riding < 0 && overlaps(p.body);}) ||
-                (controlledCar < 0 && overlaps(player))) continue;
+            if (!safeExitPoint(car, at)) continue;
             return at;
         }
     return std::nullopt;

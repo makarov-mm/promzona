@@ -163,6 +163,60 @@ Input Input::sanitized() const
     return {std::isfinite(throttle) ? clamp(throttle, -1., 1.) : 0,
             std::isfinite(steering) ? clamp(steering, -1., 1.) : 0, brake, handbrake};
 }
+void Car::beginRighting()
+{
+    recovering = true;
+    rightingRoll = std::remainder(roll, 2*pi);
+    rightingPitch = std::remainder(pitch, 2*pi);
+    rightingTime = overturnedTime = 0;
+    body.v = {};
+    body.w = rollRate = pitchRate = verticalVelocity = 0;
+    body.wake();
+}
+
+void Car::applyImpactRotation(Vec2 change)
+{
+    if (recovering || (!destroyed && (kind == 9 || kind == 12))) return;
+    const auto f = forward(heading());
+    const double side = dot(change, Vec2{f.z,-f.x});
+    const double cap = destroyed ? 3. : 4.;
+    rollRate += clamp(side * (destroyed ? .16 : .20), -cap, cap);
+    pitchRate += clamp(dot(change,f) * (destroyed ? .09 : .11), -2., 2.);
+}
+
+void Car::settleAttitude(double dt, bool playerDriving)
+{
+    if (recovering)
+    {
+        rightingTime += dt;
+        const double t = clamp(rightingTime/2.2, 0., 1.);
+        const double u = clamp((t-.18)/.64, 0., 1.);
+        const double remaining = 1. - u*u*(3.-2.*u);
+        roll = rightingRoll * remaining;
+        pitch = rightingPitch * remaining;
+        lift = t < 1. ? 1.5*std::sin(pi*t) : 0.;
+        if (t >= 1.) { recovering = false; rightingTime = 0; }
+        return;
+    }
+    if (roll == 0 && pitch == 0 && rollRate == 0 && pitchRate == 0) return;
+    const bool supported = lift <= .04;
+    if (supported)
+    {
+        rollRate -= (destroyed ? 9. : 12.) * std::sin(2.*roll)*dt;
+        pitchRate -= (destroyed ? 12.*std::sin(2.*pitch) : 18.*std::sin(pitch))*dt;
+    }
+    rollRate *= std::exp(-dt*(supported ? (destroyed ? 2.8 : 2.1) : .16));
+    pitchRate *= std::exp(-dt*(supported ? (destroyed ? 2.8 : 2.2) : .18));
+    roll = std::remainder(roll + rollRate*dt, 2*pi);
+    pitch = std::remainder(pitch + pitchRate*dt, 2*pi);
+    if (std::abs(roll) + std::abs(rollRate) < .0001) roll = rollRate = 0;
+    if (std::abs(pitch) + std::abs(pitchRate) < .0001) pitch = pitchRate = 0;
+    const bool stuck = playerDriving && !destroyed && !falling && fireTime <= 0 &&
+                       lift < .12 && body.v.length2() < .7*.7 && std::cos(roll)*std::cos(pitch) < -.45;
+    overturnedTime = stuck ? overturnedTime + dt : 0.;
+    if (overturnedTime > 4.) beginRighting();
+}
+
 void Car::destroy()
 {
     destroyed = true;

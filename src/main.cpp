@@ -320,6 +320,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     }
     LocalFree(argv);
     const bool arrestScenario = scenario == L"arrest" || scenario == L"arrest-car";
+    const bool recoveryScenario = scenario == L"recovery" || scenario == L"rollover" || scenario == L"tram-recovery";
     const bool passengerScenario = scenario == L"tram-ride" || scenario == L"trolley-ride";
     std::ofstream log;
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -331,7 +332,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             scenario != L"underpass" && scenario != L"tunnel" && scenario != L"portal" &&
             scenario != L"facade" && scenario != L"facade-night" && scenario != L"park" &&
             scenario != L"park-unshadowed" && scenario != L"park-evening" && scenario != L"streaming" &&
-            !arrestScenario && !passengerScenario && scenario != L"traffic-lanes" && scenario != L"radio-menu" && scenario != L"save-slots" && scenario != L"settings" && scenario != L"market" && scenario != L"workshop" && scenario != L"courier" && scenario != L"pursuit" && scenario != L"transit" && scenario != L"tank" && scenario != L"drone" &&
+            !arrestScenario && !passengerScenario && !recoveryScenario && scenario != L"tunnel-exit" && scenario != L"carjack" && scenario != L"traffic-lanes" && scenario != L"radio-menu" && scenario != L"save-slots" && scenario != L"settings" && scenario != L"market" && scenario != L"workshop" && scenario != L"courier" && scenario != L"pursuit" && scenario != L"transit" && scenario != L"tank" && scenario != L"drone" &&
             scenario != L"leaflets" && scenario != L"taxi" && scenario != L"wildlife" && scenario != L"scooter" && scenario != L"delivery-rider" && scenario != L"ambulance" && scenario != L"hydrant" && scenario != L"phone-booth" && scenario != L"soda-machine" && scenario != L"puddle" && scenario != L"canal-impact" &&
             scenario != L"job-board" && scenario != L"contract-series" && scenario != L"console" && scenario != L"street-hail" &&
             scenario != L"estate" && scenario != L"courtyard" && scenario != L"cottages" &&
@@ -479,6 +480,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             std::vector<double> frameTimes;
             Vec2 smokeStart;
             std::optional<Vec2> requestedPlatform;
+            int hijackedCar = -1;
+            Vec2 recoveryStart{}, rightedAt{};
+            int recoveryLine = -1, exitLevel = 0;
+            bool rightingCaptured = false, backOnWheels = false;
+            bool doorCaptured = false, crewCaptured = false, attemptedEntry = false;
             bool trafficPassed = false, officerCaptured = false, consoleReviewed = false;
             bool capturedHome = false;
             Vec2 passingWreckPosition;
@@ -957,6 +963,89 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                     reviewView = view;
                                 }
                             }
+                            if (scenario == L"tunnel-exit")
+                            {
+                                const auto &level = *std::ranges::find(world->roadLevels,true,&RoadLevel::tunnel);
+                                exitLevel = level.id;
+                                auto &hero = world->cars.at(0);
+                                hero.body.p = {level.x,level.centreZ(level.x)};
+                                hero.body.angle = -pi/2;
+                                hero.body.roadLevel = level.id;
+                                hero.body.height = world->surface(hero.body.p,level.id) + .8;
+                                hero.body.v = {};
+                                hero.body.w = 0;
+                                recoveryStart = hero.body.p;
+                                int parkedCount = 0;
+                                for (auto &parked : world->cars)
+                                {
+                                    if (&parked == &hero || parked.line >= 0 || parked.destroyed ||
+                                        parked.body.halfH < hero.body.halfH * 1.4) continue;
+                                    const double side = parkedCount == 0 ? -1. : 1.;
+                                    parked.body.p = hero.body.p + rotate({side*(hero.body.halfW+parked.body.halfW+.2),0},hero.body.angle);
+                                    parked.body.angle = hero.body.angle;
+                                    parked.body.roadLevel = level.id;
+                                    parked.body.height = world->surface(parked.body.p,level.id) + .8;
+                                    parked.body.v = {};
+                                    parked.body.w = 0;
+                                    parked.driverless = true;
+                                    if (++parkedCount == 2) break;
+                                }
+                                if (parkedCount != 2 || world->vehicleExit(hero))
+                                    throw std::runtime_error("Emergency exit fixture has an open door");
+                            }
+                            if (recoveryScenario)
+                            {
+                                if (scenario == L"tram-recovery")
+                                {
+                                    auto tram = std::ranges::find(world->cars,9,&Car::kind);
+                                    if (tram == world->cars.end()) throw std::runtime_error("Missing recovery tram");
+                                    world->controlledCar = int(tram-world->cars.begin());
+                                    recoveryLine = tram->line;
+                                    tram->body.p += perpendicular(forward(tram->heading()))*8.;
+                                }
+                                auto &car = world->cars.at(world->controlledCar);
+                                if (scenario == L"recovery")
+                                {
+                                    const auto &level = *std::ranges::find(world->roadLevels,true,&RoadLevel::tunnel);
+                                    car.body.p = {level.x+100, level.centreZ(level.x+100)};
+                                    car.body.roadLevel = level.id;
+                                }
+                                car.body.height = world->surface(car.body.p,car.body.roadLevel) + .8;
+                                car.roll = pi;
+                                car.body.v = {};
+                                car.body.w = 0;
+                                car.health = .62;
+                                recoveryStart = car.body.p;
+                                world->clock.setHour(11);
+                                world->rain = world->rainTarget = 0;
+                                world->weatherClock = 120;
+                            }
+                            if (scenario == L"carjack")
+                            {
+                                world->controlledCar = -1;
+                                for (auto &car : world->cars)
+                                {
+                                    if (!car.id || car.model != 3 || car.body.roadLevel || world->levelAt(car.body.p,14)) continue;
+                                    Vec2 side = rotate({-1,0},car.body.angle);
+                                    Vec2 door = World::driverDoor(car,-1);
+                                    Vec2 approachStart = door + side * 1.35;
+                                    world->player.p = approachStart;
+                                    world->player.height = world->surface(approachStart,0) + .85;
+                                    if (!world->entryPath(car,door) || !world->vehicleSpace(approachStart,world->player.height,nullptr,false)) continue;
+                                    hijackedCar = int(car.id);
+                                    car.body.v = {};
+                                    car.body.w = 0;
+                                    View view;
+                                    Vec2 eye = door + side * 5. + forward(car.heading()) * 4.;
+                                    view.eye = {float(eye.x),float(car.body.height+2.35),float(eye.z)};
+                                    view.target = {float(door.x),float(car.body.height+.15),float(door.z)};
+                                    reviewView = view;
+                                    break;
+                                }
+                                if (hijackedCar < 0) throw std::runtime_error("Missing accessible patrol car");
+                                world->clock.setHour(13);
+                                world->rain = world->rainTarget = 0;
+                            }
                             if (scenario == L"ambulance")
                             {
                                 auto unit = std::ranges::find_if(world->cars,[&](const Car &c) {
@@ -1364,6 +1453,16 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     if (!app.console && (app.active || smoke))
                     {
                         const int passengerVehicle = world->transitPassenger() ? world->controlledCar : -1;
+                        if (smoke && scenario == L"tunnel-exit" && frames == 0)
+                            app.pressed['F'] = true;
+                        if (smoke && ((scenario == L"recovery" && frames == 4) ||
+                                      (scenario == L"tram-recovery" && frames == 0)))
+                            app.pressed['R'] = true;
+                        if (smoke && scenario == L"carjack" && !attemptedEntry)
+                        {
+                            attemptedEntry = true;
+                            app.pressed['F'] = true;
+                        }
                         if (smoke && passengerScenario && frames == 570)
                             app.pressed['F'] = true;
                         if (!app.jobsOpen && world->openMarket < 0 && !world->drone.active && app.pressed['B'])
@@ -1378,7 +1477,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             if (world->drone.active) { app.lookPitch = world->drone.pitch; app.jobsOpen = false; }
                             else if (active) { app.look = -world->player.angle; app.lookPitch = 0; }
                         }
-                        if (world->openMarket < 0 && !world->drone.active && app.pressed['F'] && (world->playerScooter >= 0 || !world->buyFood()))
+                        if (world->openMarket < 0 && !world->drone.active && app.pressed['F'] && (world->vehicleEntry.car >= 0 || world->playerScooter >= 0 || !world->buyFood()))
                         {
                             int previous = world->controlledCar;
                             world->enterExit();
@@ -1461,6 +1560,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             input.lookPitch = std::atan2(target.y - world->player.height - .47, delta.length());
                             input.shooting = frames % 80 == 8;
                         }
+                        if (smoke && recoveryScenario && backOnWheels)
+                            input.car = {.85,0,false,false};
                         if (smoke && scenario == L"tank")
                             input.shooting=frames>=150;
                         if (smoke && (scenario == L"drive" || scenario == L"storm"))
@@ -1489,6 +1590,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             saveGame(menus.active,false);
                         }
                         accumulator += dt * world->simulationSpeed;
+                        const int vehicleBefore = world->controlledCar;
                         const int arrestsBefore = world->arrests;
                         bool droneWasActive = world->drone.active;
                         const int maxSteps = int(std::ceil(12 * std::max(1., world->simulationSpeed)));
@@ -1499,6 +1601,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             world->step(input, 1. / 120);
                             if (world->arrests != arrestsBefore) input.lookHeading = -world->player.angle;
                             accumulator -= 1. / 120;
+                        }
+                        if (vehicleBefore < 0 && world->controlledCar >= 0)
+                        {
+                            app.look = world->cars[world->controlledCar].heading();
+                            app.lookPitch = 0;
                         }
                         if (passengerVehicle >= 0 && world->controlledCar < 0)
                         {
@@ -1649,6 +1756,33 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                 }
                 if (smoke && scenario==L"settings" && app.menu && frames==11)
                     renderer.screenshot(smokeOutput / "settings.bmp",app.width,app.height);
+                if (smoke && recoveryScenario && world && !app.loading)
+                {
+                    auto &car = world->cars.at(world->controlledCar);
+                    if (!rightingCaptured && car.recovering && car.rightingTime > 1.15)
+                    {
+                        renderer.screenshot(smokeOutput / "righting.bmp",app.width,app.height);
+                        rightingCaptured = true;
+                    }
+                    if (rightingCaptured && !car.recovering && !backOnWheels && car.grounded())
+                    {
+                        rightedAt = car.body.p;
+                        backOnWheels = true;
+                    }
+                }
+                if (smoke && scenario == L"carjack" && world && !app.loading)
+                {
+                    if (!doorCaptured && world->vehicleEntry.progress > .58)
+                    {
+                        renderer.screenshot(smokeOutput / "door.bmp",app.width,app.height);
+                        doorCaptured = true;
+                    }
+                    if (!crewCaptured && world->controlledCar == hijackedCar && hijackedCar >= 0)
+                    {
+                        renderer.screenshot(smokeOutput / "crew.bmp",app.width,app.height);
+                        crewCaptured = true;
+                    }
+                }
                 if (smoke && arrestScenario && world && !officerCaptured && world->patrol.hold > .15)
                 {
                     renderer.screenshot(smokeOutput / "officer.bmp", app.width, app.height);
@@ -1693,6 +1827,39 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             world->money != 200 || world->wantedLevel() || world->controlledCar >= 0 ||
                             (world->position() - world->stationEntrance).length() > 3 || world->inventory.active())
                             throw std::runtime_error("Patrol failed to book and release suspect at station");
+                    }
+                    if (scenario == L"tunnel-exit")
+                    {
+                        const auto &player = world->player;
+                        const double distance = (player.p-recoveryStart).length();
+                        log << "Emergency exit distance=" << distance << " m, support layer=" << player.roadLevel << std::endl;
+                        if (world->controlledCar >= 0 || player.roadLevel != exitLevel || distance > 10.1 ||
+                            std::abs(player.height-world->surface(player.p,exitLevel)-.85) > .05)
+                            throw std::runtime_error("Emergency exit left the player on the wrong surface");
+                    }
+                    if (recoveryScenario)
+                    {
+                        const auto &car = world->cars.at(world->controlledCar);
+                        const double offset = (rightedAt - recoveryStart).length();
+                        const double driven = (car.body.p - rightedAt).length();
+                        log << "Recovery displacement=" << offset << " m, driven after landing=" << driven
+                            << " m, health=" << car.health << " level=" << car.body.roadLevel << std::endl;
+                        if (scenario == L"tram-recovery" &&
+                            (car.line != recoveryLine || (car.body.p-world->lines[recoveryLine].pose(car.along).first).length() > .15))
+                            throw std::runtime_error("Rescued tram did not stay on its line");
+                        if (!backOnWheels || !rightingCaptured || driven < .5 || std::abs(car.health-.62) > .001 ||
+                            (scenario != L"rollover" && world->recoveryReadyAt <= 0) ||
+                            offset > 190 || (scenario == L"recovery" && (offset < 1 || car.body.roadLevel != 0)) ||
+                            (scenario == L"rollover" && offset > 3))
+                            throw std::runtime_error("Vehicle failed to recover and drive away");
+                    }
+                    if (scenario == L"carjack")
+                    {
+                        int officers = int(std::ranges::count(world->people,Person::Uniform::police,&Person::uniform));
+                        log << "Vehicle=" << hijackedCar << " controlled=" << world->controlledCar
+                            << " door=" << doorCaptured << " ejected officers=" << officers << std::endl;
+                        if (!doorCaptured || !crewCaptured || world->controlledCar != hijackedCar || officers != 2)
+                            throw std::runtime_error("Vehicle takeover did not complete as expected");
                     }
                     if (scenario == L"market" && (world->openMarket < 0 || world->inventory.ammo(WeaponId::pistol) != 30))
                         throw std::runtime_error("Market did not stay open at the counter");

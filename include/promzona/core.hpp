@@ -118,7 +118,9 @@ struct Car
     double health{1}, fireTime{}, routeDistance{}, wheelTravel{}, turretYaw{}, turretPitch{}, lastDamageAt{-100}, safeDrivingTime{},
         impactCooldown{};
     int paint{};
-    bool personal{};
+    bool personal{}, driverless{};
+    int doorSide{};
+    double doorOpen{}, doorHold{};
     bool responding{}, seesSuspect{}, firePlayerCaused{}, summoned{};
     double nextShot{}, nextSightCheck{};
     std::uint32_t model{}, id{};
@@ -129,6 +131,10 @@ struct Car
     double along{}, dwell{}, serviceTarget{7}, checkTrafficAt{};
     std::optional<Path> route;
     double heading() const { return -body.angle; }
+    double rollRate{}, pitchRate{}, overturnedTime{}, rightingTime{}, rightingRoll{}, rightingPitch{};
+    void beginRighting();
+    void applyImpactRotation(Vec2 velocityChange);
+    void settleAttitude(double dt, bool playerDriving);
     bool mountedGun() const { return kind == 11 || kind == 14; }
     bool grounded() const { return lift < .12 && std::cos(roll) * std::cos(pitch) > .45; }
     void destroy();

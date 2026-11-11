@@ -175,6 +175,7 @@ std::optional<Vec2> World::clearEntrance(Vec2 door) const
 
 void World::clinicRespawn(Vec2 fallen)
 {
+    vehicleEntry = {};
     conversation = {};
     openMarket = -1;
     releaseScooter(playerScooter, {});

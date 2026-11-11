@@ -183,7 +183,7 @@ void World::updateRescues()
         for (auto &c : cars)
         {
             if (c.id == 0 || int(c.id) == controlledCar || c.destroyed || c.falling || c.fireTime > 0 ||
-                c.line >= 0 || c.responding || c.summoned || c.personal || route.distances[c.routeTo] < 0)
+                c.line >= 0 || c.driverless || c.responding || c.summoned || c.personal || route.distances[c.routeTo] < 0)
                 continue;
             const auto *crew = ambulanceCall(c.id);
             if (crew && crew->stage != RescueStage::standby)

@@ -178,12 +178,13 @@ TransitLine makeLine(const World &world, std::span<const int> nodes, int kind)
     return line;
 }
 
-int nextStop(const TransitLine &line, double along)
-{
-    auto it = std::upper_bound(line.stops.begin(), line.stops.end(), along);
-    return it == line.stops.end() ? 0 : int(it - line.stops.begin());
-}
 } // namespace
+
+int TransitLine::nextStopAfter(double along) const
+{
+    auto it = std::upper_bound(stops.begin(), stops.end(), wrapDistance(along));
+    return it == stops.end() ? 0 : int(it - stops.begin());
+}
 
 void World::generateTransit()
 {
@@ -239,7 +240,7 @@ void World::generateTransit()
                     break;
                 c.along = line.wrapDistance(c.along + 13);
             }
-            c.nextStop = nextStop(line, c.along);
+            c.nextStop = line.nextStopAfter(c.along);
             auto [p, heading] = line.pose(c.along);
             c.body.p = p;
             c.body.angle = -heading;
@@ -308,7 +309,7 @@ int platformStop(const TransitLine &line, const Car &car)
 
 bool doorsOpen(const Car &car)
 {
-    return car.line >= 0 && car.dwell > 0 && !car.destroyed && !car.falling && car.fireTime <= 0 &&
+    return car.line >= 0 && !car.driverless && car.dwell > 0 && !car.destroyed && !car.falling && car.fireTime <= 0 &&
            car.body.v.length2() <= .8 * .8;
 }
 }
@@ -448,7 +449,7 @@ void World::updatePlatforms()
     if (trafficCells.empty()) indexTraffic();
     for (const auto &car : cars)
     {
-        if (car.line < 0 || car.fireTime <= 0 || car.destroyed || car.falling || car.body.v.length2() > .8*.8) continue;
+        if (car.line < 0 || (!car.driverless && car.fireTime <= 0) || car.destroyed || car.falling || car.body.v.length2() > .8*.8) continue;
         if (transitPassenger() && int(car.id) == controlledCar)
             if (auto exit = vehicleExit(car)) disembarkPlayer(car, *exit);
         for (auto &p : people)
@@ -456,7 +457,7 @@ void World::updatePlatforms()
                 if (auto exit = vehicleExit(car))
                 {
                     resumeWalk(p, *exit, car.body.roadLevel);
-                    scarePerson(p, car.body.p, 1.);
+                    if (car.fireTime > 0) scarePerson(p, car.body.p, 1.);
                 }
     }
     auto eligible = [&](int i) {
@@ -542,9 +543,9 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
     if (driving)
     {
         c.dwell = 0;
-        c.nextStop = nextStop(line, c.along + .7);
+        c.nextStop = line.nextStopAfter(c.along + .7);
     }
-    if (local && c.kind == 10 && driving)
+    if (c.kind == 10 && driving && (local || c.driverless))
     {
         stepVehicle(c, controls, dt, 1 - rain * .2);
         c.checkTrafficAt = 0;
@@ -554,7 +555,7 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
     {
         const double projected = line.track.closestDistance(b.p);
         if (std::abs(std::remainder(projected - c.along, line.track.length())) > 12.)
-            c.nextStop = nextStop(line, projected);
+            c.nextStop = line.nextStopAfter(projected);
         c.along = projected;
     }
     auto [point, heading] = line.pose(c.along);

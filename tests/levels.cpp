@@ -27,6 +27,103 @@ void place(World &w, Car &c, Vec2 p, int level)
     c.body.w = 0;
     c.body.wake();
 }
+void checkRecovery(World &w)
+{
+    const auto &tunnel = *std::ranges::find(w.roadLevels, true, &RoadLevel::tunnel);
+    auto &car = w.cars.front();
+    w.controlledCar = 0;
+    Vec2 origin{tunnel.x+100, tunnel.centreZ(tunnel.x+100)};
+    place(w, car, origin, tunnel.id);
+    car.body.v = {2,0};
+    check(!w.recover(), "a moving vehicle cannot be evacuated");
+    car.body.v = {};
+    car.health = .43;
+    car.fireTime = 1.2;
+    car.roll = pi;
+    w.money = 57;
+    w.wanted = 2.4;
+    check(w.recover(), "stationary vehicle rescued from tunnel cutting");
+    const Vec2 road = car.body.p;
+    check((road-origin).length() < 180 && (road-origin).length() > 1 &&
+          car.body.roadLevel == 0 && w.safeRecoveryPose(car,road,car.heading()),
+          "rescue lands on a clear, nearby street");
+    check(car.health == .43 && car.fireTime == 1.2 && w.money == 57 && w.wanted == 2.4,
+          "recovery preserves damage, fire, cash and pursuit");
+    check(!w.recover(), "cannot restart lift midway");
+    car.settleAttitude(.9,true);
+    check(car.recovering && car.lift > 1 && std::abs(car.roll) > .1,
+          "overturned car lifts and rotates visibly");
+    const auto file = std::filesystem::current_path() / "promzona-recovery-test.json";
+    w.save(file);
+    World loaded;
+    loaded.load(file);
+    std::filesystem::remove(file);
+    auto &resumed = loaded.cars.front();
+    near(resumed.rightingTime,car.rightingTime,1e-8,"load resumes same frame of lift");
+    for (int tick=0; tick<200; ++tick)
+    {
+        car.settleAttitude(1./120,true);
+        resumed.settleAttitude(1./120,true);
+        near(resumed.roll,car.roll,1e-8,"saved lift completes identically");
+    }
+    check(!car.recovering && car.grounded() && !loaded.recover(), "cooldown survives load and landing");
+    Body obstacle = car.body;
+    obstacle.angle += .41;
+    w.staticBodies.push_back(obstacle);
+    check(!w.safeRecoveryPose(car,road,car.heading()), "overlapping rotated hull blocks return");
+    w.staticBodies.pop_back();
+
+    Car struck;
+    struck.applyImpactRotation({8,0});
+    check(struck.rollRate>0 && struck.pitchRate==0, "side impact rolls chassis");
+    struck.applyImpactRotation({0,-8});
+    check(struck.pitchRate<0, "rearward impulse pitches chassis");
+    struck.roll = pi;
+    struck.rollRate = struck.pitchRate = 0;
+    for (int tick=0; tick<470; ++tick) struck.settleAttitude(1./120,true);
+    check(!struck.recovering,"no instant automatic recovery");
+    for (int tick=0; tick<20; ++tick) struck.settleAttitude(1./120,true);
+    check(struck.recovering,"stationary overturned player car starts righting after four seconds");
+    struck.destroy();
+    for (int tick=0; tick<520; ++tick) struck.settleAttitude(1./120,true);
+    check(!struck.recovering,"wreck cannot self-right");
+
+    // Block all ordinary door positions; the emergency exit must still be in the tunnel.
+    const Vec2 centre{tunnel.x,tunnel.centreZ(tunnel.x)};
+    place(w,car,centre,tunnel.id);
+    car.body.angle = -pi/2;
+    for (double side : {-1.,1.})
+    {
+        Body barrier = car.body;
+        barrier.mass(0);
+        barrier.halfW = .3;
+        barrier.halfH = car.body.halfH*1.5;
+        barrier.p += rotate({side*(car.body.halfW+.9),0},barrier.angle);
+        w.staticBodies.push_back(barrier);
+    }
+    check(!w.vehicleExit(car), "both rows of normal exits are obstructed");
+    car.body.v = {1.8,0};
+    check(!w.playerVehicleExit(car), "cannot jump over blocked doors at speed");
+    car.body.v = {};
+    w.enterExit();
+    check(w.controlledCar < 0 && w.player.roadLevel == tunnel.id &&
+          (w.player.p-centre).length() <= 10.01, "F finds a nearby tunnel-floor exit");
+    near(w.player.height,w.surface(w.player.p,tunnel.id)+.85,1e-8,"emergency exit height follows road");
+    w.staticBodies.resize(w.staticBodies.size()-2);
+
+    const auto tram = std::ranges::find(w.cars,9,&Car::kind);
+    check(tram != w.cars.end() && tram->line >= 0,"tram fixture available");
+    w.controlledCar = int(tram - w.cars.begin());
+    w.recoveryReadyAt = 0;
+    tram->body.v = {};
+    const int line = tram->line;
+    const Vec2 stop = tram->body.p;
+    check(w.recover() && tram->line == line,"tram recovered to its own circuit");
+    auto [rail,heading] = w.lines[line].pose(tram->along);
+    near((rail-tram->body.p).length(),0,1e-7,"tram is directly on its track");
+    check((rail-stop).length()<180 && tram->nextStop==w.lines[line].nextStopAfter(tram->along),
+          "tram stop sequence resumes at the recovery point");
+}
 void generated(World &w)
 {
     check(w.roadLevels.size() == 9, "five overpasses and four tunnels generated");
@@ -153,6 +250,8 @@ int main()
             generated(w);
         }
         w.generate(20261105);
+        checkRecovery(w);
+        w.generate(20261105);
         w.cars.resize(1);
         w.people.clear();
         w.pickups.clear();
@@ -191,8 +290,18 @@ int main()
                 w.enterExit();
                 check(w.controlledCar == -1 && w.player.roadLevel == s.id,
                       "exit vehicle stays inside tunnel");
-                near(w.player.height - .85, floor, .01, "exit does not teleport onto district");
+                near(w.player.height - .85, s.floor(w.terrain,w.player.p), .001,
+                     "feet meet the sloped tunnel road at the actual exit point");
+                check(std::abs(w.player.height-.85-floor) < .3, "exit does not teleport onto district");
                 w.enterExit();
+                check(w.vehicleEntry.car == 0 && w.controlledCar < 0, "approach starts inside tunnel");
+                // This geometry fixture deliberately removes the traffic and pedestrians.
+                for (int tick=0; tick<150 && w.vehicleEntry.car>=0; ++tick)
+                {
+                    PlayerInput in{};
+                    w.stepEntry(in, 1./120);
+                    w.player.p += in.walking * (2.7/120);
+                }
                 check(w.controlledCar == 0, "vehicle in same tunnel can be entered");
                 w.controlledCar = -1;
                 w.player.p = p;

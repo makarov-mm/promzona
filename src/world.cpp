@@ -340,6 +340,8 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress,
     player.mass(75);
     player.invI = 0;
     player.verticalExtent = 1.7;
+    recoveryReadyAt = 0;
+    vehicleEntry = {};
     controlledCar = 0;
     playerTransitSeat = -1;
     transitExitRequested = false;
@@ -533,87 +535,6 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress,
     generateShops();
     report(1);
 }
-void World::enterExit()
-{
-    if (transitPassenger()) { rideTransit(); return; }
-    if (controlledCar < 0 && useScooter()) return;
-    if (controlledCar >= 0)
-    {
-        auto &car = cars[controlledCar];
-        if (car.body.v.length() > 4)
-            return;
-        auto clear = vehicleExit(car);
-        if (!clear) return;
-        player.p = *clear;
-        player.v = car.body.v;
-        player.roadLevel = selectLevel(player.p, car.body.roadLevel, car.body.height - .8);
-        player.height = car.body.height + .05;
-        player.verticalSpeed = car.verticalVelocity;
-        player.wake();
-        controlledCar = -1;
-        physics.clear();
-    }
-    else
-    {
-        double best = 3.5;
-        int index = -1;
-        for (size_t i = 0; i < cars.size(); i++)
-        {
-            double d = (cars[i].body.p - player.p).length();
-            if (d < best && !cars[i].destroyed && std::abs(player.height - cars[i].body.height) < 1.8)
-            {
-                best = d;
-                index = int(i);
-            }
-        }
-        if (index >= 0)
-        {
-            controlledCar = index;
-            cars[index].responding = false;
-            cars[index].body.wake();
-            conversation = {};
-        }
-        else talk();
-    }
-}
-void World::recover()
-{
-    if (transitPassenger()) { controlledCar = -1; playerTransitSeat = -1; transitExitRequested = false; }
-    conversation = {};
-    releaseScooter(playerScooter, {});
-    if (drone.active) stopDrone(L"Связь с дроном прервана", 2);
-    auto p = nodePoint(nodes / 2 * nodes + nodes / 2) + Vec2{-1.9, -12};
-    if (controlledCar >= 0)
-    {
-        auto &c = cars[controlledCar];
-        if (c.line >= 0)
-        {
-            const auto &line = lines[c.line];
-            c.along = line.stops.front();
-            p = line.pose(c.along).first;
-            c.nextStop = 1 % int(line.stops.size());
-        }
-        c.body.p = p;
-        c.body.roadLevel = 0;
-        c.body.height = terrain.height(p) + .8;
-        c.body.v = {};
-        c.body.w = 0;
-        c.body.angle = c.line >= 0 ? -lines[c.line].pose(c.along).second : 0.;
-        c.roll = c.pitch = c.lift = c.verticalVelocity = 0;
-        c.health = 1;
-        c.fireTime = c.safeDrivingTime = 0;
-        c.destroyed = c.falling = c.firePlayerCaused = false;
-        c.body.wake();
-    }
-    else
-    {
-        player.p = p;
-        player.roadLevel = 0;
-        player.height = terrain.height(p) + .85;
-        player.verticalSpeed = 0;
-    }
-    playerBurnUntil = 0;
-}
 void World::step(PlayerInput input, double dt)
 {
     if (!(dt > 0 && dt <= .025))
@@ -634,6 +555,7 @@ void World::step(PlayerInput input, double dt)
     }
     rain += (rainTarget - rain) * (1 - std::exp(-dt * .15));
     firing = false;
+    stepEntry(input, dt);
     if (drone.active)
     {
         stepDrone(input, dt);
@@ -693,6 +615,12 @@ void World::step(PlayerInput input, double dt)
     {
         auto &car = cars[i];
         auto &b = car.body;
+        if (car.doorHold > 0 || car.doorOpen > 0)
+        {
+            car.doorHold = std::max(0., car.doorHold - dt);
+            if (vehicleEntry.car != int(i))
+                car.doorOpen = clamp(car.doorOpen + (car.doorHold > 0 ? 3. : -2.4) * dt, 0., 1.);
+        }
         car.impactCooldown = std::max(0., car.impactCooldown - dt);
         bool local = (b.p - focus).length2() < 110 * 110 || int(i) == controlledCar;
         car.terrainActive = car.lift < .15;
@@ -703,9 +631,17 @@ void World::step(PlayerInput input, double dt)
         if(car.kind != 12) car.wheelTravel += dot(b.v, f) * dt;
         car.terrainPitch = std::atan(dot(car.terrainGradient, f));
         car.terrainRoll = -std::atan(dot(car.terrainGradient, {f.z, -f.x}));
+        if (car.recovering)
+        {
+            car.settleAttitude(dt, int(i) == controlledCar && !transitPassenger());
+            b.height = surface(b.p, b.roadLevel) + .8 + car.lift;
+            continue;
+        }
         if (car.line >= 0 && !car.destroyed && !car.falling)
         {
-            runTransit(car, input.car, int(i) == controlledCar && !transitPassenger(), local, dt);
+            bool piloted = int(i) == controlledCar && !transitPassenger();
+            bool parked = !piloted && (car.driverless || vehicleEntry.car == int(i));
+            runTransit(car, parked ? Input{0,0,true,false} : input.car, piloted || parked, local, dt);
             if (local)
             {
                 bodies.push_back(&b);
@@ -731,7 +667,7 @@ void World::step(PlayerInput input, double dt)
             stepWreck(car, dt);
         }
         else if ((int(i) == patrol.car && patrol.stage != PatrolStage::seated) ||
-                 (medical && medical->braking) || (job.passenger() && int(i) == job.ride.car) || car.summoned || car.personal || car.kind == 11 || ((job.kind == JobKind::vehicle || job.kind == JobKind::broadcast) && int(i) == job.actor))
+                 (medical && medical->braking) || (job.passenger() && int(i) == job.ride.car) || car.driverless || vehicleEntry.car == int(i) || car.summoned || car.personal || car.kind == 11 || ((job.kind == JobKind::vehicle || job.kind == JobKind::broadcast) && int(i) == job.actor))
             stepVehicle(car, {0, 0, true, false}, dt, 1 - rain * .2);
         else if (!local)
         {
@@ -965,8 +901,13 @@ void World::step(PlayerInput input, double dt)
     for (auto index : localTrams)
         alignTram(cars[index], dt);
     for (size_t i = 0; i < cars.size(); ++i)
-        if (cars[i].kind != 12 || cars[i].destroyed)
-            supportCar(cars[i], previousCars[i], dt);
+    {
+        auto &c = cars[i];
+        if (c.recovering || (c.kind == 12 && !c.destroyed)) continue;
+        supportCar(c, previousCars[i], dt);
+        if (int(i) == controlledCar || (c.body.p-focus).length2() < 110*110)
+            c.settleAttitude(dt, int(i) == controlledCar && !transitPassenger());
+    }
     for (size_t i = 0; i < people.size(); ++i)
     {
         if (people[i].riding >= 0) seatPassenger(people[i]);
@@ -979,11 +920,11 @@ void World::step(PlayerInput input, double dt)
     updateTireMarks(focus, dt);
     updateScooters(dt);
     stepWildlife(dt);
-    std::vector<double> impacts(cars.size());
+    std::vector<Vec2> impacts(cars.size());
     for (size_t i = 0; i < cars.size(); i++)
-        impacts[i] = (cars[i].body.v - beforeContact[i]).length();
+        impacts[i] = cars[i].body.v - beforeContact[i];
     for (size_t i = 0; i < cars.size(); i++)
-        vehicleImpact(cars[i], impacts[i]);
+        vehicleImpact(cars[i], impacts[i].length(), impacts[i]);
     for (auto &pickup : pickups)
     {
         pickup.wait = std::max(0., pickup.wait - dt);
@@ -1046,6 +987,7 @@ void World::step(PlayerInput input, double dt)
         (controlledCar >= 0 && cars[controlledCar].destroyed))
     {
         auto fallen = position();
+        if (controlledCar >= 0 && !transitPassenger()) cars[controlledCar].driverless = true;
         controlledCar = -1;
         playerTransitSeat = -1;
         transitExitRequested = false;
@@ -1173,7 +1115,10 @@ std::wstring World::command(const std::string &text)
         if (type == std::end(types)) throw std::invalid_argument("Unknown vehicle");
         if (!spawnVehicle(type->second)) throw std::runtime_error("No clear street nearby or vehicle limit reached");
     }
-    else if (cmd == "recover") { count(1, "recover"); recover(); }
+    else if (cmd == "recover") {
+        count(1, "recover");
+        if (!recover()) throw std::runtime_error("Vehicle recovery is currently unavailable");
+    }
     else if (cmd == "jobs")
     {
         count(1, "jobs");

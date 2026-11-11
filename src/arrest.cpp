@@ -169,7 +169,9 @@ void World::arrestStep(double dt)
     ++arrests;
     if (job.kind != JobKind::none) finishJob(false);
     if (drone.active) stopDrone(L"Связь с дроном прервана", 20);
+    vehicleEntry = {};
     releaseScooter(playerScooter, {});
+    if (controlledCar >= 0 && !transitPassenger()) cars[controlledCar].driverless = true;
     controlledCar = -1;
     playerTransitSeat = -1;
     transitExitRequested = false;
