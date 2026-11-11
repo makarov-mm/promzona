@@ -56,6 +56,8 @@ void main()
     vec4 detail = aJoints;
     if (uInstanced != 0) {
         mat3 rotation = mat3(aVariation.y,0,-aVariation.x, 0,1,0, aVariation.x,0,aVariation.y);
+        if (uInstanced == 2)
+            rotation *= mat3(aVariation.w,aVariation.z,0, -aVariation.z,aVariation.w,0, 0,0,1);
         world.xyz = aInstance.xyz + rotation*p.xyz*aInstance.w;
         n = rotation*n;
         detail.y += aVariation.z;

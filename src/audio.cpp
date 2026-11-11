@@ -100,6 +100,7 @@ void AudioMixer::play(const SoundEvent &event)
     Voice v;
     v.samples = &clip->second;
     v.ui = event.ui;
+    v.speaker = event.speaker;
     v.source = event.source;
     v.gain = event.gain;
     v.pan = spatialAudio(v.ui ? listener_ : v.source, listener_, heading_, v.gain);
@@ -111,6 +112,12 @@ void AudioMixer::update(World &world, double cameraHeading)
         std::lock_guard lock(mutex_);
         listener_ = world.position();
         heading_ = cameraHeading;
+        std::erase_if(voices_, [&](Voice &voice) {
+            if (voice.speaker < 0) return false;
+            if (size_t(voice.speaker) >= world.people.size() || world.people[voice.speaker].dead) return true;
+            voice.source = world.people[voice.speaker].body.p;
+            return false;
+        });
         auto pa = clips_.find("peace_pa");
         if (pa != clips_.end())
         {
@@ -157,7 +164,9 @@ void AudioMixer::update(World &world, double cameraHeading)
         for (auto c : engines)
         {
             double gain = world.controlledCar >= 0 && c == &world.cars[world.controlledCar] ? .38 : .24;
-            if(c->responding && c->kind!=12 && c->kind!=13 && c->kind!=14)
+            const auto *medical = c->kind == 4 ? world.ambulanceCall(c->id) : nullptr;
+            if((c->responding && c->kind!=12 && c->kind!=13 && c->kind!=14) ||
+               (medical && medical->stage == World::RescueStage::driving && !medical->braking))
                 loop(0x10000+int(c->id),"siren",spatialAudio(c->body.p, listener_, heading_, .26),1);
             loop(int(c->id), "engine", spatialAudio(c->body.p, listener_, heading_, gain),
                  .75 + std::min(1.5, c->body.v.length() * .05));
@@ -167,7 +176,8 @@ void AudioMixer::update(World &world, double cameraHeading)
         std::erase_if(voices_, [](auto &v) { return v.loop && !v.touched; });
     }
     for (auto &event : world.sounds)
-        if (event.name != "peace_pa" || (world.job.kind == JobKind::broadcast && world.job.route.enabled && world.controlledCar==world.job.actor))
+        if ((event.speaker < 0 || (size_t(event.speaker) < world.people.size() && !world.people[event.speaker].dead)) &&
+            (event.name != "peace_pa" || (world.job.kind == JobKind::broadcast && world.job.route.enabled && world.controlledCar==world.job.actor)))
             play(event);
     world.sounds.clear();
 }

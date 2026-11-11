@@ -141,6 +141,15 @@ void main() {
         if (coverage <= noise) discard;
     }
     vec4 tex = texture(uColor,vUv);
+    int vehicleMaterial = -1;
+    if (uSurface == 10) {
+        // The single-row articulated palette stores a material ID in alpha, including 1 for body paint.
+        int width = textureSize(uColor, 0).x;
+        int slot = clamp(int(floor(vUv.x * float(width))), 0, width-1);
+        tex = texelFetch(uColor, ivec2(slot, 0), 0);
+        vehicleMaterial = int(round(tex.a * 255.));
+        tex.a = 1.;
+    }
     if (tex.a < .05) discard;
     if (uSurface == 9) {
         if (foliage(vUv,vDetail.w) < .45) discard;
@@ -194,6 +203,9 @@ void main() {
     vec3 orm = uHasOrm != 0 ? texture(uOrm,vUv).rgb : vec3(1,uRoughness,uMetallic);
     float ao = clamp(orm.r,.15,1), metal = clamp(orm.b,0,1);
     float rough = mix(clamp(orm.g,.08,1),.24,uRain*max(n.y,0));
+    if (vehicleMaterial == 22) rough = .12;
+    else if (vehicleMaterial == 34) { rough = .25; metal = .82; }
+    else if (vehicleMaterial == 1) rough = mix(.43, .25, uRain);
     vec3 v = normalize(uEye-vWorld), l = normalize(uSun), h = normalize(v+l);
     float nl = max(dot(n,l),0), nv = max(dot(n,v),.001), nh = max(dot(n,h),0);
     float a = rough*rough, a2 = a*a, denom = nh*nh*(a2-1.0)+1.0;
@@ -210,7 +222,16 @@ void main() {
     float sunVisibility = sunlight(n);
     vec3 color = albedo*(.12+.28*uDay)*ao+(diffuse+specular)*light*nl*(.15+2.8*uDay)*sunVisibility;
     if (uSurface == 9) color += albedo*light*.42*uDay*max(dot(-n,l),0.)*sunVisibility;
-    color += sky*f0*(.18+.45*(1.0-rough))*ao + albedo*uEmissive;
+    color += sky*f0*(.18+.45*(1.0-rough))*ao;
+    if (vehicleMaterial < 0) color += albedo*uEmissive;
+    if (vehicleMaterial == 22) color = mix(color, sky, .17+.49*pow(1.-nv, 5.));
+    if (vehicleMaterial == 8) {
+        bool blue = tex.b > tex.r * 1.4;
+        if (blue && uEmissive > 0.) {
+            float pulse = smoothstep(.52, .85, sin(uTime*12.));
+            color += vec3(.015, .18, 1.) * pulse * 2.8;
+        } else color += albedo * (1.-uDay) * .75;
+    }
     if (uSurface == 6) color = apartment(n,v);
     if (uSurface == 4) color = mix(color,sky,.04+.70*pow(1.0-max(dot(n,v),0),5.0));
     float fog = 1.0-exp(-eyeDistance*(.00052+.0028*uRain));

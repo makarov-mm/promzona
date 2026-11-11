@@ -1,5 +1,7 @@
 #pragma once
 #include "physics.hpp"
+#include "surface_effects.hpp"
+#include <deque>
 #include "combat.hpp"
 #include "jobs.hpp"
 #include "transit.hpp"
@@ -44,21 +46,56 @@ class Clock
     double sunHeight() const { return std::sin((hour - 6) * pi / 12); }
     double daylight() const { return smooth((sunHeight() + .12) / .38); }
 };
+struct CivilianCover
+{
+    Vec2 hide, peek, threat, vehicleAnchor;
+    double searchAt{}, holdUntil{};
+    int vehicle{-1};
+    bool found{}, peeking{};
+};
 struct Person
 {
     Body body;
     Vec2 target;
     int node{}, next{};
     int riding{-1}, seat{}, alight{};
+    int ownedScooter{-1};
+    bool courier{}, inCompany{};
+    Vec2 incident{}, danger{};
+    double watchUntil{}, voiceAt{}, fleeUntil{};
+    double deliveryDistance{}, deliveryUntil{};
     double boardAfter{};
     bool dead{};
+    double rescueAfter{};
     double fear{}, heading{}, phase{}, distance{}, health{1}, burnUntil{};
     bool burnPlayerCaused{};
     WeaponId sidearm{};
+    CivilianCover cover;
     double alertUntil{}, aimSeconds{}, shotAt{};
     int burstLeft{};
     static WeaponId civilianWeapon(std::uint32_t citySeed, std::uint32_t id);
     std::uint32_t style{};
+};
+struct Scooter
+{
+    static constexpr int free = -1, playerRider = -2;
+    Body body;
+    int owner{-1}, rider{free};
+    double returnAt{};
+};
+enum class Species { cat, dog, pigeon, bird };
+struct Animal
+{
+    Species species{};
+    int variant{}, flock{-1};
+    Vec2 p, goal, velocity, offset;
+    double altitude{}, heading{}, distance{}, fear{}, thinkAt{}, deadUntil{};
+};
+struct Flock
+{
+    Vec2 landing;
+    bool flying{};
+    double landedAt{};
 };
 struct Pickup
 {
@@ -97,6 +134,7 @@ struct SoundEvent
     Vec2 source{};
     double gain{1};
     bool ui{};
+    int speaker{-1};
 };
 struct World
 {
@@ -113,11 +151,41 @@ struct World
     std::vector<std::vector<unsigned>> roofCells;
     void indexRoofs();
     double flightFloor(Vec2 pos) const;
+    double precipitationSurface(Vec2 pos) const;
+    double highestRoof(Vec2 pos, double floor, double margin) const;
     bool insideBuilding(Vec2 pos, double y, double radius) const;
     std::vector<TreePlant> trees;
     std::vector<Car> cars;
     std::vector<Person> people;
     std::vector<Pickup> pickups;
+    std::vector<Scooter> scooters;
+    std::vector<Animal> animals;
+    std::vector<Flock> flocks;
+    std::vector<Vec2> habitat;
+    Random streetRandom;
+    double animalClock{};
+    int playerScooter{-1};
+    enum class StreetOffer { none, gift, taxi, patient };
+    struct Conversation
+    {
+        int actor{-1};
+        double nextLine{}, pauseUntil{}, offerUntil{};
+        StreetOffer offer{};
+    } conversation;
+    bool talk();
+    void generateStreetLife();
+    void formCompanies(bool loading);
+    void socialIntent(Person &person, Vec2 &direction, double &speed);
+    void scarePerson(Person &person, Vec2 origin, double fear);
+    void releaseScooter(int index, Vec2 velocity);
+    int nearbyScooter() const;
+    bool useScooter();
+    void riderIntent(Person &person, Vec2 &direction, double &speed);
+    void updateScooters(double dt);
+    void stepWildlife(double dt);
+    void scareWildlife(Vec2 origin, double height, double lethalRadius);
+    Vec2 landingSite(Vec2 near, Vec2 away);
+    void takeFlight(int flock, Vec2 from, Vec2 away);
     std::vector<TransitLine> lines;
     void generateTransit();
     void runTransit(Car &car, Input controls, bool driving, bool local, double dt);
@@ -136,7 +204,25 @@ struct World
     double energySeconds{}, clinicCredit{}, purchaseAt{}, noticeUntil{};
     std::wstring notice;
     std::vector<Particle> particles;
+    std::deque<SurfaceMark> surfaceMarks;
+    std::vector<TireContact> tireContacts;
+    void addMark(SurfaceMark mark);
+    void updateTireMarks(Vec2 focus, double dt);
     std::vector<Rocket> rockets;
+    enum class FixtureKind { bin, hydrant, dumpster };
+    struct StreetFixture {
+        size_t body{};
+        Vec2 home;
+        FixtureKind kind{};
+        double standingHeight{}, lift{}, tilt{}, spin{}, sprayUntil{};
+        bool displaced{};
+    };
+    std::vector<StreetFixture> fixtures;
+    std::vector<int> fixtureByBody;
+    double nextFixtureRestore{};
+    void registerFixture(Body &body);
+    void updateFixtures(Vec2 focus, double dt);
+    void supportFixture(StreetFixture &fixture);
     std::vector<Body> staticBodies;
     std::vector<size_t> nearbyStaticBodies;
     Vec2 staticQueryCentre{};
@@ -175,7 +261,8 @@ struct World
     int counterInReach(bool parkedAllowed) const;
     bool buyFood();
     void interactJob();
-    bool startPassengerJob(JobKind kind);
+    bool canTakePassengerJob(int actor) const;
+    bool startPassengerJob(JobKind kind, int requestedActor = -1);
     void interactPassengerJob();
     void stepPassengerJob(double dt);
     void releasePassenger(const Job &trip, bool delivered);
@@ -198,6 +285,23 @@ struct World
     std::array<int, nodes * nodes> pursuitDistances{};
     double dispatchAt{};
     void updateDispatch();
+    enum class RescueStage { standby, driving, care, returning };
+    struct Rescue {
+        int car{-1}, medic{-1}, patient{-1}, destination{-1};
+        RescueStage stage{};
+        double deadline{}, treatment{};
+        bool braking{};
+        std::vector<int> distances;
+    };
+    std::array<Rescue, 2> rescues{};
+    double nextRescueScan{}, nextRescueDispatch{};
+    size_t casualtyCursor{};
+    const Rescue *ambulanceCall(int car) const;
+    const Rescue *paramedicCall(int actor) const;
+    void routeAmbulance(Rescue &call);
+    int ambulanceTurn(const Rescue &call, int node, int previous);
+    void updateRescues();
+    void medicIntent(int actor, Vec2 &direction, double &speed);
     int pursuitNext(int node, int previous);
     bool deployResponder(int kind);
     void responseFire(Car &car);
@@ -213,6 +317,7 @@ struct World
                           bool includePlayer = false, const Person *shooter = nullptr) const;
     bool blastVisible(Vec2 from, double y, Vec2 to, double targetY) const;
     void combatStep(double dt);
+    bool coverAllowsAim(Person &person, std::span<const Car *const> traffic, Vec2 &direction, double &speed);
     void civilianCombat(Person &person, double dt);
     void alarmWitnesses(Vec2 origin, double height, bool playerCaused);
     void flame(Vec2 direction, double y);

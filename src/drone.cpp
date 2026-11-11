@@ -48,7 +48,7 @@ void World::toggleDrone(double heading)
         stopDrone(L"Управление возвращено оператору", 2);
         return;
     }
-    if (controlledCar >= 0 || health <= 0)
+    if (controlledCar >= 0 || playerScooter >= 0 || health <= 0)
         return;
     if (time < drone.readyAt)
     {

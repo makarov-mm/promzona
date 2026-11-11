@@ -14,20 +14,28 @@ if(MSVC)
   add_compile_options(/W4 /permissive- /utf-8 /EHsc)
   if(CMAKE_GENERATOR MATCHES "^Visual Studio")
     add_compile_options(/MP4)
+    add_link_options("$<$<CONFIG:Debug>:/INCREMENTAL:NO>")
   endif()
   add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 endif()
-add_library(promzona_core src/core.cpp src/physics.cpp src/layout.cpp src/road_levels.cpp src/surfaces.cpp src/architecture.cpp src/detail_stream.cpp src/vegetation.cpp src/city_mesh.cpp src/world.cpp src/drone.cpp src/pursuit.cpp src/jobs.cpp src/peace_jobs.cpp src/passenger_jobs.cpp src/civilian_combat.cpp src/transit.cpp src/combat.cpp src/animation.cpp src/save.cpp src/audio.cpp)
+add_library(promzona_core src/core.cpp src/physics.cpp src/layout.cpp src/minimap.cpp src/control_hints.cpp src/road_levels.cpp src/surfaces.cpp src/architecture.cpp src/detail_stream.cpp src/vegetation.cpp src/city_mesh.cpp src/world.cpp src/street_life.cpp src/street_fixtures.cpp src/surface_effects.cpp src/wildlife.cpp src/social.cpp src/emergency.cpp src/drone.cpp src/pursuit.cpp src/jobs.cpp src/peace_jobs.cpp src/passenger_jobs.cpp src/civilian_combat.cpp src/civilian_cover.cpp src/transit.cpp src/combat.cpp src/animation.cpp src/save.cpp src/audio.cpp)
 target_sources(promzona_core PRIVATE
-  include/promzona/animation.hpp include/promzona/audio.hpp include/promzona/architecture.hpp include/promzona/detail_stream.hpp include/promzona/visibility.hpp include/promzona/vegetation.hpp include/promzona/sun_shadow.hpp
+  include/promzona/animation.hpp include/promzona/audio.hpp include/promzona/architecture.hpp include/promzona/detail_stream.hpp include/promzona/visibility.hpp include/promzona/surface_effects.hpp include/promzona/vegetation.hpp include/promzona/sun_shadow.hpp
   include/promzona/city_mesh.hpp include/promzona/combat.hpp
-  include/promzona/core.hpp include/promzona/layout.hpp include/promzona/road_levels.hpp
+  include/promzona/core.hpp include/promzona/layout.hpp include/promzona/minimap.hpp include/promzona/control_hints.hpp include/promzona/hud_damage.hpp include/promzona/road_levels.hpp
   include/promzona/math.hpp include/promzona/physics.hpp include/promzona/world.hpp include/promzona/fleet.hpp include/promzona/jobs.hpp include/promzona/transit.hpp)
 set_property(TARGET promzona_core PROPERTY FOLDER Libraries)
 target_include_directories(promzona_core PUBLIC include PRIVATE third_party)
 option(BUILD_TESTING "Build PROMZONA native tests" ON)
 if(BUILD_TESTING)
   enable_testing()
+  add_executable(promzona_emergency_tests tests/emergency.cpp)
+  target_link_libraries(promzona_emergency_tests PRIVATE promzona_core)
+  add_test(NAME native_emergency_response COMMAND promzona_emergency_tests)
+  add_executable(promzona_street_tests tests/street_life.cpp)
+  target_link_libraries(promzona_street_tests PRIVATE promzona_core)
+  target_include_directories(promzona_street_tests PRIVATE third_party)
+  add_test(NAME native_street_life COMMAND promzona_street_tests)
   add_executable(promzona_drone_tests tests/drone.cpp)
   target_link_libraries(promzona_drone_tests PRIVATE promzona_core)
   target_include_directories(promzona_drone_tests PRIVATE third_party)
@@ -70,7 +78,7 @@ if(BUILD_TESTING)
     "\"${CMAKE_SOURCE_DIR}/tests/vehicle-reference.txt\"")
   set_property(TARGET promzona_layout_tests PROPERTY VS_DEBUGGER_COMMAND_ARGUMENTS
     "\"${CMAKE_SOURCE_DIR}/tests/layout-reference.txt\"")
-  set_target_properties(promzona_drone_tests promzona_transit_tests promzona_pursuit_tests promzona_jobs_tests promzona_streaming_tests promzona_environment_tests promzona_architecture_tests promzona_level_tests promzona_tests promzona_traffic_tests promzona_layout_tests promzona_combat_tests
+  set_target_properties(promzona_emergency_tests promzona_street_tests promzona_drone_tests promzona_transit_tests promzona_pursuit_tests promzona_jobs_tests promzona_streaming_tests promzona_environment_tests promzona_architecture_tests promzona_level_tests promzona_tests promzona_traffic_tests promzona_layout_tests promzona_combat_tests
     PROPERTIES FOLDER Tests VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 endif()
 if(WIN32)
@@ -89,10 +97,11 @@ if(WIN32)
       VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
       VS_DEBUGGER_COMMAND_ARGUMENTS "\"${CMAKE_SOURCE_DIR}/Content\"")
   endif()
-  add_executable(Promzona WIN32 src/main.cpp src/renderer.cpp src/audio_device.cpp src/promzona.rc src/app.manifest)
+  add_executable(Promzona WIN32 src/main.cpp src/renderer.cpp src/effect_batch.cpp src/effect_batch.hpp src/audio_device.cpp src/promzona.rc src/app.manifest)
   set(native_shaders
     Content/Shaders/Native/scene.vert Content/Shaders/Native/scene.frag
-    Content/Shaders/Native/ui.vert Content/Shaders/Native/ui.frag)
+    Content/Shaders/Native/ui.vert Content/Shaders/Native/ui.frag
+    Content/Shaders/Native/effects.vert Content/Shaders/Native/effects.frag)
   # GLSL is loaded by the game; listing it here is for editing, not MSBuild compilation.
   set_source_files_properties(${native_shaders} PROPERTIES HEADER_FILE_ONLY TRUE)
   target_sources(Promzona PRIVATE include/promzona/renderer.hpp include/promzona/gl.hpp

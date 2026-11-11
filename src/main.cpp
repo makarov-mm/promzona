@@ -202,7 +202,7 @@ View camera(const World &w, Application &a, double dt)
         v.eye = v.target + Vec3{float(-std::sin(a.cameraYaw) * a.zoom), float(a.zoom * .43),
                                 float(-std::cos(a.cameraYaw) * a.zoom)};
     bool mounted=w.controlledCar>=0 && w.cars[w.controlledCar].mountedGun();
-    bool aim=(w.controlledCar<0 || mounted) && a.cameraMode==0 && a.firing;
+    bool aim=w.playerScooter<0 && (w.controlledCar<0 || mounted) && a.cameraMode==0 && a.firing;
     if(aim && mounted) v.target.y=y+2.3f;
     Vec3 sight{float(std::sin(a.look)*std::cos(a.lookPitch)),float(std::sin(a.lookPitch)),float(std::cos(a.look)*std::cos(a.lookPitch))};
     if(aim) v.eye=v.target-sight*(mounted?7.f:3.f)+Vec3{float(-std::cos(a.look)*.35),.12f,float(std::sin(a.look)*.35)};
@@ -232,6 +232,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     int smokeFrames = 180;
     std::wstring scenario = L"day";
     std::optional<View> reviewView;
+    int reviewRider = -1;
+    double riderStartDistance{};
     std::filesystem::path screenshot, content, logPath, smokeOutput;
     wchar_t executable[32768]{};
     GetModuleFileNameW(nullptr, executable, 32768);
@@ -264,13 +266,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     SetProcessDPIAware();
     try
     {
-        if (scenario != L"day" && scenario != L"drive" && scenario != L"walk" && scenario != L"night" &&
+        if (scenario != L"day" && scenario != L"drive" && scenario != L"walk" && scenario != L"storm" && scenario != L"night" &&
             scenario != L"canal" && scenario != L"bridge" && scenario != L"overpass" &&
             scenario != L"underpass" && scenario != L"tunnel" && scenario != L"portal" &&
             scenario != L"facade" && scenario != L"facade-night" && scenario != L"park" &&
             scenario != L"park-unshadowed" && scenario != L"park-evening" && scenario != L"streaming" &&
             scenario != L"courier" && scenario != L"pursuit" && scenario != L"transit" && scenario != L"tank" && scenario != L"drone" &&
-            scenario != L"leaflets" && scenario != L"taxi")
+            scenario != L"leaflets" && scenario != L"taxi" && scenario != L"wildlife" && scenario != L"scooter" && scenario != L"delivery-rider" && scenario != L"ambulance" && scenario != L"hydrant")
             throw std::runtime_error("Unknown smoke scenario");
         if (content.empty())
             content = std::filesystem::is_directory(exeDirectory / L"Content")
@@ -398,6 +400,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         begin(false);
                     else if (app.pressed['L'])
                         begin(true);
+                    else if (world && app.pressed['Q'])
+                        app.running = false;
                 }
                 if (app.loading && generation.valid() &&
                     generation.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
@@ -407,6 +411,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         world = generation.get();
                         if (smoke)
                         {
+                            if (scenario == L"storm")
+                            {
+                                world->clock.setHour(16);
+                                world->rain = world->rainTarget = 1;
+                                world->weatherClock = 120;
+                                world->time = 95;
+                            }
                             if (scenario == L"night")
                             {
                                 world->clock.setHour(22);
@@ -422,6 +433,101 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 auto delta = b.p - world->drone.position;
                                 app.look = std::atan2(delta.x, delta.z);
                                 app.lookPitch = .1;
+                            }
+                            if (scenario == L"wildlife" || scenario == L"scooter" || scenario == L"delivery-rider")
+                            {
+                                world->clock.setHour(10);
+                                world->rain = world->rainTarget = 0;
+                                world->controlledCar = -1;
+                                world->player.roadLevel = 0;
+                                if (scenario == L"wildlife")
+                                {
+                                    const auto centre = world->flocks.at(0).landing;
+                                    world->player.p = centre + Vec2{0,8};
+                                    world->player.height = world->terrain.height(world->player.p)+.85;
+                                    View view;
+                                    view.target = {float(centre.x),float(world->terrain.height(centre)+.45),float(centre.z)};
+                                    view.eye = view.target + Vec3{3,1.9f,4};
+                                    reviewView = view;
+                                }
+                                else
+                                {
+                                    auto it = std::ranges::find_if(world->scooters,[&](const Scooter &s) {
+                                        return world->people[s.owner].courier;
+                                    });
+                                    if(it==world->scooters.end()) throw std::runtime_error("Missing courier rider");
+                                    auto &rider = world->people[it->owner];
+                                    if (scenario == L"delivery-rider")
+                                    {
+                                        reviewRider = it->owner;
+                                        riderStartDistance = rider.distance;
+                                        world->player.p = rider.body.p + Vec2{0, 8};
+                                        world->player.height = world->terrain.height(world->player.p) + .85;
+                                    }
+                                    else
+                                    {
+                                        world->releaseScooter(int(it - world->scooters.begin()), {});
+                                        world->player.p = it->body.p;
+                                        world->player.height = it->body.height + .7;
+                                        if (!world->useScooter()) throw std::runtime_error("Could not mount dropped scooter");
+                                        auto dir = (rider.target - rider.body.p).unit();
+                                        app.look = std::atan2(dir.x, dir.z);
+                                    }
+                                }
+                            }
+                            if (scenario == L"hydrant")
+                            {
+                                auto at = world->position();
+                                const World::StreetFixture *chosen = nullptr;
+                                for (const auto &f : world->fixtures)
+                                    if (f.kind==World::FixtureKind::hydrant && !world->levelAt(f.home,8) &&
+                                        (!chosen || (f.home-at).length2()<(chosen->home-at).length2()))
+                                        chosen=&f;
+                                if (!chosen) throw std::runtime_error("No hydrant for review");
+                                auto &car=world->cars.at(world->controlledCar);
+                                Vec2 target=chosen->home;
+                                auto offset=target-World::nodePoint(0);
+                                double dx=std::remainder(offset.x,World::spacing);
+                                double dz=std::remainder(offset.z,World::spacing);
+                                Vec2 incoming=std::abs(dx)<std::abs(dz)
+                                    ? Vec2{std::copysign(1.,dx),0} : Vec2{0,std::copysign(1.,dz)};
+                                car.body.p=target-incoming*(car.body.halfH+1.1);
+                                car.body.angle=-std::atan2(incoming.x,incoming.z);
+                                car.body.height=world->terrain.height(car.body.p)+.8;
+                                car.body.v=incoming*11;
+                                car.body.wake();
+                                world->clock.setHour(11);
+                                world->rain=world->rainTarget=0;
+                                View view;
+                                auto camera=target+perpendicular(incoming)*3.6-incoming*4.5;
+                                view.eye={float(camera.x),float(world->terrain.height(camera)+2.35),float(camera.z)};
+                                view.target={float(target.x),float(world->terrain.height(target)+1.25),float(target.z)};
+                                reviewView=view;
+                            }
+                            if (scenario == L"ambulance")
+                            {
+                                auto unit = std::ranges::find_if(world->cars,[&](const Car &c) {
+                                    return c.kind==4 && !c.body.roadLevel && !world->levelAt(c.body.p,15);
+                                });
+                                if(unit==world->cars.end()) throw std::runtime_error("Missing ambulance");
+                                auto side=rotate(Vec2{1,0},unit->body.angle);
+                                auto at=unit->body.p+side*3.4;
+                                world->clock.setHour(10);
+                                world->rain=world->rainTarget=0;
+                                world->controlledCar=-1;
+                                world->player.p=at+side*8;
+                                world->player.height=world->terrain.height(world->player.p)+.85;
+                                auto &patient=world->people.at(15);
+                                world->resumeWalk(patient,at,0);
+                                world->killPerson(patient);
+                                world->time+=8;
+                                world->updateRescues();
+                                world->updateRescues();
+                                View view;
+                                view.target={float(at.x),float(patient.body.height+.25),float(at.z)};
+                                auto camera=at+side*4.6+forward(unit->heading())*5.5;
+                                view.eye={float(camera.x),float(world->terrain.height(camera)+2.6),float(camera.z)};
+                                reviewView=view;
                             }
                             if (scenario == L"tank")
                             {
@@ -629,7 +735,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             if (world->drone.active) { app.lookPitch = world->drone.pitch; app.jobsOpen = false; }
                             else if (active) { app.look = -world->player.angle; app.lookPitch = 0; }
                         }
-                        if (!world->drone.active && app.pressed['F'] && !world->buyFood())
+                        if (!world->drone.active && app.pressed['F'] && (world->playerScooter >= 0 || !world->buyFood()))
                         {
                             int previous = world->controlledCar;
                             world->enterExit();
@@ -701,9 +807,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         input.lookHeading = app.look;
                         input.lookPitch = app.lookPitch;
                         if (smoke && scenario == L"drone") input.collective=1;
+                        if (smoke && scenario == L"scooter") input.walking=forward(app.look);
+                        if (smoke && scenario == L"wildlife" && frames == 115)
+                        {
+                            auto centre = world->flocks.at(0).landing;
+                            world->scareWildlife(centre,world->terrain.height(centre),0);
+                        }
                         if (smoke && scenario == L"tank")
                             input.shooting=frames>=150;
-                        if (smoke && scenario == L"drive")
+                        if (smoke && (scenario == L"drive" || scenario == L"storm"))
                             input.car = {frames < smokeFrames * 2 / 3 ? 1. : 0., .12, false,
                                          frames >= smokeFrames * 2 / 3};
                         if (smoke && scenario == L"walk")
@@ -739,6 +851,38 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     auto view = camera(*world, app, dt);
                     if (smoke && reviewView)
                         view = *reviewView;
+                    if (reviewRider >= 0)
+                    {
+                        const auto &rider = world->people.at(reviewRider);
+                        Vec2 f = forward(rider.heading);
+                        view.target = {float(rider.body.p.x), float(rider.body.height + .1), float(rider.body.p.z)};
+                        // Film from the carriageway side of the sidewalk. At a junction either side
+                        // can face a wall, a tree or a parked car, so test the actual sightline.
+                        double best = -1e9;
+                        for (double angle : {1.1, -1.1, 1.8, -1.8, .5, -.5, 2.6, -2.6})
+                        {
+                            Vec2 offset = rotate(-f, angle) * 4.6, eye = rider.body.p + offset;
+                            double eyeHeight = std::max(world->surface(eye, rider.body.roadLevel) + 1.8,
+                                                     rider.body.height + 1.4);
+                            double score = -world->layout.roadDistance(eye) - .15 * std::abs(angle);
+                            double length = offset.length();
+                            auto hit = world->traceAttack(rider.body.p, offset / length, view.target.y,
+                                                          (eyeHeight - view.target.y) / length, length, -1, true, &rider);
+                            if (hit.kind != HitKind::none)
+                                score -= 50. + length - hit.distance;
+                            if (score > best)
+                            {
+                                view.eye = {float(eye.x), float(eyeHeight), float(eye.z)};
+                                best = score;
+                            }
+                        }
+                    }
+                    if (smoke && scenario == L"wildlife" && frames >= 115)
+                    {
+                        auto it = std::ranges::find(world->animals,0,&Animal::flock);
+                        Vec3 centre{float(it->p.x),float(it->altitude+.25),float(it->p.z)};
+                        view.target=centre; view.eye=centre+Vec3{3,1.9f,4};
+                    }
                     if (smoke && scenario == L"streaming")
                     {
                         // Far jumps stress cancellation/eviction; the last stop revisits the first.
@@ -831,6 +975,32 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         if (c.body.roadLevel != expected ||
                             std::abs(world->ground() - world->surface(c.body.p, expected)) > .1)
                             throw std::runtime_error("Smoke support level mismatch");
+                    }
+                    if (scenario == L"storm" && (distance < 1 || world->surfaceMarks.empty()))
+                        throw std::runtime_error("No moving traffic left tyre marks during the rain");
+                    if (scenario == L"scooter" && (world->playerScooter < 0 || (world->player.p-smokeStart).length()<2))
+                        throw std::runtime_error("Scooter ride failed");
+                    if (reviewRider >= 0)
+                    {
+                        const auto &rider = world->people.at(reviewRider);
+                        if (world->scooters.at(rider.ownedScooter).rider != reviewRider ||
+                            rider.distance - riderStartDistance < 1.5)
+                            throw std::runtime_error("Delivery rider did not travel with their scooter");
+                    }
+                    if (scenario == L"hydrant" && std::ranges::none_of(world->fixtures,[&](const auto &f) {
+                        return f.sprayUntil>world->time && (f.home-world->position()).length2()<65*65;
+                    })) throw std::runtime_error("Review car failed to dislodge hydrant");
+                    if (scenario == L"wildlife" && !world->flocks.at(0).flying)
+                        throw std::runtime_error("Flock did not take off");
+                    if (scenario == L"ambulance" &&
+                        (world->rescues[0].stage!=World::RescueStage::care || world->people[world->rescues[0].medic].riding>=0))
+                        {
+                        const auto &r = world->rescues[0];
+                        throw std::runtime_error("Ambulance review: stage " + std::to_string(int(r.stage)) +
+                            ", car " + std::to_string(r.car) + ", patient " + std::to_string(r.patient) +
+                            ", simulation time " + std::to_string(world->time) +
+                            (r.car >= 0 && r.patient >= 0 ? ", distance " + std::to_string(
+                               (world->cars[r.car].body.p - world->people[r.patient].body.p).length()) : ""));
                     }
                     if (scenario == L"taxi" && (!world->job.acquired || world->people[world->job.actor].riding != world->controlledCar))
                         throw std::runtime_error("Taxi passenger did not board");

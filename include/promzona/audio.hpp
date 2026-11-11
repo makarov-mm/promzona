@@ -19,7 +19,7 @@ class AudioMixer
         const std::vector<float> *samples{};
         double cursor{}, rate{1};
         StereoGain pan;
-        int id{};
+        int id{}, speaker{-1};
         bool loop{}, touched{}, ui{};
         Vec2 source;
         double gain{1};

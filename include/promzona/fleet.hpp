@@ -27,7 +27,9 @@ inline constexpr VehicleSpec fleet[] = {{"old_car_-_vaz_2107", 0, 1.78, 1.48, 4.
                                         {"free_zuk_3d_model", 1, 2.03, 2.05, 4.31, 1850, 2.7},
                                         {"pirozhok_scan_retopo_free_scan", 1, 1.77, 1.78, 4.1, 1200, 2.4},
                                         {"gaz-52_truck_old_version", 2, 2.93, 2.41, 6.4, 6500, 3.7},
-                                        {"maz_500", 2, 3.14, 3.21, 6.67, 7400, 3.9}};
+                                        {"maz_500", 2, 3.14, 3.21, 6.67, 7400, 3.9},
+                                        {"ambulance", 4, 2.26, 2.86, 4.97, 2760, 2.7}};
+inline constexpr unsigned ambulanceModel = unsigned(std::size(fleet) - 1);
 inline void fitVehicle(Car &car, unsigned model)
 {
     const auto &spec = fleet[model];

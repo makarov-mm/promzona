@@ -217,7 +217,10 @@ void World::newRoute(Car &car)
     }
     else
     {
-        int from = car.routeTo, to = car.responding ? pursuitNext(from, car.routeFrom) : chooseNext(from, car.routeFrom);
+        int from = car.routeTo;
+        auto *call = car.kind == 4 ? ambulanceCall(car.id) : nullptr;
+        int to = call && call->stage == RescueStage::driving ? ambulanceTurn(*call, from, car.routeFrom)
+                 : car.responding ? pursuitNext(from, car.routeFrom) : chooseNext(from, car.routeFrom);
         auto centre = nodePoint(from), incoming = (centre - nodePoint(car.routeFrom)).unit(),
              outgoing = (nodePoint(to) - centre).unit();
         if (to == car.routeFrom)
@@ -262,15 +265,24 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
 {
     seed = newSeed;
     drone = {};
+    conversation = {};
+    rescues = {};
+    nextRescueScan = nextRescueDispatch = 0;
+    casualtyCursor = 0;
     random = Random(seed);
     buildings.clear();
     cars.clear();
     people.clear();
     pickups.clear();
     particles.clear();
+    surfaceMarks.clear();
+    tireContacts.clear();
     rockets.clear();
     playerBurnUntil = fireClock = nextFlameSound = 0;
     staticBodies.clear();
+    fixtures.clear();
+    fixtureByBody.clear();
+    nextFixtureRestore = 0;
     staticQueryCount = size_t(-1);
     nearbyStaticBodies.clear();
     physics.clear();
@@ -332,6 +344,7 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
         body.halfH = b.half.z;
         body.height = terrain.height(b.p) + b.height * .5;
         body.verticalExtent = b.height;
+        if (b.height <= 3) registerFixture(body);
         staticBodies.push_back(body);
     }
     // Rail contact shapes use the identical spans/profile as the visible bridge rails.
@@ -362,7 +375,7 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
         car.id = std::uint32_t(i);
         car.body.id = id++;
         constexpr unsigned streetFleet[]{0, 1, 2, 11, 12, 13, 14, 0, 2, 16, 1, 13, 15, 17, 12, 3, 0};
-        fitVehicle(car, streetFleet[i % std::size(streetFleet)]);
+        fitVehicle(car, i % 37 == 16 ? ambulanceModel : streetFleet[i % std::size(streetFleet)]);
         car.body.friction = .5;
         car.routeFrom = random.index(nodes * nodes);
         car.routeTo = chooseNext(car.routeFrom, -1);
@@ -457,10 +470,13 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress)
     }
     generateServices();
     generateTransit();
+    generateStreetLife();
+    formCompanies(false);
     report(1);
 }
 void World::enterExit()
 {
+    if (controlledCar < 0 && useScooter()) return;
     if (controlledCar >= 0)
     {
         auto &car = cars[controlledCar];
@@ -495,11 +511,15 @@ void World::enterExit()
             controlledCar = index;
             cars[index].responding = false;
             cars[index].body.wake();
+            conversation = {};
         }
+        else talk();
     }
 }
 void World::recover()
 {
+    conversation = {};
+    releaseScooter(playerScooter, {});
     if (drone.active) stopDrone(L"Связь с дроном прервана", 2);
     auto p = nodePoint(nodes / 2 * nodes + nodes / 2) + Vec2{-1.9, -12};
     if (controlledCar >= 0)
@@ -559,6 +579,7 @@ void World::step(PlayerInput input, double dt)
         input = {};
         input.lookHeading = -player.angle;
     }
+    if (playerScooter >= 0) input.shooting = false;
     aiming = input.shooting;
     bool mounted = controlledCar>=0 && cars[controlledCar].mountedGun();
     if(mounted)
@@ -576,6 +597,7 @@ void World::step(PlayerInput input, double dt)
     }
     combatStep(dt);
     if (time >= dispatchAt) updateDispatch();
+    if (time >= nextRescueScan) updateRescues();
     auto focus = position();
     std::vector<Vec2> previousCars, previousPeople;
     for (auto &c : cars)
@@ -635,19 +657,20 @@ void World::step(PlayerInput input, double dt)
             }
             continue;
         }
+        const auto *medical = car.kind == 4 ? ambulanceCall(int(i)) : nullptr;
         if (int(i) == controlledCar && !car.destroyed)
             stepVehicle(car, input.car, dt, 1 - rain * .2);
         else if (car.destroyed)
         {
             stepWreck(car, dt);
         }
-        else if ((job.passenger() && int(i) == job.ride.car) || car.summoned || car.kind == 11 || ((job.kind == JobKind::vehicle || job.kind == JobKind::broadcast) && int(i) == job.actor))
+        else if ((medical && medical->braking) || (job.passenger() && int(i) == job.ride.car) || car.summoned || car.kind == 11 || ((job.kind == JobKind::vehicle || job.kind == JobKind::broadcast) && int(i) == job.actor))
             stepVehicle(car, {0, 0, true, false}, dt, 1 - rain * .2);
         else if (!local)
         {
             if (!car.route)
                 newRoute(car);
-            double cruise = car.responding ? 16. : 7.;
+            double cruise = car.responding ? 16. : medical && medical->stage == RescueStage::driving ? 11. : 7.;
             bool clear = car.routeDistance + cruise * dt < car.route->length() || intersectionClear(car);
             car.routeDistance = std::min(
                 car.route->length(),
@@ -746,9 +769,16 @@ void World::step(PlayerInput input, double dt)
     if (controlledCar < 0)
     {
         auto dir = input.walking.unit();
-        player.v = dir * (input.walking.length() > .01 ? (input.running ? 5.7 : 2.7) : 0) * (energySeconds > 0 ? 1.65 : 1.);
+        if (playerScooter >= 0)
+        {
+            double targetSpeed = input.car.handbrake ? 0. : 6.8;
+            player.v += (dir * targetSpeed - player.v) * (1 - std::exp(-dt * (input.car.handbrake ? 12. : 3.)));
+        }
+        else player.v = dir * (input.walking.length() > .01 ? (input.running ? 5.7 : 2.7) : 0) * (energySeconds > 0 ? 1.65 : 1.);
         playerDistance += player.v.length() * dt;
-        player.angle = -input.lookHeading;
+        if (playerScooter >= 0 && player.v.length2() > .05)
+            player.angle = -std::atan2(player.v.x, player.v.z);
+        else if (playerScooter < 0) player.angle = -input.lookHeading;
         player.wake();
         bodies.push_back(&player);
     }
@@ -791,9 +821,15 @@ void World::step(PlayerInput input, double dt)
                         (dot(d, c.body.v.unit()) > 0 && std::abs(dot(d, perpendicular(c.body.v.unit()))) < c.body.halfW + p.body.radius))
                     {
                         dir = d.unit();
-                        p.fear = 2;
+                        scarePerson(p, c.body.p, 2.);
                         if (playerDriving && p.sidearm != WeaponId::none) p.alertUntil = time + 5.;
                     }
+                }
+                if (p.ownedScooter >= 0 && scooters[p.ownedScooter].rider >= 0 &&
+                    distance < 1.55 && std::abs(p.body.height - c.body.height) < 1.5 && c.body.v.length() > 3)
+                {
+                    releaseScooter(p.ownedScooter, c.body.v * .45);
+                    p.fear = 3;
                 }
                 if (distance < 1.1 && std::abs(p.body.height - c.body.height) < 1.8 && c.body.v.length() > 6)
                 {
@@ -806,6 +842,8 @@ void World::step(PlayerInput input, double dt)
         if (p.dead)
             continue;
         double speed = p.fear > 0 ? 3.5 : 1.2;
+        riderIntent(p, dir, speed);
+        socialIntent(p, dir, speed);
         if (job.passenger() && !job.acquired && &p == &people[job.actor] && p.fear <= 0)
         {
             if (job.ride.car >= 0)
@@ -818,10 +856,17 @@ void World::step(PlayerInput input, double dt)
         }
         if (local && p.sidearm != WeaponId::none && (p.alertUntil > time || p.aimSeconds > 0))
         {
-            civilianCombat(p, dt);
+            if (coverAllowsAim(p, carsNearWalkers, dir, speed)) civilianCombat(p, dt);
+            else { p.aimSeconds = 0; p.burstLeft = 0; }
             if (p.aimSeconds > 0) speed = 0;
         }
-        else if (p.aimSeconds > 0) { p.aimSeconds = 0; p.burstLeft = 0; }
+        else if (p.aimSeconds > 0 || p.cover.searchAt > 0)
+        {
+            p.aimSeconds = 0;
+            p.burstLeft = 0;
+            p.cover = {};
+        }
+        medicIntent(int(&p - people.data()), dir, speed);
         if (speed > .01) p.heading = std::atan2(dir.x, dir.z);
         auto desired = dir * speed;
         p.body.v += (desired - p.body.v) * (1 - std::exp(-dt * 4));
@@ -835,7 +880,11 @@ void World::step(PlayerInput input, double dt)
     beforeContact.reserve(cars.size());
     for (auto &c : cars)
         beforeContact.push_back(c.body.v);
+    for (auto &s : scooters)
+        if (s.rider == Scooter::free && (s.body.p - focus).length2() < 90 * 90)
+            bodies.push_back(&s.body);
     physics.step(bodies, dt);
+    updateFixtures(focus, dt);
     for (auto index : localTrams)
         alignTram(cars[index], dt);
     for (size_t i = 0; i < cars.size(); ++i)
@@ -848,6 +897,9 @@ void World::step(PlayerInput input, double dt)
     }
     if (controlledCar < 0)
         supportPerson(player, previousPlayer, dt);
+    updateTireMarks(focus, dt);
+    updateScooters(dt);
+    stepWildlife(dt);
     std::vector<double> impacts(cars.size());
     for (size_t i = 0; i < cars.size(); i++)
         impacts[i] = (cars[i].body.v - beforeContact[i]).length();

@@ -1,0 +1,223 @@
+#include "promzona/world.hpp"
+
+namespace pz
+{
+namespace
+{
+// Original neighbourhood cadence: up to three friends out of every 28 pedestrians.
+constexpr size_t cohort = 28, members = 3;
+} // namespace
+
+void World::formCompanies(bool loading)
+{
+    for (size_t i = 0; i < people.size(); i += cohort)
+    {
+        Person *lead = nullptr;
+        for (size_t n = i; n < std::min(i + members, people.size()); ++n)
+        {
+            auto &p = people[n];
+            if (p.riding >= 0 || p.body.roadLevel || p.dead || p.ownedScooter >= 0 || p.courier ||
+                ((job.passenger() || job.kind == JobKind::elimination) && job.actor == int(n)))
+                continue;
+            // Upgrading an existing save must not move anyone the player can see.
+            if (loading && (p.body.p - position()).length2() < 100 * 100)
+                continue;
+            if (!lead)
+            {
+                lead = &p;
+                continue;
+            }
+            if (loading && (lead->body.p - position()).length2() < 105 * 105)
+                continue;
+            auto heading = (lead->target - lead->body.p).unit();
+            Vec2 at = lead->body.p - heading * (.9 * (n - i));
+            if (openCut(at, .4) || insideBuilding(at, terrain.height(at) + .8, .35))
+                continue;
+            lead->inCompany = p.inCompany = true;
+            p.node = lead->node;
+            p.next = lead->next;
+            p.target = lead->target;
+            p.body.p = at;
+            p.body.v = {};
+            p.body.height = terrain.height(at) + .85;
+            p.body.roadLevel = 0;
+            p.heading = std::atan2(heading.x, heading.z);
+        }
+    }
+}
+
+void World::scarePerson(Person &p, Vec2 origin, double fear)
+{
+    if (conversation.actor == int(&p - people.data()))
+        conversation = {};
+    bool speak = p.fear < .25 && p.voiceAt <= time;
+    p.fear = std::max(p.fear, p.inCompany ? fear * .55 : fear);
+    p.danger = origin;
+    p.fleeUntil = time + (p.inCompany ? 1.8 : 3.5);
+    if (speak && (position() - p.body.p).length2() < 65 * 65)
+    {
+        const int count = p.inCompany ? 6 : 8;
+        auto clip = std::string(p.inCompany ? "tough_fear_" : "fear_") + std::to_string(p.body.id % count);
+        sounds.push_back({clip, p.body.p, .59, false, int(&p - people.data())});
+        p.voiceAt = time + 5.;
+    }
+}
+
+void World::socialIntent(Person &p, Vec2 &dir, double &speed)
+{
+    if (p.riding >= 0 || (job.passenger() && job.actor == int(&p - people.data())))
+        return;
+    if (conversation.actor == int(&p - people.data()) && time < conversation.pauseUntil &&
+        controlledCar < 0 && !drone.active && playerScooter < 0 && p.fear <= .15 &&
+        (player.p - p.body.p).length2() < 9)
+    {
+        auto toward = player.p - p.body.p;
+        p.heading = std::atan2(toward.x, toward.z);
+        speed = 0;
+        return;
+    }
+    if (p.fear > .15 && p.fleeUntil > time)
+    {
+        auto away = p.body.p - p.danger;
+        if (away.length2() > .001)
+            dir = away.unit();
+    }
+    else if (p.watchUntil > time && p.fear <= .15 && !p.courier && p.ownedScooter < 0)
+    {
+        auto delta = p.incident - p.body.p;
+        double standOff = 4. + (p.body.id % 5) * .55;
+        speed = std::min(speed, std::max(0., delta.length() - standOff));
+        dir = delta.unit();
+        if (speed < .05)
+            p.heading = std::atan2(dir.x, dir.z);
+    }
+    else if (p.inCompany && p.fear <= .15)
+    {
+        size_t index = size_t(&p - people.data());
+        size_t base = index - index % cohort;
+        if (index == base)
+            return;
+        for (size_t n = base; n < index; ++n)
+        {
+            const auto &lead = people[n];
+            if (!lead.inCompany || lead.dead || lead.riding >= 0)
+                continue;
+            if (p.body.roadLevel != lead.body.roadLevel)
+                return;
+            auto along = forward(lead.heading);
+            auto target = lead.body.p - along * (.95 * (index - n)) +
+                          perpendicular(along) * ((index - n) % 2 ? .28 : -.28);
+            auto delta = target - p.body.p;
+            // Remember the current stretch of pavement so a survivor can take over immediately.
+            p.next = lead.next;
+            p.node = lead.node;
+            p.target = lead.target;
+            dir = delta.unit();
+            speed = std::min(2.5, delta.length() * 2.);
+            break;
+        }
+    }
+    else
+        return;
+
+    // A frightened witness or separated follower may be aiming across a corner.
+    // Take an open side step rather than crossing a facade or entering an open cut.
+    auto clear = [&](Vec2 d)
+    {
+        auto at = p.body.p + d * .7;
+        return layout.urbanSite(at, .3) && (p.body.roadLevel || !openCut(at, .4)) &&
+               !insideBuilding(at, surface(at, p.body.roadLevel) + .8, .36);
+    };
+    if (speed > .01 && !clear(dir))
+    {
+        auto side = perpendicular(dir);
+        if (clear(side))
+            dir = side;
+        else if (clear(-side))
+            dir = -side;
+        else
+            speed = 0;
+    }
+}
+bool World::talk()
+{
+    if (controlledCar >= 0 || playerScooter >= 0 || drone.active || health <= 0 ||
+        time < conversation.nextLine)
+        return false;
+    auto facing = forward(-player.angle);
+    int actor = -1;
+    double nearest = 1.9;
+    for (int i = 0; i < int(people.size()); ++i)
+    {
+        const auto &p = people[i];
+        auto delta = p.body.p - player.p;
+        double d = delta.length();
+        if (d < .01 || d > nearest || paramedicCall(i) || dot(delta, facing) < d * .35 || p.dead ||
+            p.riding >= 0 || (p.ownedScooter >= 0 && scooters[p.ownedScooter].rider == i) ||
+            p.body.roadLevel != player.roadLevel || std::abs(p.body.height - player.height) > .9 ||
+            !blastVisible(player.p, player.height, p.body.p, p.body.height))
+            continue;
+        actor = i;
+        nearest = d;
+    }
+    if (actor < 0)
+        return false;
+    auto &p = people[actor];
+    auto offer = conversation.actor == actor && time < conversation.offerUntil ? conversation.offer
+                                                                               : StreetOffer::none;
+    conversation = {actor, time + .5, time + 2.5, time + 4., StreetOffer::none};
+    auto directionTo = [&](ServiceKind kind)
+    {
+        int site = nearestSite(kind, p.body.p);
+        if (site < 0)
+            return std::wstring(L"Не здешний я.");
+        Vec2 delta = sites[site].entrance - p.body.p;
+        if (delta.length() < 10)
+            return std::wstring(L"Да вот же, рядом.");
+        const wchar_t *way = std::abs(delta.x) > std::abs(delta.z)
+                                 ? (delta.x < 0 ? L"на запад" : L"на восток")
+                                 : (delta.z < 0 ? L"на север" : L"на юг");
+        return std::wstring(kind == ServiceKind::clinic ? L"До поликлиники " : L"До киоска ") +
+               std::to_wstring(int(std::round(delta.length() / 10)) * 10) + L" м " + way + L".";
+    };
+    if (p.fear > .25 || p.burnUntil > time || p.alertUntil > time)
+        notify(L"Не подходи!");
+    else if (offer == StreetOffer::gift)
+    {
+        if (money < 5)
+            notify(L"У тебя у самого пусто.");
+        else
+        {
+            money -= 5;
+            sounds.push_back({"spend", player.p, .5, true});
+            notify(L"Спасибо, брат! Дай бог здоровья.");
+        }
+    }
+    else if (job.kind == JobKind::none && (offer == StreetOffer::taxi || offer == StreetOffer::patient))
+        startPassengerJob(offer == StreetOffer::patient ? JobKind::patient : JobKind::taxi, actor);
+    else if (p.inCompany)
+        notify(clock.daylight() < .35 ? L"Чё надо? Иди отсюда, пока цел." : L"Не мешай, братан.");
+    else if (p.courier)
+        notify(L"Извини, заказ стынет.");
+    else if (p.style == 9 || p.style == 10)
+    {
+        conversation.offer = StreetOffer::gift;
+        notify(L"Мелочи не найдётся? [F] Дать $5");
+    }
+    else if (job.kind == JobKind::none && (p.health < .7 || p.body.id % 5 == 0) &&
+             canTakePassengerJob(actor) && layout.roadDistance(p.body.p) > layout.roadHalf())
+    {
+        bool ill = p.health < .7;
+        conversation.offer = ill ? StreetOffer::patient : StreetOffer::taxi;
+        notify(ill ? L"Брат, отвезёшь в клинику? [F] Согласиться" : L"Таксуешь? Подбросишь? [F] Согласиться");
+    }
+    else if (p.style == 2 || p.style == 8 || p.health < .7)
+        notify(directionTo(ServiceKind::clinic));
+    else if (p.body.id % 3 == 0)
+        notify(directionTo(ServiceKind::kiosk));
+    else
+        notify(p.body.id % 2 ? L"Бомбилы совсем обнаглели — по двадцатке за квартал."
+                             : L"Нормально всё. Живём.");
+    return true;
+}
+} // namespace pz

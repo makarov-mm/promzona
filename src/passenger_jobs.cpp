@@ -9,15 +9,22 @@ Vec2 World::passengerDoor(const Car &c, Vec2 from) const
     return c.body.p + side * (dot(from - c.body.p, side) < 0 ? -1. : 1.);
 }
 
-bool World::startPassengerJob(JobKind kind)
+bool World::canTakePassengerJob(int actor) const
+{
+    const auto &p = people.at(actor);
+    return !paramedicCall(actor) && !p.dead && p.ownedScooter < 0 && !p.courier && !p.inCompany && p.riding < 0 &&
+           p.health > 0 && !p.body.roadLevel && p.burnUntil <= time && p.fear <= 0 &&
+           layout.urbanSite(p.body.p) && !levelAt(p.body.p, 2) && !insideBuilding(p.body.p, p.body.height, .5);
+}
+
+bool World::startPassengerJob(JobKind kind, int requestedActor)
 {
     int actor = -1;
     double best = std::numeric_limits<double>::max();
     for (size_t i = 0; i < people.size(); ++i)
     {
         const auto &p = people[i];
-        if (p.dead || p.riding >= 0 || p.health <= 0 || p.body.roadLevel || p.burnUntil > time ||
-            p.fear > 0 || !layout.urbanSite(p.body.p) || levelAt(p.body.p, 2) || insideBuilding(p.body.p,p.body.height,.5))
+        if ((requestedActor >= 0 && int(i) != requestedActor) || !canTakePassengerJob(int(i)))
             continue;
         double distance = (p.body.p - position()).length();
         // Prefer an existing casualty for a medical call, then a civilian who has fallen ill.

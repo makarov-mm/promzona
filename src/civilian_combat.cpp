@@ -17,7 +17,9 @@ void World::alarmWitnesses(Vec2 origin, double height, bool playerCaused)
         if (witness.dead || witness.riding >= 0 || (witness.body.p - origin).length2() > 24 * 24)
             continue;
         if (!blastVisible(origin, height, witness.body.p, witness.body.height)) continue;
-        witness.fear = std::max(witness.fear, 2.);
+        scarePerson(witness, origin, 2.);
+        witness.incident = origin;
+        witness.watchUntil = time + 10. + (witness.body.id % 19);
         if (playerCaused && witness.sidearm != WeaponId::none) witness.alertUntil = time + 8.;
     }
 }

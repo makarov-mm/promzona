@@ -175,8 +175,12 @@ void World::killPerson(Person &p, Vec2 velocity, bool playerCaused)
 {
     if (p.dead)
         return;
+    if (p.ownedScooter >= 0 && scooters[p.ownedScooter].rider >= 0)
+        releaseScooter(p.ownedScooter, velocity);
     p.riding = -1;
     p.dead = true;
+    addMark({p.body.p, p.body.p, time, 85., p.body.roadLevel, MarkKind::blood});
+    p.rescueAfter = time + 7.;
     p.health = 0;
     p.aimSeconds = p.alertUntil = 0;
     p.burstLeft = 0;
@@ -261,6 +265,7 @@ void World::explode(Vec2 p, double y, double strength, bool vehicleBlast, bool p
     {
         auto b = pending.front();
         pending.pop_front();
+        scareWildlife(b.p, b.y, 5. * b.strength);
         sounds.push_back({"explosion", b.p, .95});
         if (playerCaused) reportCrime(.45, 80, false);
         for (int i = 0; i < 95 && particles.size() < 5000; i++)
@@ -334,6 +339,7 @@ void World::shoot(double heading, double pitch)
     firing = true;
     auto start = position(), dir = forward(heading);
     double y = controlledCar >= 0 ? cars[controlledCar].body.height + (mounted?1.45:.3) : player.height + .47;
+    if (w) scareWildlife(start, y, 0);
     double slope = std::tan(clamp(pitch, -1.2, 1.2));
     reportCrime(w ? .055 : .015, w ? 60 : 5, false);
     if (w && w->id == WeaponId::flamethrower)

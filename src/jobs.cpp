@@ -146,6 +146,8 @@ bool World::buyFood()
 
 void World::clinicRespawn(Vec2 fallen)
 {
+    conversation = {};
+    releaseScooter(playerScooter, {});
     if (drone.active)
         stopDrone(L"Связь с дроном прервана", 20);
     int index = nearestSite(ServiceKind::clinic, fallen);

@@ -279,7 +279,7 @@ void World::exchangePassengers(Car &c, int stop)
     for (size_t i = 0; i < people.size(); ++i)
     {
         auto &p = people[i];
-        if (p.riding >= 0 || p.dead || p.fear > 0 || p.boardAfter > time || p.burnUntil > time ||
+        if (p.riding >= 0 || p.ownedScooter >= 0 || paramedicCall(int(i)) || p.courier || p.inCompany || p.dead || p.fear > 0 || p.boardAfter > time || p.burnUntil > time ||
             ((job.kind == JobKind::elimination || job.passenger()) && int(i) == job.actor) || (p.body.p - waiting).length2() > 25)
             continue;
         auto free = std::ranges::find(used, false);

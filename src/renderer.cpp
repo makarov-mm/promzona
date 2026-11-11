@@ -1,6 +1,10 @@
 #include "promzona/renderer.hpp"
 #include "promzona/fleet.hpp"
 #include "json.hpp"
+#include "effect_batch.hpp"
+#include "promzona/minimap.hpp"
+#include "promzona/control_hints.hpp"
+#include "promzona/hud_damage.hpp"
 #include "promzona/gl.hpp"
 #include "promzona/animation.hpp"
 #include "promzona/city_mesh.hpp"
@@ -187,12 +191,41 @@ void box(MeshData &m, Vec3 p, Vec3 half, float uv = 1)
     quad(m, {a.x, b.y, b.z}, {b.x, b.y, b.z}, {b.x, b.y, a.z}, {a.x, b.y, a.z}, uv, uv);
     quad(m, {a.x, a.y, a.z}, {b.x, a.y, a.z}, {b.x, a.y, b.z}, {a.x, a.y, b.z}, uv, uv);
 }
+void cylinder(MeshData &mesh, Vec3 a, Vec3 b, float radius, int sides)
+{
+    Vec3 axis = (b-a).unit();
+    Vec3 tangent = cross(axis, std::abs(axis.y) > .8f ? Vec3{1,0,0} : Vec3{0,1,0}).unit();
+    Vec3 bitangent = cross(axis, tangent);
+    auto rim = [&](int i) {
+        float angle = float(2*pi*i/sides);
+        return (tangent*std::cos(angle) + bitangent*std::sin(angle))*radius;
+    };
+    for (int i = 0; i < sides; ++i)
+    {
+        auto r = rim(i), s = rim(i+1);
+        quad(mesh, a+r, a+s, b+s, b+r);
+        quad(mesh, a+s, a+r, a, a);
+        quad(mesh, b+r, b+s, b, b);
+    }
+}
+GLuint bonePalette(const SkinData &s)
+{
+    GLuint t;
+    glGenTextures(1, &t);
+    glBindTexture(GL_TEXTURE_2D, t);
+    glTexImage2D(GL_TEXTURE_2D, 0, RGBA32F, s.joints * 4, s.poses, 0, GL_RGBA, GL_FLOAT, s.bones.data());
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    return t;
+}
 } // namespace
 struct Renderer::Impl
 {
     std::filesystem::path root;
     GLuint scene{}, ui{}, white{}, uiTexture{}, bones[2]{}, rug{}, shadowTexture{}, shadowFbo{};
     Mesh uiQuad, cube, marker, skin[2];
+    GLuint effectShader{};
+    EffectBatch effects;
     int poses[2]{};
     std::map<std::uint32_t, ActorMotion> actorMotion;
     std::map<std::filesystem::path, GLuint> textures;
@@ -241,7 +274,22 @@ struct Renderer::Impl
         treeCount{};
     std::array<Model, std::size(fleet)> cars;
     std::array<Model, 2> foodModels;
+    struct AnimalRig
+    {
+        Model model;
+        GLuint palette{};
+        std::array<double,4> cycle{};
+    };
+    std::array<AnimalRig,5> animalRigs;
+    Mesh scooterFrame, scooterRubber, scooterTrim;
+    std::array<std::array<Mesh, 2>, 3> fixtureModels;
+    std::array<std::vector<std::array<float, 8>>, 3> fixtureInstances;
+    GLuint dumpsterTexture{};
     GLuint peopleTexture[2]{};
+    Minimap minimap;
+    HudDamage hudDamage;
+    size_t hudPixelsUploaded{};
+    std::array<uint32_t, Minimap::size * Minimap::size> mapPixels{};
     int width{}, height{};
     HDC uiDC{};
     HBITMAP bitmap{}, oldBitmap{};
@@ -263,6 +311,8 @@ struct Renderer::Impl
         scene = program(readText(root / "Shaders/Native/scene.vert"),
                         readText(root / "Shaders/Native/scene.frag"));
         ui = program(readText(root / "Shaders/Native/ui.vert"), readText(root / "Shaders/Native/ui.frag"));
+        effectShader = program(readText(root / "Shaders/Native/effects.vert"), readText(root / "Shaders/Native/effects.frag"));
+        effects.initialize(effectShader);
         glGenTextures(1, &shadowTexture);
         glBindTexture(GL_TEXTURE_2D, shadowTexture);
         glTexImage2D(GL_TEXTURE_2D, 0, DEPTH_COMPONENT24, SunShadow::resolution, SunShadow::resolution, 0,
@@ -309,17 +359,36 @@ struct Renderer::Impl
             auto s = loadSkin(root / (std::string("Models/PeopleSkinned/") + name + ".cityskin"));
             skin[i].upload(s.mesh);
             poses[i] = s.poses;
-            glGenTextures(1, &bones[i]);
-            glBindTexture(GL_TEXTURE_2D, bones[i]);
-            glTexImage2D(GL_TEXTURE_2D, 0, RGBA32F, s.joints * 4, s.poses, 0, GL_RGBA, GL_FLOAT,
-                         s.bones.data());
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            bones[i] = bonePalette(s);
             peopleTexture[i] = texture(root / (std::string("Textures/People/") + name + "-palette.png"));
         }
+        const char *animalNames[] = {"cat-ginger","cat-calico","labrador","puppy","pigeon"};
+        for (size_t i=0; i<animalRigs.size(); ++i)
+            loadModel(animalRigs[i].model, root / "Models/AnimalsSkinned" / animalNames[i], &animalRigs[i]);
+        buildFixtureModels();
+        MeshData frame, rubber, trim;
+        box(frame, {0,.19f,-.06f},{.13f,.035f,.49f});
+        box(rubber,{0,.229f,-.08f},{.115f,.008f,.37f});
+        cylinder(frame,{0,.16f,.48f},{0,1.23f,.43f},.027f,8);
+        cylinder(frame,{-.25f,1.23f,.43f},{.25f,1.23f,.43f},.024f,8);
+        box(trim,{0,.72f,.46f},{.03f,.16f,.027f});
+        for (float sign : {-1.f,1.f})
+        {
+            cylinder(rubber,{-.036f,.13f,sign*.49f},{.036f,.13f,sign*.49f},.12f,16);
+            cylinder(frame,{-.042f,.13f,sign*.49f},{.042f,.13f,sign*.49f},.048f,12);
+            cylinder(rubber,{sign*.12f,1.23f,.43f},{sign*.255f,1.23f,.43f},.032f,8);
+        }
+        scooterFrame.upload(frame);
+        scooterRubber.upload(rubber);
+        scooterTrim.upload(trim);
         rug = texture(root / "Textures/Interiors/rug_red.png");
         for (size_t k = 0; k < cars.size(); k++)
         {
+            if (k == ambulanceModel)
+            {
+                loadAmbulance(cars[k], root / "Models/Articulated");
+                continue;
+            }
             auto path = root / "Models/Imported" / fleet[k].folder;
             if (!std::filesystem::exists(path / "manifest.json"))
             {
@@ -333,9 +402,52 @@ struct Renderer::Impl
         loadModel(foodModels[0], root / "Models/Imported/soviet_kiosk__3d_model");
         loadModel(foodModels[1], root / "Models/Imported/soviet_soda_machine");
     }
-    void loadModel(Model &model, const std::filesystem::path &path)
+    void loadAmbulance(Model &model, const std::filesystem::path &dir)
+    {
+        auto meta = nlohmann::json::parse(readText(dir / "manifest.json")).at("ambulance");
+        for (const auto &w : meta.at("wheels"))
+        {
+            auto p = w.at("pivot");
+            model.wheels.push_back({{p[0],p[1],p[2]}, w.at("radius"), w.at("front")});
+        }
+        auto &lod = model.lods.emplace_back();
+        for (const char *name : {"body","left","right"})
+        {
+            auto file = dir / (std::string("ambulance-") + name + ".glb");
+            auto mesh = loadGlb(file);
+            auto image = uploadTexture(file,decodeImage(mesh.embeddedColor));
+            // The articulated exporter stores wheel membership in the palette V coordinate.
+            std::vector<MeshData> groups(model.wheels.size()+1);
+            for (auto index : mesh.indices)
+            {
+                auto v = mesh.vertices[index];
+                int wheel = int(std::floor(v.uv[1])) - 2;
+                size_t group = wheel >= 0 && wheel < int(model.wheels.size()) ? size_t(wheel+1) : 0;
+                v.uv[1] = .5f;
+                auto &g = groups[group];
+                g.indices.push_back(std::uint32_t(g.vertices.size()));
+                g.vertices.push_back(v);
+            }
+            for (size_t i=0;i<groups.size();++i)
+            {
+                if (groups[i].indices.empty()) continue;
+                auto &b=lod.emplace_back();
+                b.part = i ? int(i+2) : 0;
+                b.color = image;
+                b.surface = 10; // Articulated vehicle palette; alpha holds the material ID.
+                b.mesh.upload(groups[i]);
+            }
+        }
+    }
+    void loadModel(Model &model, const std::filesystem::path &path, AnimalRig *rig = nullptr)
     {
         auto j = nlohmann::json::parse(readText(path / "manifest.json"));
+        if (rig)
+        {
+            auto &clips = j.at("clips");
+            rig->cycle = {clips.at("idle").at("seconds"), clips.at("walk").at("stride"),
+                          clips.at("run").at("stride"), clips.at("fly").at("seconds")};
+        }
         for (auto &wheel : j.value("wheels", nlohmann::json::array()))
         {
             auto p = wheel.at("pivot");
@@ -348,7 +460,15 @@ struct Renderer::Impl
             {
                 Batch b;
                 auto file = path / part.at("file").get<std::string>();
-                auto data = loadGlb(file);
+                MeshData data;
+                if (rig)
+                {
+                    auto skinData = loadSkin(file);
+                    if (skinData.poses < 256) throw std::runtime_error("Incomplete wildlife animation");
+                    if (!rig->palette) rig->palette = bonePalette(skinData);
+                    data = std::move(skinData.mesh);
+                }
+                else data = loadGlb(file);
                 b.mesh.upload(data);
                 b.part = part.value("part", 0);
                 int mat = part.at("material");
@@ -391,10 +511,13 @@ struct Renderer::Impl
         glDeleteTextures(1, &white);
         glDeleteTextures(1, &uiTexture);
         glDeleteTextures(2, bones);
+        for (auto &rig : animalRigs) glDeleteTextures(1,&rig.palette);
         if (scene)
             DeleteProgram(scene);
         if (ui)
             DeleteProgram(ui);
+        if (effectShader)
+            DeleteProgram(effectShader);
         if (bitmap)
         {
             SelectObject(uiDC, oldBitmap);
@@ -406,6 +529,37 @@ struct Renderer::Impl
             DeleteObject(font);
         if (large)
             DeleteObject(large);
+    }
+    void buildFixtureModels()
+    {
+        std::array<MeshData, 3> enamel, iron;
+        cylinder(enamel[0], {0,-.33f,0}, {0,.32f,0}, .255f, 12);
+        cylinder(enamel[0], {0,.30f,0}, {0,.36f,0}, .28f, 12);
+        cylinder(iron[0], {0,.36f,0}, {0,.363f,0}, .244f, 12);
+        for (float side : {-.28f,.28f})
+            box(iron[0], {side,-.10f,0}, {.021f,.325f,.035f});
+        cylinder(iron[1], {0,-.41f,0}, {0,-.34f,0}, .22f, 12);
+        cylinder(enamel[1], {0,-.35f,0}, {0,.24f,0}, .15f, 12);
+        cylinder(enamel[1], {0,.21f,0}, {0,.29f,0}, .18f, 12);
+        cylinder(enamel[1], {0,.27f,0}, {0,.36f,0}, .115f, 10);
+        cylinder(iron[1], {0,.36f,0}, {0,.41f,0}, .045f, 6);
+        cylinder(enamel[1], {-.23f,.025f,0}, {.23f,.025f,0}, .091f, 10);
+        for (float side : {-1.f,1.f})
+            cylinder(iron[1], {side*.21f,.025f,0}, {side*.25f,.025f,0}, .104f, 8);
+        box(enamel[2], {0,.02f,0}, {.72f,.47f,.53f});
+        for (float side : {-1.f,1.f})
+        {
+            box(iron[2], {side*.37f,.53f,0}, {.365f,.045f,.55f});
+            box(iron[2], {side*.73f,.28f,0}, {.02f,.033f,.25f});
+            for (float z : {-.38f,.38f})
+                cylinder(iron[2], {side*.58f,-.48f,z}, {side*.66f,-.48f,z}, .095f, 8);
+        }
+        for (size_t k=0; k<fixtureModels.size(); ++k)
+        {
+            fixtureModels[k][0].upload(enamel[k]);
+            fixtureModels[k][1].upload(iron[k]);
+        }
+        dumpsterTexture = texture(root / "Textures/Props/dumpster.png");
     }
     GLuint texture(const std::filesystem::path &file)
     {
@@ -633,10 +787,10 @@ struct Renderer::Impl
         Uniform1f(uniform("uRoughness"), .7f);
         Uniform1f(uniform("uMetallic"), 0);
     }
-    void draw(const Batch &b, const Mat4 &model)
+    void draw(const Batch &b, const Mat4 &model, bool beacon = false)
     {
         setModel(model);
-        material(b.color, b.normal, b.tint, b.emissive);
+        material(b.color, b.normal, b.tint, beacon ? 1.f : b.emissive);
         Uniform1i(uniform("uSurface"), b.surface);
         Uniform1f(uniform("uAlpha"), b.alpha);
         Uniform1f(uniform("uRoughness"), b.roughness);
@@ -656,6 +810,43 @@ struct Renderer::Impl
         setModel(Mat4::translate(centre) * Mat4::scale(size));
         material(white, 0, color, emissive);
         cube.draw();
+    }
+    int hintBar(const std::vector<ControlHint> &hints, int w, int h)
+    {
+        struct Item { int x, row, cap; };
+        std::vector<Item> items;
+        items.reserve(hints.size());
+        const int left = w >= 650 ? 235 : 8;
+        const int right = w - 14;
+        auto measure = [&](const std::wstring &s) {
+            SIZE size{};
+            GetTextExtentPoint32W(uiDC, s.c_str(), int(s.size()), &size);
+            return int(size.cx);
+        };
+        auto old = SelectObject(uiDC, font);
+        int row=0, cursor=left+9;
+        for(const auto &hint:hints)
+        {
+            int cap=std::max(26,measure(hint.key)+12);
+            int hintWidth=cap+6+measure(hint.action);
+            if(cursor>left+9 && cursor+hintWidth>right-8) { ++row; cursor=left+9; }
+            items.push_back({cursor,row,cap});
+            cursor+=hintWidth+17;
+        }
+        SelectObject(uiDC,old);
+        int top=h-18-(row+1)*33-4;
+        rect(left,top,right-left,(row+1)*33+4,RGB(14,23,21));
+        rect(left,top,right-left,2,RGB(83,124,94));
+        for(size_t i=0;i<hints.size();++i)
+        {
+            auto [x,line,cap]=items[i];
+            int y=top+5+line*33;
+            rect(x,y,cap,27,RGB(122,153,128));
+            rect(x+1,y+1,cap-2,25,RGB(35,49,42));
+            text(x+6,y+1,hints[i].key,RGB(226,238,217));
+            text(x+cap+6,y+1,hints[i].action,RGB(205,214,203));
+        }
+        return top;
     }
     void canvas(int w, int h)
     {
@@ -680,7 +871,9 @@ struct Renderer::Impl
         width = w;
         height = h;
         glBindTexture(GL_TEXTURE_2D, uiTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, 0x80e1, GL_UNSIGNED_BYTE, nullptr);
+        hudDamage.resize(w,h);
+        std::memset(pixels,0,size_t(w)*h*4);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, 0x80e1, GL_UNSIGNED_BYTE, pixels);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     }
@@ -689,15 +882,19 @@ struct Renderer::Impl
         auto old = SelectObject(uiDC, big ? large : font);
         SetBkMode(uiDC, TRANSPARENT);
         SetTextColor(uiDC, color);
+        SIZE extent{};
+        GetTextExtentPoint32W(uiDC,s.c_str(),int(s.size()),&extent);
+        // Include glyph overhang at either end of the run.
+        hudDamage.touch(x-3,y-1,extent.cx+6,extent.cy+2);
         TextOutW(uiDC, x, y, s.c_str(), int(s.size()));
         SelectObject(uiDC, old);
     }
     void rect(int x, int y, int w, int h, COLORREF color)
     {
         RECT r{x, y, x + w, y + h};
-        auto brush = CreateSolidBrush(color);
-        FillRect(uiDC, &r, brush);
-        DeleteObject(brush);
+        hudDamage.touch(x,y,w,h);
+        SetDCBrushColor(uiDC,color);
+        FillRect(uiDC,&r,static_cast<HBRUSH>(GetStockObject(DC_BRUSH)));
     }
 };
 Renderer::Renderer(const std::filesystem::path &content) : impl_(std::make_unique<Impl>(content)) {}
@@ -719,6 +916,9 @@ std::string Renderer::sceneryStats() const
            " base_MiB=" + std::to_string(r.sceneryBytes / (1024 * 1024)) +
            " detail_MiB=" + std::to_string(stream.gpuBytes / (1024 * 1024)) +
            " detail_cells=" + std::to_string(stream.residentCells) + "/" + std::to_string(stream.totalCells) +
+           " hud_upload_pixels=" + std::to_string(r.hudPixelsUploaded) + "/" + std::to_string(size_t(r.width)*r.height) +
+           " effect_quads=" + std::to_string(r.effects.size()) +
+           " effect_draws=" + std::to_string(r.effects.size() != 0) +
            " detail_uploads=" + std::to_string(stream.uploads) +
            " evictions=" + std::to_string(stream.evictions) +
            " peak_detail_MiB=" + std::to_string(stream.peakGpuBytes / (1024 * 1024)) +
@@ -743,6 +943,8 @@ StreamingStats Renderer::streamingStats() const
 void Renderer::prepare(const World &world)
 {
     auto &r = *impl_;
+    r.effects.clearWeatherCache();
+    r.minimap.rebuild(world);
     r.detailStream.reset(); // Join old immutable jobs before starting a new city.
     r.detailAnchor.reset();
     r.detailMeshes.clear();
@@ -907,6 +1109,39 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             for (const auto &[id, batches] : r.detailMeshes)
                 for (const auto &b : batches)
                     drawScenery(b);
+        for (auto &instances : r.fixtureInstances) instances.clear();
+        for (const auto &f : world.fixtures)
+        {
+            const auto &body = world.staticBodies[f.body];
+            Vec3 at{float(body.p.x),float(body.height),float(body.p.z)};
+            const auto delta = at - view.eye;
+            if (dot(delta,delta)>145*145 || !frustum.sphere(at,1.2f)) continue;
+            float yaw = -float(body.angle), roll = float(f.tilt);
+            r.fixtureInstances[size_t(f.kind)].push_back({at.x,at.y,at.z,1,
+                std::sin(yaw),std::cos(yaw),std::sin(roll),std::cos(roll)});
+        }
+        constexpr Vec3 enamel[] = {{.27f,.39f,.30f},{.84f,.17f,.085f},{.92f,.89f,.78f}};
+        for (size_t kind=0; kind<r.fixtureInstances.size(); ++kind)
+        {
+            const auto &instances = r.fixtureInstances[kind];
+            if (instances.empty()) continue;
+            for (int part=0; part<2; ++part)
+            {
+                auto &mesh = r.fixtureModels[kind][part];
+                r.setModel(Mat4::identity());
+                r.material(!part && kind==2 ? r.dumpsterTexture : r.white,0,
+                           part ? Vec3{.18f,.20f,.18f} : enamel[kind]);
+                Uniform1i(r.uniform("uInstanced"),2);
+                Uniform1f(r.uniform("uMetallic"),.36f);
+                mesh.drawInstances(instances);
+                if (depthPass) ++r.shadowBatches;
+                else
+                {
+                    ++r.submittedBatches;
+                    r.submittedTriangles += size_t(mesh.count)/3 * instances.size();
+                }
+            }
+        }
         for (auto &instances : r.treeInstances)
             instances.clear();
         for (const auto &t : world.trees)
@@ -971,6 +1206,8 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 continue;
             auto transform = vehicleTransform(c);
             auto &model = r.cars.at(c.model);
+            const auto *crew = c.model == ambulanceModel ? world.ambulanceCall(c.id) : nullptr;
+            const bool beacon = crew && crew->stage != World::RescueStage::standby && !c.destroyed;
             float distance = (p - view.eye).length();
             size_t lod = std::min(model.lods.size() - 1, size_t(distance > 150 ? 2 : distance > 65 ? 1 : 0));
             for (int translucent = 0; translucent < (depthPass ? 1 : 2); ++translucent)
@@ -1013,7 +1250,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                         auto spin=mainRotor?Mat4::yaw(float(c.wheelTravel)):Mat4::pitch(float(-c.wheelTravel*3));
                         partTransform=transform*Mat4::translate(pivot)*spin*Mat4::translate(pivot*-1.f);
                     }
-                    r.draw(b, partTransform);
+                    r.draw(b, partTransform, beacon);
                 }
                 if (translucent)
                 {
@@ -1022,7 +1259,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 }
             }
         }
-        auto person = [&](const Body &b, int style, double heading, double distance, bool dead, bool player, const Car *cabin=nullptr, WeaponId drawn=WeaponId::none)
+        auto person = [&](const Body &b, int style, double heading, double distance, bool dead, bool player, const Car *cabin=nullptr, WeaponId drawn=WeaponId::none, bool ridingScooter=false, bool courier=false, bool medic=false)
         {
             Vec3 p{float(b.p.x), float(b.height - .85), float(b.p.z)};
             if (!visible(p, 2, 130))
@@ -1036,6 +1273,8 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             state.distance = distance;
             state.dead = dead;
             state.player = player;
+            state.scooter = ridingScooter;
+            if (ridingScooter) p.y += .23f;
             state.aiming = player ? world.aiming : drawn != WeaponId::none;
             auto animation = motion.sample(state, world.time, r.poses[k]);
             if (cabin)
@@ -1061,6 +1300,34 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             ActiveTexture(TEXTURE0);
             r.skin[k].draw();
             Uniform1i(r.uniform("uSkin"), 0);
+            if (medic && !dead && !cabin)
+            {
+                auto kit = Mat4::translate(p) * Mat4::yaw(motion.heading);
+                auto casePart = [&](Vec3 at, Vec3 size, Vec3 tint) {
+                    r.setModel(kit * Mat4::translate(at) * Mat4::scale(size));
+                    r.material(r.white,0,tint);
+                    r.cube.draw();
+                };
+                casePart({.29f,.67f,-.03f},{.16f,.25f,.38f},{.80f,.80f,.74f});
+                casePart({.373f,.67f,-.03f},{.008f,.14f,.04f},{.58f,.10f,.08f});
+                casePart({.373f,.67f,-.03f},{.008f,.04f,.14f},{.58f,.10f,.08f});
+            }
+            if (courier && !cabin)
+            {
+                auto torso = Mat4::translate(p + Vec3{0, dead ? .23f : 0.f, 0}) *
+                             Mat4::yaw(motion.heading) * Mat4::pitch(dead ? float(pi*.5) : motion.lean);
+                auto part = [&](Vec3 at, Vec3 size, Vec3 tint) {
+                    r.setModel(torso * Mat4::translate(at) * Mat4::scale(size));
+                    r.material(r.white,0,tint);
+                    r.cube.draw();
+                };
+                Vec3 canvas = style%2 ? Vec3{.79f,.43f,.07f} : Vec3{.08f,.46f,.32f};
+                part({0,1.22f,-.28f},{.45f,.46f,.3f},canvas);
+                part({0,1.44f,-.28f},{.46f,.055f,.32f},{.14f,.16f,.15f});
+                part({0,1.19f,-.435f},{.38f,.032f,.012f},{.85f,.82f,.65f});
+                for (float x : {-.135f,.135f})
+                    part({x,1.39f,.115f},{.041f,.33f,.035f},{.13f,.14f,.13f});
+            }
             if (state.aiming && !dead && !cabin && (drawn == WeaponId::pistol || drawn == WeaponId::automatic))
             {
                 auto hands = Mat4::translate(p) * Mat4::yaw(motion.heading) *
@@ -1081,13 +1348,54 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             }
         };
         for (auto &p : world.people)
-            person(p.body, int(p.style), p.heading, p.distance, p.dead, false, p.riding >= 0 ? &world.cars[p.riding] : nullptr, p.aimSeconds > 0 ? p.sidearm : WeaponId::none);
+            person(p.body, int(p.style), p.heading, p.distance, p.dead, false, p.riding >= 0 ? &world.cars[p.riding] : nullptr, p.aimSeconds > 0 ? p.sidearm : WeaponId::none,
+                   p.ownedScooter >= 0 && world.scooters[p.ownedScooter].rider >= 0, p.courier, world.paramedicCall(int(&p-world.people.data())) != nullptr);
         if (world.controlledCar < 0)
         {
             auto gun = world.aiming ? world.inventory.active() : nullptr;
             person(world.player, 0, -world.player.angle, world.playerDistance, false, true,
-                   nullptr, gun ? gun->id : WeaponId::none);
+                   nullptr, gun ? gun->id : WeaponId::none, world.playerScooter >= 0);
         }
+        for (const auto &s : world.scooters)
+        {
+            bool fallen = s.rider == Scooter::free;
+            Vec3 at{float(s.body.p.x),float(s.body.height - .15 + (fallen ? .18 : .025)),float(s.body.p.z)};
+            if (!visible(at,1.5f,110)) continue;
+            r.setModel(Mat4::translate(at) * Mat4::yaw(float(-s.body.angle)) * Mat4::roll(fallen ? 1.35f : 0.f));
+            r.material(r.white,0,{.43f,.47f,.46f});
+            r.scooterFrame.draw();
+            r.material(r.white,0,{.065f,.071f,.066f});
+            r.scooterRubber.draw();
+            r.material(r.white,0,{.78f,.49f,.12f});
+            r.scooterTrim.draw();
+        }
+        for (size_t i=0; i<world.animals.size(); ++i)
+        {
+            const auto &a = world.animals[i];
+            bool dead = a.deadUntil > 0;
+            Vec2 pos = a.p + a.velocity * (world.animalClock - .1);
+            Vec3 at{float(pos.x),float(a.altitude+.065+(dead?.09:0.)),float(pos.z)};
+            if (!visible(at,1.25f,105)) continue;
+            const auto &rig = r.animalRigs[a.variant];
+            float distance = (at-view.eye).length();
+            size_t lod = std::min<size_t>(distance < 14 && !depthPass ? 0 : distance < 40 ? 1 : 2,
+                                         rig.model.lods.size()-1);
+            int clip = dead ? 0 : a.flock>=0 && world.flocks[a.flock].flying ? 3 :
+                       a.velocity.length2() > 4 ? 2 : a.velocity.length2() > .01 ? 1 : 0;
+            double phase = (clip==1 || clip==2 ? a.distance : world.time) / rig.cycle[clip] + i*.137;
+            float pose = dead ? 0.f : float(clip*64 + std::fmod(phase,1.)*64);
+            float scale = a.species==Species::bird ? .72f : float(.94 + (i%5)*.03);
+            Mat4 model = Mat4::translate(at) * Mat4::yaw(float(a.heading)) *
+                         Mat4::roll(dead ? 1.5f : 0.f) * Mat4::scale({scale,scale,scale});
+            Uniform1i(r.uniform("uSkin"),1);
+            Uniform1f(r.uniform("uPose"),pose);
+            Uniform1f(r.uniform("uPoseBlend"),1);
+            ActiveTexture(TEXTURE0+2);
+            glBindTexture(GL_TEXTURE_2D,rig.palette);
+            ActiveTexture(TEXTURE0);
+            for (const auto &b : rig.model.lods[lod]) r.draw(b,model);
+        }
+        Uniform1i(r.uniform("uSkin"),0);
     } // sun/camera geometry passes
     Frustum effectFrustum(vp);
     auto visible = [&](Vec3 p, float radius, float range)
@@ -1162,21 +1470,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         if (visible(p, 1, 250))
             r.solid(p, {.12f, .12f, .12f}, {1, .6f, .2f}, 2);
     }
-    for (auto &p : world.particles)
-        if (visible(p.p, 1, 150))
-            r.solid(p.p, {p.size, p.size, p.size}, p.color, 2);
-    if (rain > .05f)
-    {
-        Random rainRandom(4567);
-        auto pos = world.position();
-        for (int i = 0; i < int(400 * rain); i++)
-        {
-            float x = float(pos.x + (rainRandom.next() - .5) * 45),
-                  z = float(pos.z + (rainRandom.next() - .5) * 45);
-            float y = float(world.ground() + std::fmod(rainRandom.next() * 25 + 1000 - world.time * 14, 25));
-            r.solid({x, y, z}, {.016f, .65f, .016f}, {.55f, .66f, .72f}, .2f);
-        }
-    }
+    r.effects.draw(r.effectShader,world,view,vp);
     UseProgram(0);
 }
 void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, bool console,
@@ -1184,7 +1478,12 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
 {
     auto &r = *impl_;
     r.canvas(w, h);
-    std::memset(r.pixels, 0, size_t(w) * h * 4);
+    r.hudDamage.begin();
+    auto surface = static_cast<uint32_t *>(r.pixels);
+    r.hudDamage.regions(false,[&](int x,int y,int width,int height) {
+        for (int row=y;row<y+height;++row)
+            std::fill_n(surface+size_t(row)*w+x,width,uint32_t{});
+    });
     if (menu || progress >= 0)
     {
         r.rect(0, 0, w, h, RGB(9, 12, 13));
@@ -1200,7 +1499,8 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         {
             r.text(w / 2 - 150, h / 2, L"Enter — Новая игра");
             r.text(w / 2 - 150, h / 2 + 40, L"L — Загрузить сохранение");
-            r.text(w / 2 - 150, h / 2 + 80, L"Esc — Выход");
+            r.text(w / 2 - 150, h / 2 + 80, world ? L"Esc — Продолжить" : L"Esc — Выход");
+            if (world) r.text(w / 2 - 150, h / 2 + 120, L"Q — Выйти из игры");
         }
     }
     if (world && !menu && progress < 0)
@@ -1224,72 +1524,37 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             for (int i = 0; i < world->wantedLevel(); i++)
                 r.rect(w - 250 + i * 30, 90, 24, 10, RGB(228, 121, 44));
         }
-        int mx = 22, my = h - 245, ms = 190;
+        int mx = 22, my = h - 245;
+        constexpr int ms = Minimap::size;
         r.rect(mx - 5, my - 5, ms + 10, ms + 10, RGB(17, 28, 26));
         auto focus = world->drone.active ? world->drone.position : world->position();
-        double scale = ms / 260.;
+        r.minimap.copyView(focus, r.mapPixels);
+        BITMAPINFO mapInfo{};
+        mapInfo.bmiHeader = {sizeof(BITMAPINFOHEADER), ms, -ms, 1, 32, BI_RGB};
+        SetDIBitsToDevice(r.uiDC,mx,my,ms,ms,0,0,0,ms,r.mapPixels.data(),&mapInfo,DIB_RGB_COLORS);
         auto map = [&](Vec2 p)
         {
-            return POINT{LONG(mx + ms / 2 + (p.x - focus.x) * scale),
-                         LONG(my + ms / 2 + (p.z - focus.z) * scale)};
+            Vec2 offset = Minimap::offset(p-focus);
+            return POINT{mx + ms/2 + LONG(std::lround(offset.x)), my + ms/2 + LONG(std::lround(offset.z))};
         };
         int saved = SaveDC(r.uiDC);
         IntersectClipRect(r.uiDC, mx, my, mx + ms, my + ms);
-        auto mappedRect = [&](Vec2 lo, Vec2 hi, COLORREF color)
-        {
-            auto a = map(lo), b = map(hi);
-            r.rect(a.x, a.y, std::max(1L, b.x - a.x), std::max(1L, b.y - a.y), color);
-        };
-        const auto &layout = world->layout;
-        for (int c : {World::nodes / 3, 2 * World::nodes / 3})
-        {
-            double x = layout.coordinate(c) + 18;
-            mappedRect({x - layout.bankHalf(), focus.z - 130}, {x + layout.bankHalf(), focus.z + 130},
-                       RGB(43, 85, 101));
-        }
-        for (int j = 0; j < World::nodes; ++j)
-            for (int i = 0; i < World::nodes; ++i)
-            {
-                auto p = layout.point(i + j * World::nodes);
-                if ((p - focus).length2() > 210 * 210)
-                    continue;
-                double halfWidth = layout.roadHalf();
-                if (layout.road(i, j, 0))
-                    mappedRect(p - Vec2{halfWidth, halfWidth}, p + Vec2{halfWidth, 36 + halfWidth},
-                               RGB(92, 94, 88));
-                if (layout.road(i, j, 1))
-                    mappedRect(p - Vec2{halfWidth, halfWidth}, p + Vec2{36 + halfWidth, halfWidth},
-                               RGB(92, 94, 88));
-            }
-        for (auto &b : world->buildings)
-        {
-            auto p = map(b.p);
-            int sx = int(b.half.x * scale), sz = int(b.half.z * scale);
-            if (p.x - sx > mx && p.x + sx < mx + ms && p.y - sz > my && p.y + sz < my + ms)
-                r.rect(p.x - sx, p.y - sz, sx * 2, sz * 2, RGB(161, 160, 135));
-        }
-        for (const auto &level : world->roadLevels)
-            for (int k = 0; k < 288; ++k)
-            {
-                double x = level.x - RoadLevel::length + k;
-                auto p = map({x, level.centreZ(x)});
-                r.rect(p.x - 1, p.y - 3, 3, 6, level.tunnel ? RGB(119, 135, 146) : RGB(177, 168, 135));
-            }
         for (auto &c : world->cars)
         {
             auto p = map(c.body.p);
             if (p.x > mx && p.x < mx + ms && p.y > my && p.y < my + ms)
                 r.rect(p.x - 1, p.y - 1, 3, 3, RGB(104, 157, 176));
         }
-        for (const auto &s : world->sites)
+        for (const auto &pickup : world->pickups)
         {
-            auto p = map(s.entrance);
-            if (s.kind == ServiceKind::clinic)
-            {
-                r.rect(p.x-3,p.y-1,7,3,RGB(120,205,249));
-                r.rect(p.x-1,p.y-3,3,7,RGB(120,205,249));
+            if (pickup.wait > 0) continue;
+            auto p = map(pickup.p);
+            if (p.x <= mx || p.x >= mx + ms || p.y <= my || p.y >= my + ms) continue;
+            if (pickup.health) {
+                r.rect(p.x-2,p.y,5,1,RGB(125,236,172));
+                r.rect(p.x,p.y-2,1,5,RGB(125,236,172));
             }
-            else r.rect(p.x-1,p.y-1,4,4,s.food()?RGB(110,211,134):RGB(194,152,81));
+            else r.rect(p.x-1,p.y-1,3,3,pickup.energy ? RGB(184,225,75) : RGB(243,178,68));
         }
         if (world->job.kind != JobKind::none && !world->job.escaping())
         {
@@ -1307,28 +1572,17 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         }
         RestoreDC(r.uiDC, saved);
         r.rect(mx + ms / 2 - 3, my + ms / 2 - 3, 7, 7, RGB(255, 189, 76));
+        double heading = world->drone.active ? world->drone.heading :
+                         world->controlledCar >= 0 ? world->cars[world->controlledCar].heading() : -world->player.angle;
+        Vec2 nose = Minimap::offset(forward(heading) * 12.);
+        for (int k=3; k<=8; ++k)
+            r.rect(mx+ms/2+int(std::lround(nose.x*k/8))-1,my+ms/2+int(std::lround(nose.z*k/8))-1,
+                   3,3,RGB(255,200,90));
         r.text(mx, my - 30, L"N");
         int hour = int(world->clock.hour), minute = int((world->clock.hour - hour) * 60);
         wchar_t time[32];
         swprintf_s(time, L"%02d:%02d", hour, minute);
         r.text(mx, my + ms + 6, time);
-        std::wstring hint = world->controlledCar >= 0
-            ? L"[W/S] Газ / тормоз   [Space] Ручник   [F] Выйти"
-            : L"[WASD] Идти   [Shift] Бежать   [ЛКМ] Огонь   [F] Сесть";
-        if(world->controlledCar>=0 && world->cars[world->controlledCar].kind==12)
-            hint=L"[W/S] Вперёд / назад   [A/D] Разворот   [Space] Набор высоты   [Ctrl] Снижение   [F] Выйти";
-        if (world->controlledCar>=0 && world->cars[world->controlledCar].kind==9)
-            hint=L"[W/S] Вперёд / назад по рельсам   [Space] Тормоз   [F] Выйти";
-        if (world->controlledCar>=0 && world->cars[world->controlledCar].mountedGun())
-            hint=L"[WASD] Управление   [Мышь] Башня   [ЛКМ] Огонь   [F] Выйти";
-        int site = world->counterInReach(true);
-        if (site >= 0)
-        {
-            hint = world->controlledCar < 0 ? L"[F] Перекус  $" + std::to_wstring(world->sites[site].price()) + L"     " : L"";
-            if (world->job.kind == JobKind::none) hint += L"[E] Взять посылку";
-            else if (world->job.kind == JobKind::courier && world->job.destination == site) hint += L"[E] Передать посылку";
-            else if (world->controlledCar >= 0) hint = L"[F] Выйти";
-        }
         if (world->drone.active)
         {
             const auto &d=world->drone;
@@ -1342,20 +1596,8 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             r.rect(left+12,92,int(286*clamp(d.scanTime/2.,0.,1.)),4,mint);
             r.rect(w/2-7,h/2,15,1,mint);
             r.rect(w/2,h/2-7,1,15,mint);
-            hint=L"[WASD] Полёт   [Space/Ctrl] Высота   [ЛКМ] Сканировать крышу   [K] Вернуться";
         }
-        else if (world->job.passenger() && !world->job.acquired && world->controlledCar >= 0 &&
-                 (focus - world->jobTarget()).length() <= 10)
-            hint = world->job.ride.car < 0 ? L"[E] Посадить пассажира" : L"Пассажир подходит к двери";
-        else if (world->job.peace() && !world->job.escaping()) {
-            if(world->job.kind==JobKind::broadcast && world->controlledCar==world->job.actor)
-                hint=world->job.route.enabled?L"[E] Выключить громкоговоритель":L"[E] Включить громкоговоритель";
-            if(world->job.kind==JobKind::leaflets && world->controlledCar<0 && (focus-world->jobTarget()).length()<2.2)
-                hint=L"[E] Раздать листовки · стойте на месте";
-        }
-        else if (world->controlledCar<0) hint+=L"   [K] Дрон";
-        r.rect(235, h - 57, w - 255, 39, RGB(12, 18, 17));
-        r.text(245, h - 50, hint + (world->drone.active ? L"" : L"     [J] Заказы"));
+        int hintTop=r.hintBar(controlHints(*world),w,h);
         if (world->energySeconds > 0)
             r.text(35,123,L"Энергия  " + std::to_wstring(int(std::ceil(world->energySeconds))) + L" с",RGB(93,218,226));
         if (world->job.kind != JobKind::none)
@@ -1372,11 +1614,11 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
                     std::to_wstring(int(j.stopped))+(j.kind==JobKind::leaflets ? L"/3 с" : L"/30 с");
             if (j.escaping()) status=L"Скройтесь от преследования";
             else status+=L"   "+std::to_wstring(int((world->jobTarget()-focus).length()))+L" м";
-            r.rect(235,h-102,430,36,RGB(17,26,24));
-            r.text(247,h-98,status, RGB(242,194,98));
+            r.rect(235,hintTop-42,430,36,RGB(17,26,24));
+            r.text(247,hintTop-38,status, RGB(242,194,98));
         }
         if (world->time < world->noticeUntil)
-            r.text(235, h-142, world->notice, RGB(252,206,124));
+            r.text(235, hintTop-(world->job.kind!=JobKind::none?77:35), world->notice, RGB(252,206,124));
         if (jobsOpen)
         {
             int left = std::max(12,w/2-215), top = std::max(15,h/2-175);
@@ -1402,20 +1644,20 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
     }
     else if (!message.empty())
         r.text(25, 140, message, RGB(224, 172, 91));
-    auto pixels = static_cast<unsigned char *>(r.pixels);
-    for (size_t i = 0; i < size_t(w) * h; i++)
-    {
-        auto p = pixels + i * 4;
-        auto brightness = std::max({p[0], p[1], p[2]});
-        p[3] = brightness ? 255 : 0;
-    }
+    GdiFlush(); // Finish drawing into the DIB before OpenGL reads its memory.
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     UseProgram(r.ui);
     ActiveTexture(TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, r.uiTexture);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, 0x80e1, GL_UNSIGNED_BYTE, r.pixels);
+    r.hudPixelsUploaded = 0;
+    glPixelStorei(GL_UNPACK_ROW_LENGTH,w);
+    r.hudDamage.regions(true,[&](int x,int y,int width,int height) {
+        glTexSubImage2D(GL_TEXTURE_2D,0,x,y,width,height,0x80e1,GL_UNSIGNED_BYTE,surface+size_t(y)*w+x);
+        r.hudPixelsUploaded += size_t(width)*height;
+    });
+    glPixelStorei(GL_UNPACK_ROW_LENGTH,0);
     Uniform1i(GetUniformLocation(r.ui, "uColor"), 0);
     r.uiQuad.draw();
     UseProgram(0);

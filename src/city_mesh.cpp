@@ -386,22 +386,13 @@ CityChunk cityChunk(const World &w, double x0, double z0, double size)
             box(data[Lamps],sign+Vec3{0,0,.08f},{.17f,.60f,.04f});
         }
     }
-    for (auto &b : l.furniture)
+    for (const auto &b : l.furniture)
     {
-        if (!owns(b.p))
-            continue;
+        if (b.height <= 3 || !owns(b.p)) continue;
         auto p = ground(b.p.x, b.p.z);
-        if (b.height > 3)
-        {
-            box(data[Metal], p + Vec3{0, float(b.height * .5), 0}, {.07f, float(b.height * .5), .07f});
-            box(data[Metal], p + Vec3{.3f, float(b.height), 0}, {.36f, .05f, .08f});
-            box(data[Lamps], p + Vec3{.5f, float(b.height - .06), 0}, {.19f, .03f, .13f});
-        }
-        else
-        {
-            box(data[Metal], p + Vec3{0, .45f, 0}, {.25f, .45f, .25f});
-            box(data[Pavement], p + Vec3{0, .92f, 0}, {.28f, .035f, .28f});
-        }
+        box(data[Metal], p + Vec3{0, float(b.height * .5), 0}, {.07f, float(b.height * .5), .07f});
+        box(data[Metal], p + Vec3{.3f, float(b.height), 0}, {.36f, .05f, .08f});
+        box(data[Lamps], p + Vec3{.5f, float(b.height - .06), 0}, {.19f, .03f, .13f});
     }
     return data;
 }

@@ -66,11 +66,16 @@ double World::flightFloor(Vec2 pos) const
     double floor = terrain.height(pos);
     if (auto level = levelAt(pos); level && !level->tunnel)
         floor = std::max(floor, level->floor(terrain, pos));
+    return highestRoof(pos, floor, 1.4);
+}
+
+double World::highestRoof(Vec2 pos, double floor, double margin) const
+{
     if (!roofCells.empty())
         for (auto i : roofCells[nearestNode(pos)])
         {
             const auto &b = buildings[i];
-            if (std::abs(pos.x - b.p.x) < b.half.x + 1.4 && std::abs(pos.z - b.p.z) < b.half.z + 1.4)
+            if (std::abs(pos.x - b.p.x) < b.half.x + margin && std::abs(pos.z - b.p.z) < b.half.z + margin)
                 floor = std::max(floor, terrain.height(b.p) + b.height);
         }
     return floor;
