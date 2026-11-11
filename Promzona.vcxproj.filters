@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Исходники" />
+    <Filter Include="Заголовки" />
+    <Filter Include="Шейдеры" />
+    <Filter Include="Ресурсы" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Content/Shaders/Native\effects.frag"><Filter>Шейдеры</Filter></None>
+    <None Include="Content/Shaders/Native\effects.vert"><Filter>Шейдеры</Filter></None>
+    <None Include="Content/Shaders/Native\scene.frag"><Filter>Шейдеры</Filter></None>
+    <None Include="Content/Shaders/Native\fullscreen.vert"><Filter>Шейдеры</Filter></None>
+    <None Include="Content/Shaders/Native\glow.frag"><Filter>Шейдеры</Filter></None>
+    <None Include="Content/Shaders/Native\resolve.frag"><Filter>Шейдеры</Filter></None>
+    <None Include="Content/Shaders/Native\scene.vert"><Filter>Шейдеры</Filter></None>
+    <None Include="Content/Shaders/Native\ui.frag"><Filter>Шейдеры</Filter></None>
+    <None Include="Content/Shaders/Native\ui.vert"><Filter>Шейдеры</Filter></None>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include/promzona\animation.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\architecture.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\assets.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\audio.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\city_mesh.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\combat.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\control_hints.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\core.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\detail_stream.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\fleet.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\gl.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\hud_damage.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\jobs.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\layout.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\math.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\minimap.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\physics.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\renderer.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\road_levels.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\sun_shadow.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\surface_effects.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\transit.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\vegetation.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\visibility.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\world.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="src\effect_batch.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="src\post_processing.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="third_party\json.hpp"><Filter>Заголовки</Filter></ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\animation.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\architecture.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\assets.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\audio.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\audio_device.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\city_mesh.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\civilian_combat.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\civilian_cover.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\combat.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\control_hints.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\core.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\detail_stream.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\drone.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\effect_batch.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\post_processing.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\emergency.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\jobs.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\layout.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\main.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\minimap.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\passenger_jobs.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\peace_jobs.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\physics.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\pursuit.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\renderer.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\road_levels.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\save.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\social.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\street_fixtures.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\street_life.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\surface_effects.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\surfaces.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\transit.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\vegetation.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\wildlife.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\world.cpp"><Filter>Исходники</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Manifest Include="src\app.manifest"><Filter>Ресурсы</Filter></Manifest>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="src\promzona.rc"><Filter>Ресурсы</Filter></ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="Content\Promzona.ico"><Filter>Ресурсы</Filter></Image>
+  </ItemGroup>
+</Project>

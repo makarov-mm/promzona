@@ -121,7 +121,7 @@ struct Context
     HWND window{};
     HDC dc{};
     HGLRC gl{};
-    explicit Context(HWND w) : window(w), dc(GetDC(w))
+    explicit Context(HWND w, bool vsync) : window(w), dc(GetDC(w))
     {
         PIXELFORMATDESCRIPTOR p{};
         p.nSize = sizeof p;
@@ -150,7 +150,7 @@ struct Context
             throw std::runtime_error("OpenGL 3.3 is required");
         using Swap = BOOL(WINAPI *)(int);
         if (auto swap = reinterpret_cast<Swap>(wglGetProcAddress("wglSwapIntervalEXT")))
-            swap(1);
+            swap(vsync ? 1 : 0);
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT);
         SwapBuffers(dc);
@@ -229,7 +229,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     Application app;
     int code = 0;
     bool smoke = false;
-    int smokeFrames = 180;
+    int smokeFrames = 180, captureWidth=0, captureHeight=0;
+    std::optional<SceneMode> modeOverride;
+    bool profile=false, invalidDisplay=false;
     std::wstring scenario = L"day";
     std::optional<View> reviewView;
     int reviewRider = -1;
@@ -247,6 +249,18 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         std::wstring arg = argv[i];
         if (arg == L"--smoke")
             smoke = windowed = true;
+        else if (arg == L"--gpu-profile") profile=true;
+        else if (arg == L"--scene-mode" && i+1 < argc) {
+            std::wstring mode=argv[++i];
+            if (mode==L"native") modeOverride=SceneMode::original;
+            else if (mode==L"quality") modeOverride=SceneMode::enhanced;
+            else if (mode==L"balanced") modeOverride=SceneMode::scaled;
+            else invalidDisplay=true;
+        }
+        else if (arg == L"--smoke-size" && i+2 < argc) {
+            captureWidth=_wtoi(argv[++i]); captureHeight=_wtoi(argv[++i]);
+            if (captureWidth<320 || captureHeight<200 || captureWidth>8192 || captureHeight>8192) invalidDisplay=true;
+        }
         else if (arg == L"--windowed")
             windowed = true;
         else if (arg == L"--frames" && i + 1 < argc)
@@ -293,6 +307,22 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         log.open(logPath);
         if (!log)
             throw std::runtime_error("Cannot open runtime log");
+        if (invalidDisplay || (captureWidth && !smoke) || (profile && !smoke))
+            throw std::runtime_error("Invalid mode, benchmark dimensions, or --smoke missing");
+        SceneMode displayMode=SceneMode::enhanced;
+        const auto displayFile=app.saveFile.parent_path() / "display-mode.txt";
+        if (!smoke) {
+            std::ifstream prefs(displayFile);
+            std::string saved;
+            if (prefs>>saved) {
+                if (saved=="native") displayMode=SceneMode::original;
+                if (saved=="balanced") displayMode=SceneMode::scaled;
+            }
+        }
+        if (modeOverride) displayMode=*modeOverride;
+        auto modeName=[&]() {
+            return displayMode==SceneMode::original ? "native" : displayMode==SceneMode::scaled ? "balanced" : "quality";
+        };
         WNDCLASSW wc{};
         wc.style = CS_OWNDC;
         wc.lpfnWndProc = windowProc;
@@ -306,6 +336,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         int width = windowed ? 1280 : GetSystemMetrics(SM_CXSCREEN),
             height = windowed ? 720 : GetSystemMetrics(SM_CYSCREEN);
         DWORD style = windowed ? WS_OVERLAPPEDWINDOW : WS_POPUP;
+        if (captureWidth) { width=captureWidth; height=captureHeight; style=WS_POPUP; }
         app.window = CreateWindowExW(0, wc.lpszClassName, L"PROMZONA — C++23 migration", style, 0, 0, width,
                                      height, nullptr, nullptr, instance, &app);
         if (!app.window)
@@ -313,8 +344,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         ShowWindow(app.window, smoke ? SW_SHOWNOACTIVATE : SW_SHOW);
         UpdateWindow(app.window);
         {
-            Context context(app.window);
+            Context context(app.window, !profile);
             Renderer renderer(content);
+            renderer.sceneMode(displayMode);
+            if (profile) renderer.profileGpu();
             AudioMixer audio(content / "Audio");
             AudioDevice audioOutput(audio);
             if (!audioOutput.error().empty())
@@ -351,6 +384,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             auto last = Timer::now(), start = last;
             double accumulator = 0, fps = 60, frameAverage = 1. / 60;
             int frames = 0;
+            std::vector<double> frameTimes;
             Vec2 smokeStart;
             while (app.running)
             {
@@ -367,6 +401,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                 auto now = Timer::now();
                 double elapsed = std::chrono::duration<double>(now - last).count();
                 last = now;
+                if (profile && frames>=60) frameTimes.push_back(elapsed*1000.);
                 frameAverage += (elapsed - frameAverage) * .05;
                 fps = 1 / std::max(.0001, frameAverage);
                 double dt = smoke ? 1. / 60 : std::min(.1, elapsed);
@@ -396,6 +431,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                 }
                 if (!app.loading && app.menu)
                 {
+                    if (app.pressed[VK_F2]) {
+                        displayMode = displayMode==SceneMode::enhanced ? SceneMode::scaled :
+                                      displayMode==SceneMode::scaled ? SceneMode::original : SceneMode::enhanced;
+                        renderer.sceneMode(displayMode);
+                        if (!smoke) {
+                            std::ofstream prefs(displayFile);
+                            if (!(prefs << modeName())) app.message=L"Не удалось сохранить настройки графики.";
+                        }
+                    }
                     if (app.pressed[VK_RETURN])
                         begin(false);
                     else if (app.pressed['L'])
@@ -1018,6 +1062,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     if (!screenshot.empty())
                         renderer.screenshot(screenshot, app.width, app.height);
                     log << renderer.sceneryStats() << std::endl;
+                    if (profile && !frameTimes.empty()) {
+                        std::sort(frameTimes.begin(),frameTimes.end());
+                        auto at=[&](double p) { return frameTimes[size_t(std::ceil(p*frameTimes.size()))-1]; };
+                        log << "frame: samples=" << frameTimes.size() << " median_ms=" << at(.5)
+                            << " p95_ms=" << at(.95) << " vsync_requested=0" << std::endl;
+                    }
+                    if (profile)
+                        log << renderer.gpuReport() << " output=" << app.width << "x" << app.height
+                            << " mode=" << modeName() << std::endl;
                     log << "SMOKE PASS frames=" << frames << " cars=" << world->cars.size()
                         << " people=" << world->people.size() << " moved=" << distance
                         << " simulation=" << world->time << " scenario=" << utf8(scenario)

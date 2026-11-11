@@ -44,6 +44,12 @@ namespace pz::gl
     X(FramebufferTexture2D, void, GLenum, GLenum, GLenum, GLuint, GLint) \
     X(CheckFramebufferStatus, GLenum, GLenum) \
     X(DeleteFramebuffers, void, GLsizei, const GLuint *) \
+    X(GenQueries, void, GLsizei, GLuint *) \
+    X(DeleteQueries, void, GLsizei, const GLuint *) \
+    X(BeginQuery, void, GLenum, GLuint) \
+    X(EndQuery, void, GLenum) \
+    X(GetQueryObjectiv, void, GLuint, GLenum, GLint *) \
+    X(GetQueryObjectui64v, void, GLuint, GLenum, std::uint64_t *) \
     X(GenerateMipmap, void, GLenum)
 #define PZ_GL_DECLARE(name, ret, ...) inline ret(APIENTRY *name)(__VA_ARGS__) = nullptr;
 PZ_GL_FUNCTIONS(PZ_GL_DECLARE)
@@ -62,5 +68,6 @@ constexpr GLenum ARRAY_BUFFER = 0x8892, ELEMENT_ARRAY_BUFFER = 0x8893, STATIC_DR
                  DYNAMIC_DRAW = 0x88e8, VERTEX_SHADER = 0x8b31, FRAGMENT_SHADER = 0x8b30,
                  COMPILE_STATUS = 0x8b81, LINK_STATUS = 0x8b82, TEXTURE0 = 0x84c0, RGBA32F = 0x8814,
                  CLAMP_TO_EDGE = 0x812f, FRAMEBUFFER = 0x8d40, DEPTH_ATTACHMENT = 0x8d00,
-                 FRAMEBUFFER_COMPLETE = 0x8cd5, DEPTH_COMPONENT24 = 0x81a6;
+                 FRAMEBUFFER_COMPLETE = 0x8cd5, DEPTH_COMPONENT24 = 0x81a6, COLOR_ATTACHMENT0 = 0x8ce0,
+                 TIME_ELAPSED = 0x88bf, QUERY_RESULT = 0x8866, QUERY_RESULT_AVAILABLE = 0x8867;
 } // namespace pz::gl

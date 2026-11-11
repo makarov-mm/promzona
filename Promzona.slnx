@@ -1,0 +1,8 @@
+<Solution>
+  <Configurations>
+    <BuildType Name="Debug" />
+    <BuildType Name="Release" />
+    <Platform Name="x64" />
+  </Configurations>
+  <Project Path="Promzona.vcxproj" Id="c5541d41-de1b-4d55-baf2-cac625ccf3c1" />
+</Solution>

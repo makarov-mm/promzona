@@ -2,6 +2,7 @@
 #include "promzona/fleet.hpp"
 #include "json.hpp"
 #include "effect_batch.hpp"
+#include "post_processing.hpp"
 #include "promzona/minimap.hpp"
 #include "promzona/control_hints.hpp"
 #include "promzona/hud_damage.hpp"
@@ -226,6 +227,9 @@ struct Renderer::Impl
     Mesh uiQuad, cube, marker, skin[2];
     GLuint effectShader{};
     EffectBatch effects;
+    SceneMode mode{SceneMode::enhanced};
+    PostProcessing post;
+    SceneTimer timer;
     int poses[2]{};
     std::map<std::uint32_t, ActorMotion> actorMotion;
     std::map<std::filesystem::path, GLuint> textures;
@@ -313,6 +317,9 @@ struct Renderer::Impl
         ui = program(readText(root / "Shaders/Native/ui.vert"), readText(root / "Shaders/Native/ui.frag"));
         effectShader = program(readText(root / "Shaders/Native/effects.vert"), readText(root / "Shaders/Native/effects.frag"));
         effects.initialize(effectShader);
+        const auto fullscreen = readText(root / "Shaders/Native/fullscreen.vert");
+        post.initialize(program(fullscreen,readText(root / "Shaders/Native/glow.frag")),
+                        program(fullscreen,readText(root / "Shaders/Native/resolve.frag")));
         glGenTextures(1, &shadowTexture);
         glBindTexture(GL_TEXTURE_2D, shadowTexture);
         glTexImage2D(GL_TEXTURE_2D, 0, DEPTH_COMPONENT24, SunShadow::resolution, SunShadow::resolution, 0,
@@ -899,6 +906,14 @@ struct Renderer::Impl
 };
 Renderer::Renderer(const std::filesystem::path &content) : impl_(std::make_unique<Impl>(content)) {}
 Renderer::~Renderer() = default;
+void Renderer::sceneMode(SceneMode mode)
+{
+    if (mode == SceneMode::original)
+        impl_->post.releaseTargets();
+    impl_->mode = mode;
+}
+void Renderer::profileGpu() { impl_->timer.enable(); }
+std::string Renderer::gpuReport() const { return impl_->timer.report(); }
 std::string Renderer::graphicsInfo() const
 {
     return std::string(reinterpret_cast<const char *>(glGetString(GL_RENDERER))) + " / " +
@@ -1013,7 +1028,12 @@ void Renderer::prepare(const World &world)
 void Renderer::render(const World &world, const View &view, int w, int h)
 {
     auto &r = *impl_;
+    const bool post = r.mode != SceneMode::original;
+    const int sceneWidth = r.mode == SceneMode::scaled ? std::max(1,(w*3+2)/4) : w;
+    const int sceneHeight = r.mode == SceneMode::scaled ? std::max(1,(h*3+2)/4) : h;
+    if (post) r.post.resize(sceneWidth,sceneHeight);
     r.updateDetails(view.eye);
+    r.timer.begin();
     float day = float(world.clock.daylight()), rain = float(world.rain);
     Vec3 fog = {.48f * day + .055f, .62f * day + .055f, .73f * day + .07f};
     fog = fog * (1 - rain * .35f);
@@ -1042,8 +1062,9 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         // Never sample a depth texture while rendering into it.
         glBindTexture(GL_TEXTURE_2D, depthPass ? 0 : r.shadowTexture);
         ActiveTexture(TEXTURE0);
-        BindFramebuffer(FRAMEBUFFER, depthPass ? r.shadowFbo : 0);
-        glViewport(0, 0, depthPass ? SunShadow::resolution : w, depthPass ? SunShadow::resolution : h);
+        BindFramebuffer(FRAMEBUFFER, depthPass ? r.shadowFbo : (post ? r.post.sceneTarget() : 0));
+        glViewport(0, 0, depthPass ? SunShadow::resolution : sceneWidth,
+                   depthPass ? SunShadow::resolution : sceneHeight);
         glColorMask(!depthPass, !depthPass, !depthPass, !depthPass);
         if (depthPass)
         {
@@ -1471,12 +1492,15 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             r.solid(p, {.12f, .12f, .12f}, {1, .6f, .2f}, 2);
     }
     r.effects.draw(r.effectShader,world,view,vp);
+    if (post) r.post.present(w,h,day,rain,float(world.clock.sunHeight()));
+    r.timer.end();
     UseProgram(0);
 }
 void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, bool console,
                        const std::wstring &command, const std::wstring &message, float progress, bool jobsOpen)
 {
     auto &r = *impl_;
+    glViewport(0,0,w,h);
     r.canvas(w, h);
     r.hudDamage.begin();
     auto surface = static_cast<uint32_t *>(r.pixels);
@@ -1500,7 +1524,10 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             r.text(w / 2 - 150, h / 2, L"Enter — Новая игра");
             r.text(w / 2 - 150, h / 2 + 40, L"L — Загрузить сохранение");
             r.text(w / 2 - 150, h / 2 + 80, world ? L"Esc — Продолжить" : L"Esc — Выход");
-            if (world) r.text(w / 2 - 150, h / 2 + 120, L"Q — Выйти из игры");
+            const wchar_t *label = r.mode==SceneMode::original ? L"Без обработки · 100%" :
+                                   r.mode==SceneMode::enhanced ? L"Сглаживание · 100%" : L"Сглаживание · 75%";
+            r.text(w / 2 - 150, h / 2 + 120, std::wstring(L"F2 — Графика: ") + label);
+            if (world) r.text(w / 2 - 150, h / 2 + 160, L"Q — Выйти из игры");
         }
     }
     if (world && !menu && progress < 0)

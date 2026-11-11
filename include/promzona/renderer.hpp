@@ -4,6 +4,7 @@
 #include <memory>
 namespace pz
 {
+enum class SceneMode { original, enhanced, scaled };
 struct View
 {
     Vec3 eye{0, 12, -20}, target{};
@@ -25,6 +26,9 @@ class Renderer
   public:
     explicit Renderer(const std::filesystem::path &content);
     ~Renderer();
+    void sceneMode(SceneMode mode);
+    void profileGpu();
+    std::string gpuReport() const;
     void prepare(const World &world);
     void render(const World &world, const View &view, int width, int height);
     void overlay(const World *world, int width, int height, double fps, bool menu, bool console,
