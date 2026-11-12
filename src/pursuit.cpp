@@ -33,7 +33,6 @@ int World::nearestNode(Vec2 pos)
     return gridIndex(pos.x) + gridIndex(pos.z) * World::nodes;
 }
 
-
 void World::indexRoofs()
 {
     roofCells.clear();
@@ -151,8 +150,8 @@ bool World::deployResponder(int kind)
     for (size_t i = trafficPopulation; i < cars.size(); ++i)
     {
         auto &unit = cars[i];
-        if (!unit.driverless && !unit.summoned && !unit.responding && int(i) != controlledCar && unit.kind == kind &&
-            !unit.destroyed && !unit.falling && unit.fireTime == 0 &&
+        if (!unit.driverless && !unit.summoned && !unit.responding && int(i) != controlledCar &&
+            unit.kind == kind && !unit.destroyed && !unit.falling && unit.fireTime == 0 &&
             (unit.body.p - focus).length2() < 340 * 340)
         {
             unit.responding = true;
@@ -163,7 +162,8 @@ bool World::deployResponder(int kind)
     // Stable slots are also used in saves and ray-hit results.
     size_t slot = trafficPopulation;
     for (; slot < cars.size(); ++slot)
-        if (int(slot) != patrol.car && !cars[slot].summoned && !cars[slot].personal && int(slot) != controlledCar && !cars[slot].responding &&
+        if (int(slot) != patrol.car && !cars[slot].summoned && !cars[slot].personal &&
+            int(slot) != controlledCar && !cars[slot].responding &&
             (cars[slot].body.p - focus).length2() > 340 * 340)
             break;
     if (slot == cars.size() && cars.size() - std::ranges::count(cars, true, &Car::summoned) >=
@@ -318,7 +318,7 @@ void World::responseFire(Car &c)
     c.nextShot = time + (c.kind == 12 ? 2.3 : c.kind == 14 ? .65 : .9);
     sounds.push_back({c.kind == 12 ? "shot" : "automatic", c.body.p, .75});
     if (hit.kind == HitKind::player)
-        health = std::max(0., health - .055);
+        hurtPlayer(.055);
     else
         damageCar(cars[hit.index], .095);
     for (double t = 2; t < hit.distance && particles.size() < 5000; t += 2.3)
@@ -338,9 +338,16 @@ void World::flyPatrol(Car &c, const PlayerInput &input, double dt)
     Vec2 desired{};
     if (piloted)
     {
-        b.angle = wrap(b.angle - input.car.steering * dt * 1.25);
-        desired = forward(c.heading()) * (input.car.throttle * 23);
-        vertical = clamp(input.collective, -1., 1.) * 7;
+        if (helicopterLanding && (input.collective > .1 || c.lift < .05))
+            helicopterLanding = false;
+        if (helicopterLanding)
+            vertical = -2.2; // Assisted descent of the managed game; horizontal motion is braked.
+        else
+        {
+            b.angle = wrap(b.angle - input.car.steering * dt * 1.25);
+            desired = forward(c.heading()) * (input.car.throttle * 23);
+            vertical = clamp(input.collective, -1., 1.) * 7;
+        }
     }
     else if (c.responding)
     {
@@ -375,5 +382,13 @@ void World::flyPatrol(Car &c, const PlayerInput &input, double dt)
         c.verticalVelocity = 0;
     c.lift = std::max(0., b.height - terrain.height(b.p) - .8);
     c.terrainPitch = c.terrainRoll = 0;
+}
+void World::toggleHelicopterLanding()
+{
+    if (controlledCar < 0 || transitPassenger())
+        return;
+    const auto &c = cars[controlledCar];
+    if (c.kind == 12 && !c.destroyed && !c.recovering && c.lift >= .05)
+        helicopterLanding = !helicopterLanding;
 }
 } // namespace pz

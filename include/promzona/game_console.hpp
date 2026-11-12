@@ -13,7 +13,8 @@ class GameConsole
     std::vector<std::wstring> recall_, output_;
     size_t caret_{}, historyPos_{}, scroll_{};
     void write(std::wstring line);
-public:
+
+  public:
     const std::wstring &input() const { return input_; }
     size_t caret() const { return caret_; }
     std::span<const std::wstring> visibleLines(size_t count) const;
@@ -26,4 +27,4 @@ public:
     std::wstring submit();
     void execute(World &world, const std::wstring &line);
 };
-}
+} // namespace pz

@@ -112,41 +112,46 @@ void EffectBatch::hydrants(const World &w, const Frustum &frustum, float day)
 {
     for (auto index : w.nearbyStaticBodies)
     {
-        if (index >= w.fixtureByBody.size() || w.fixtureByBody[index] < 0) continue;
+        if (index >= w.fixtureByBody.size() || w.fixtureByBody[index] < 0)
+            continue;
         const auto &f = w.fixtures[w.fixtureByBody[index]];
-        if (f.sprayUntil <= w.time) continue;
-        Vec3 base{float(f.home.x),float(w.terrain.height(f.home)+.10),float(f.home.z)};
-        if ((base-eye_).length()>80 || !frustum.sphere(base+Vec3{0,1.5f,0},3.4f)) continue;
-        float pressure = std::min(1.f,float(f.sprayUntil-w.time)*.5f);
+        if (f.sprayUntil <= w.time)
+            continue;
+        Vec3 base{float(f.home.x), float(w.terrain.height(f.home) + .10), float(f.home.z)};
+        if ((base - eye_).length() > 80 || !frustum.sphere(base + Vec3{0, 1.5f, 0}, 3.4f))
+            continue;
+        float pressure = std::min(1.f, float(f.sprayUntil - w.time) * .5f);
         // The coherent column breaks into separate streaks near its apex.
-        Vec3 color = Vec3{.66f,.82f,.88f}*(.48f+.52f*day);
-        for (int stream=0; stream<5; ++stream)
+        Vec3 color = Vec3{.66f, .82f, .88f} * (.48f + .52f * day);
+        for (int stream = 0; stream < 5; ++stream)
         {
-            Vec3 last=base;
-            float angle=float(stream)*2.40f+float(std::fmod(w.time,40.))*.16f;
-            for (int segment=1; segment<=9; ++segment)
+            Vec3 last = base;
+            float angle = float(stream) * 2.40f + float(std::fmod(w.time, 40.)) * .16f;
+            for (int segment = 1; segment <= 9; ++segment)
             {
-                float t=float(segment)/9;
-                float spread=(.13f+.05f*stream)*t*t;
-                float wave=.023f*t*std::sin(float(w.time*8)+stream+t*10);
-                Vec3 tip=base+Vec3{std::cos(angle)*spread+wave,
-                    pressure*t*(3.65f-1.70f*t)*(.83f+stream*.045f),std::sin(angle)*spread-wave};
-                Vec3 lastEdge=right_*(.036f+.036f*(t-1.f/9)), edge=right_*(.036f+.036f*t);
-                append({last-lastEdge,last+lastEdge,tip+edge,tip-edge},color,
-                       pressure*(.46f-.40f*t),3.f);
-                last=tip;
+                float t = float(segment) / 9;
+                float spread = (.13f + .05f * stream) * t * t;
+                float wave = .023f * t * std::sin(float(w.time * 8) + stream + t * 10);
+                Vec3 tip = base + Vec3{std::cos(angle) * spread + wave,
+                                       pressure * t * (3.65f - 1.70f * t) * (.83f + stream * .045f),
+                                       std::sin(angle) * spread - wave};
+                Vec3 lastEdge = right_ * (.036f + .036f * (t - 1.f / 9)), edge = right_ * (.036f + .036f * t);
+                append({last - lastEdge, last + lastEdge, tip + edge, tip - edge}, color,
+                       pressure * (.46f - .40f * t), 3.f);
+                last = tip;
             }
         }
-        for (unsigned i=0; i<108; ++i)
+        for (unsigned i = 0; i < 108; ++i)
         {
-            uint32_t key=mixBits(uint32_t(index)^mixBits(i+1));
-            float spread=fraction(key), angle=float(2*pi)*fraction(key>>16);
-            float age = float(std::fmod(w.time*(.72+.17*spread)+fraction(mixBits(key)),1.));
-            float drift = age*(.35f+spread*1.55f);
-            Vec3 at = base+Vec3{drift*std::cos(angle),pressure*age*(1-age)*(8+4*spread),drift*std::sin(angle)};
-            float width=.015f+.029f*age;
-            billboard(at,right_*width,up_*(width+.055f*std::abs(1-2*age)),
-                      color,(.72f-.35f*age)*pressure,1.f);
+            uint32_t key = mixBits(uint32_t(index) ^ mixBits(i + 1));
+            float spread = fraction(key), angle = float(2 * pi) * fraction(key >> 16);
+            float age = float(std::fmod(w.time * (.72 + .17 * spread) + fraction(mixBits(key)), 1.));
+            float drift = age * (.35f + spread * 1.55f);
+            Vec3 at = base + Vec3{drift * std::cos(angle), pressure * age * (1 - age) * (8 + 4 * spread),
+                                  drift * std::sin(angle)};
+            float width = .015f + .029f * age;
+            billboard(at, right_ * width, up_ * (width + .055f * std::abs(1 - 2 * age)), color,
+                      (.72f - .35f * age) * pressure, 1.f);
         }
     }
 }
@@ -166,11 +171,12 @@ void EffectBatch::draw(GLuint shader, const World &w, const View &view, const Ma
     {
         Vec3 centre = (puddle.corners[0] + puddle.corners[2]) * .5f;
         Vec3 delta = eye_ - centre;
-        if (dot(delta, delta) > 100 * 100 || !frustum.sphere(centre, 2.f)) continue;
+        if (dot(delta, delta) > 100 * 100 || !frustum.sphere(centre, 2.f))
+            continue;
         float grazing = 1.f - std::clamp(delta.unit().y, 0.f, 1.f);
         float reflection = grazing * grazing * grazing;
-        Vec3 sky = Vec3{.46f,.61f,.72f} * (.14f + .86f * day);
-        Vec3 base = Vec3{.07f,.10f,.105f} * (.35f + .65f * day);
+        Vec3 sky = Vec3{.46f, .61f, .72f} * (.14f + .86f * day);
+        Vec3 base = Vec3{.07f, .10f, .105f} * (.35f + .65f * day);
         append(puddle.corners, base + (sky - base) * reflection, .78f, 4.f);
     }
     for (const auto &wave : w.ripples)
@@ -178,16 +184,17 @@ void EffectBatch::draw(GLuint shader, const World &w, const View &view, const Ma
         float age = float(w.time - wave.born);
         float radius = float(std::sqrt(wave.strength)) * (.18f + 1.25f * age);
         Vec3 p{float(wave.centre.x), float(CityLayout::waterLevel + .023), float(wave.centre.z)};
-        if (!frustum.sphere(p, radius)) continue;
+        if (!frustum.sphere(p, radius))
+            continue;
         float opacity = float(std::clamp(1. - age / WaterRipple::lifetime, 0., 1.));
-        billboard(p, {radius, 0, 0}, {0, 0, -radius}, Vec3{.58f,.81f,.84f} * (.25f + .75f * day),
+        billboard(p, {radius, 0, 0}, {0, 0, -radius}, Vec3{.58f, .81f, .84f} * (.25f + .75f * day),
                   opacity * .78f, 5.f);
     }
     marks(w, frustum, day);
     if (particles)
     {
         rain(w, frustum, day);
-        hydrants(w,frustum,day);
+        hydrants(w, frustum, day);
         for (const auto &p : w.particles)
         {
             auto delta = p.p - eye_;
@@ -210,7 +217,8 @@ void EffectBatch::draw(GLuint shader, const World &w, const View &view, const Ma
             Vec3 f{float(dir.x), 0, float(dir.z)}, side{f.z, 0, -f.x};
             float speed = float(car.body.v.length());
             Vec3 rear = p - f * float(car.body.halfH);
-            bool spray = w.rain > .25 && speed > 3 && w.precipitationSurface(car.body.p) < car.body.height + .25;
+            bool spray =
+                w.rain > .25 && speed > 3 && w.precipitationSurface(car.body.p) < car.body.height + .25;
             for (int i = 0; i < 5; ++i)
             {
                 double cycles = w.time * 1.35 + car.id * .373 + i * .2;
@@ -223,8 +231,8 @@ void EffectBatch::draw(GLuint shader, const World &w, const View &view, const Ma
                     for (int s : {-1, 1})
                         billboard(at + side * float(s * car.body.halfW) - Vec3{0, .24f, 0},
                                   right_ * (radius * 1.4f), up_ * radius,
-                                  Vec3{.60f, .70f, .76f} * (.45f + .55f * day), float(w.rain) * .22f * (1 - age),
-                                  1.f);
+                                  Vec3{.60f, .70f, .76f} * (.45f + .55f * day),
+                                  float(w.rain) * .22f * (1 - age), 1.f);
             }
         }
     }

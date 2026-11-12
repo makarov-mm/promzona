@@ -31,13 +31,14 @@ class Renderer
     ~Renderer();
     void sceneMode(SceneMode mode);
     void graphics(const GraphicsPreferences &settings);
+    void language(Language language);
     void profileGpu();
     std::string gpuReport() const;
     void prepare(const World &world);
     void render(const World &world, const View &view, int width, int height);
     void overlay(const World *world, int width, int height, double fps, bool menu, const GameConsole *console,
-                  const std::wstring &message, const AudioLevels &levels, float progress = -1, bool jobsOpen = false,
-                  const FrontEnd *front = nullptr);
+                 const std::wstring &message, const AudioLevels &levels, float progress = -1,
+                 bool jobsOpen = false, const FrontEnd *front = nullptr);
     void screenshot(const std::filesystem::path &file, int width, int height);
     std::string graphicsInfo() const;
     std::string sceneryStats() const;

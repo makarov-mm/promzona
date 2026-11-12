@@ -60,7 +60,7 @@ Path Path::turnaround(Vec2 centre, Vec2 f, double lane)
         Path p(a, b, c, d);
         points.insert(points.end(), p.points_.begin() + (points.empty() ? 0 : 1), p.points_.end());
     };
-    curve(centre - f * 11 + r * lane, centre - f * 8 + r * lane, centre - f * 5 + r * 5,
+    curve(centre - f * stopLine + r * lane, centre - f * 8 + r * lane, centre - f * 5 + r * 5,
           centre - f * 3 + r * 5);
     for (int i = 1; i <= 128; i++)
     {
@@ -166,8 +166,8 @@ Input Input::sanitized() const
 void Car::beginRighting()
 {
     recovering = true;
-    rightingRoll = std::remainder(roll, 2*pi);
-    rightingPitch = std::remainder(pitch, 2*pi);
+    rightingRoll = std::remainder(roll, 2 * pi);
+    rightingPitch = std::remainder(pitch, 2 * pi);
     rightingTime = overturnedTime = 0;
     body.v = {};
     body.w = rollRate = pitchRate = verticalVelocity = 0;
@@ -176,12 +176,13 @@ void Car::beginRighting()
 
 void Car::applyImpactRotation(Vec2 change)
 {
-    if (recovering || (!destroyed && (kind == 9 || kind == 12))) return;
+    if (recovering || (!destroyed && (kind == 9 || kind == 12)))
+        return;
     const auto f = forward(heading());
-    const double side = dot(change, Vec2{f.z,-f.x});
+    const double side = dot(change, Vec2{f.z, -f.x});
     const double cap = destroyed ? 3. : 4.;
     rollRate += clamp(side * (destroyed ? .16 : .20), -cap, cap);
-    pitchRate += clamp(dot(change,f) * (destroyed ? .09 : .11), -2., 2.);
+    pitchRate += clamp(dot(change, f) * (destroyed ? .09 : .11), -2., 2.);
 }
 
 void Car::settleAttitude(double dt, bool playerDriving)
@@ -189,32 +190,40 @@ void Car::settleAttitude(double dt, bool playerDriving)
     if (recovering)
     {
         rightingTime += dt;
-        const double t = clamp(rightingTime/2.2, 0., 1.);
-        const double u = clamp((t-.18)/.64, 0., 1.);
-        const double remaining = 1. - u*u*(3.-2.*u);
+        const double t = clamp(rightingTime / 2.2, 0., 1.);
+        const double u = clamp((t - .18) / .64, 0., 1.);
+        const double remaining = 1. - u * u * (3. - 2. * u);
         roll = rightingRoll * remaining;
         pitch = rightingPitch * remaining;
-        lift = t < 1. ? 1.5*std::sin(pi*t) : 0.;
-        if (t >= 1.) { recovering = false; rightingTime = 0; }
+        lift = t < 1. ? 1.5 * std::sin(pi * t) : 0.;
+        if (t >= 1.)
+        {
+            recovering = false;
+            rightingTime = 0;
+        }
         return;
     }
-    if (roll == 0 && pitch == 0 && rollRate == 0 && pitchRate == 0) return;
+    if (roll == 0 && pitch == 0 && rollRate == 0 && pitchRate == 0)
+        return;
     const bool supported = lift <= .04;
     if (supported)
     {
-        rollRate -= (destroyed ? 9. : 12.) * std::sin(2.*roll)*dt;
-        pitchRate -= (destroyed ? 12.*std::sin(2.*pitch) : 18.*std::sin(pitch))*dt;
+        rollRate -= (destroyed ? 9. : 12.) * std::sin(2. * roll) * dt;
+        pitchRate -= (destroyed ? 12. * std::sin(2. * pitch) : 18. * std::sin(pitch)) * dt;
     }
-    rollRate *= std::exp(-dt*(supported ? (destroyed ? 2.8 : 2.1) : .16));
-    pitchRate *= std::exp(-dt*(supported ? (destroyed ? 2.8 : 2.2) : .18));
-    roll = std::remainder(roll + rollRate*dt, 2*pi);
-    pitch = std::remainder(pitch + pitchRate*dt, 2*pi);
-    if (std::abs(roll) + std::abs(rollRate) < .0001) roll = rollRate = 0;
-    if (std::abs(pitch) + std::abs(pitchRate) < .0001) pitch = pitchRate = 0;
-    const bool stuck = playerDriving && !destroyed && !falling && fireTime <= 0 &&
-                       lift < .12 && body.v.length2() < .7*.7 && std::cos(roll)*std::cos(pitch) < -.45;
+    rollRate *= std::exp(-dt * (supported ? (destroyed ? 2.8 : 2.1) : .16));
+    pitchRate *= std::exp(-dt * (supported ? (destroyed ? 2.8 : 2.2) : .18));
+    roll = std::remainder(roll + rollRate * dt, 2 * pi);
+    pitch = std::remainder(pitch + pitchRate * dt, 2 * pi);
+    if (std::abs(roll) + std::abs(rollRate) < .0001)
+        roll = rollRate = 0;
+    if (std::abs(pitch) + std::abs(pitchRate) < .0001)
+        pitch = pitchRate = 0;
+    const bool stuck = playerDriving && !destroyed && !falling && fireTime <= 0 && lift < .12 &&
+                       body.v.length2() < .7 * .7 && std::cos(roll) * std::cos(pitch) < -.45;
     overturnedTime = stuck ? overturnedTime + dt : 0.;
-    if (overturnedTime > 4.) beginRighting();
+    if (overturnedTime > 4.)
+        beginRighting();
 }
 
 void Car::destroy()
@@ -271,12 +280,23 @@ void stepVehicle(Car &car, Input raw, double dt, double traction)
         return;
     }
     double heading = -b.angle, s = std::sin(heading), c = std::cos(heading);
+    // Taken before the slope pulls: on a steep street one step of that pull is more than a
+    // standing car may have, and the car slid sideways down the camber for good.
+    const bool standing = b.v.length2() < .0144 && std::abs(b.w) < .05;
     if (car.terrainActive)
         b.v -= car.terrainGradient * (9.81 / (1 + car.terrainGradient.length2()) * dt);
     double speed = dot(b.v, {s, c}), steerLimit = .68 / (1 + std::pow(std::abs(speed) / 22, 2));
     car.steering += clamp(input.steering * steerLimit - car.steering, -1.8 * dt, 1.8 * dt);
     bool braking = input.brake || input.throttle * speed < -.35;
     car.braking = braking || input.handbrake;
+    // Static friction: a braked car at rest does not creep across a slope, and nobody who
+    // leans on it pushes it away.
+    if (car.braking && standing)
+    {
+        b.v = {};
+        b.w = 0;
+        return;
+    }
     double engine = 8200;
     switch (car.kind)
     {
@@ -309,6 +329,16 @@ void stepVehicle(Car &car, Input raw, double dt, double traction)
     case 2:
         engine = 18000;
         break;
+    }
+    // A lorry and a bus have a low gear for hills, as the trolley has its reserve of torque.
+    // Without it the pull of a street that rises one in four was more than their engines
+    // gave: near the player they stood at the foot of it, and the traffic behind them.
+    if (car.mass >= 6000 && car.kind != 10 && car.kind != 11 && car.kind != 12)
+    {
+        const double grade = car.terrainActive ? dot(car.terrainGradient, {s, c}) : 0.;
+        const double uphill = std::max(0., input.throttle >= 0 ? grade : -grade);
+        const double available = clamp(engine * 9 / std::max(1., std::abs(speed)), engine, engine * 2.5);
+        engine = std::min(available, engine + car.mass * 9.81 * uphill);
     }
     double maximum = car.kind == 11 ? 14 : (car.kind == 2 || car.kind == 5 || car.kind == 10 ? 19 : 27),
            pedal = braking || input.handbrake ? 0 : input.throttle;

@@ -17,7 +17,8 @@ void World::generateServices()
         for (int i = 1; i < nodes - 2; ++i)
         {
             Vec2 block = nodePoint(i + j * nodes) + Vec2{18, 18};
-            if (layout.station(i, j)) stationEntrance = block + Vec2{0, 9.25};
+            if (layout.station(i, j))
+                stationEntrance = block + Vec2{0, 9.25};
             if (layout.clinic(i, j))
             {
                 auto building = std::ranges::find_if(
@@ -127,7 +128,8 @@ int World::counterInReach(bool parkedAllowed) const
 
 bool World::buyFood()
 {
-    if (transitPassenger()) return false;
+    if (transitPassenger())
+        return false;
     int site = counterInReach(false);
     if (site < 0)
         return false;
@@ -198,24 +200,43 @@ void World::clinicRespawn(Vec2 fallen)
 
 void World::interactJob()
 {
-    if (transitPassenger()) return;
-    if (drone.active || health <= 0) return;
-    if (openMarket >= 0) { openMarket = -1; return; }
-    if (int market = marketInReach(); market >= 0) { openMarket = market; return; }
+    if (transitPassenger())
+        return;
+    if (drone.active || health <= 0)
+        return;
+    if (openMarket >= 0)
+    {
+        openMarket = -1;
+        return;
+    }
+    if (int market = marketInReach(); market >= 0)
+    {
+        openMarket = market;
+        return;
+    }
     if (job.passenger() && (job.acquired || (position() - jobTarget()).length2() <= 100))
     {
         interactPassengerJob();
         return;
     }
-    if (job.peace()) { interactPeaceJob(); return; }
-    if (int actor = hailerInReach(); actor >= 0 &&
-        startPassengerJob(people[actor].health <= .7 ? JobKind::patient : JobKind::taxi, actor))
+    if (job.peace())
+    {
+        interactPeaceJob();
+        return;
+    }
+    if (int actor = hailerInReach();
+        actor >= 0 && startPassengerJob(people[actor].health <= .7 ? JobKind::patient : JobKind::taxi, actor))
     {
         interactPassengerJob();
         return;
     }
-    if (serviceGarage()) return;
-    if (job.passenger()) { interactPassengerJob(); return; }
+    if (serviceGarage())
+        return;
+    if (job.passenger())
+    {
+        interactPassengerJob();
+        return;
+    }
     int source = counterInReach(true);
     if (source < 0)
         return;
@@ -256,7 +277,8 @@ bool World::startSeries()
 
 int World::expectedPay() const
 {
-    if (job.kind == JobKind::none) return 0;
+    if (job.kind == JobKind::none)
+        return 0;
     if (job.kind != JobKind::courier && !job.passenger())
         return job.fare + (job.series && seriesStage == 2 ? 500 : 0);
     const bool late = time > job.deadline && (!job.passenger() || job.acquired);
@@ -271,9 +293,12 @@ bool World::startContract(JobKind kind)
         notify(L"Сначала завершите текущий заказ");
         return false;
     }
-    if (drone.active || health <= 0) return false;
-    if (kind == JobKind::taxi || kind == JobKind::patient) return startPassengerJob(kind);
-    if (kind == JobKind::leaflets || kind == JobKind::broadcast) return startPeaceJob(kind);
+    if (drone.active || health <= 0)
+        return false;
+    if (kind == JobKind::taxi || kind == JobKind::patient)
+        return startPassengerJob(kind);
+    if (kind == JobKind::leaflets || kind == JobKind::broadcast)
+        return startPeaceJob(kind);
     int actor = -1, destination = -1;
     double best = 1e10;
     if (kind == JobKind::vehicle)
@@ -282,8 +307,9 @@ bool World::startContract(JobKind kind)
         {
             auto &c = cars[i];
             double score = std::abs((c.body.p - position()).length() - 130);
-            if (i != controlledCar && !c.personal && !c.responding && c.line < 0 && c.kind <= 2 && !c.destroyed && !c.falling && !c.fireTime &&
-                !c.body.roadLevel && c.health >= .75 && score < best)
+            if (i != controlledCar && !c.personal && !c.responding && c.line < 0 && c.kind <= 2 &&
+                !c.destroyed && !c.falling && !c.fireTime && !c.body.roadLevel && c.health >= .75 &&
+                score < best)
             {
                 best = score;
                 actor = i;
@@ -310,8 +336,10 @@ bool World::startContract(JobKind kind)
         for (int i = 0; i < int(people.size()); ++i)
         {
             auto &p = people[i];
-            double score = std::abs((p.body.p - position()).length() - 150) + (p.sidearm == WeaponId::none ? 100 : 0);
-            if (i != patrol.officer && !paramedicCall(i) && !p.dead && !p.courier && p.ownedScooter < 0 && p.riding < 0 && !p.body.roadLevel && score < best)
+            double score =
+                std::abs((p.body.p - position()).length() - 150) + (p.sidearm == WeaponId::none ? 100 : 0);
+            if (i != patrol.officer && !paramedicCall(i) && !p.dead && !p.courier && p.ownedScooter < 0 &&
+                p.riding < 0 && !p.body.roadLevel && score < best)
             {
                 actor = i;
                 best = score;
@@ -336,8 +364,18 @@ Vec2 World::jobTarget() const
         return cars[job.actor].body.p;
     if ((job.passenger() && !job.acquired) || job.kind == JobKind::elimination)
         return people[job.actor].body.p;
-    if (job.kind == JobKind::taxi) return lines[job.ride.line].curb(job.destination);
+    if (job.kind == JobKind::taxi)
+        return rideEnd(job.ride.line, job.destination);
     return job.destination < 0 ? position() : sites[job.destination].entrance;
+}
+
+// Where a ride ends: at a bus stop, at the entrance of the clinic, or at the kerb of a tram or
+// trolleybus stop -- in a city without bus stops and in saves from before there were any.
+Vec2 World::rideEnd(int line, int destination) const
+{
+    return line == busStopRide ? busStops[destination]
+           : line < 0          ? sites[destination].entrance
+                               : lines[line].curb(destination);
 }
 
 void World::finishJob(bool success)
@@ -365,13 +403,15 @@ void World::finishJob(bool success)
         notify(L"Заказ закрыт без оплаты");
     }
     job = {};
-    if (finished.passenger()) releasePassenger(finished, success);
+    if (finished.passenger())
+        releasePassenger(finished, success);
 }
 
 void World::servicesStep(double dt)
 {
     updateHailers();
-    if (openMarket >= 0 && marketInReach() != openMarket) openMarket = -1;
+    if (openMarket >= 0 && marketInReach() != openMarket)
+        openMarket = -1;
     energySeconds = std::max(0., energySeconds - dt);
     if (controlledCar < 0 && !player.roadLevel && health < 1)
     {
@@ -398,13 +438,21 @@ void World::servicesStep(double dt)
     }
     if (job.kind == JobKind::none || job.kind == JobKind::courier)
         return;
-    if (job.passenger()) { stepPassengerJob(dt); return; }
+    if (job.passenger())
+    {
+        stepPassengerJob(dt);
+        return;
+    }
     if (time > job.deadline)
     {
         finishJob(false);
         return;
     }
-    if (job.peace()) { stepPeaceJob(dt); return; }
+    if (job.peace())
+    {
+        stepPeaceJob(dt);
+        return;
+    }
     if (job.kind == JobKind::elimination)
     {
         if (people[job.actor].dead)
@@ -419,8 +467,8 @@ void World::servicesStep(double dt)
     }
     if (controlledCar == job.actor)
         job.acquired = true;
-    bool delivered = controlledCar == job.actor && c.health >= deliveryHealth() && !c.fireTime && !c.body.roadLevel &&
-                     c.grounded() && c.body.v.length() < .8 &&
+    bool delivered = controlledCar == job.actor && c.health >= deliveryHealth() && !c.fireTime &&
+                     !c.body.roadLevel && c.grounded() && c.body.v.length() < .8 &&
                      (position() - sites[job.destination].entrance).length() < 10;
     job.stopped = delivered ? job.stopped + dt : 0;
     if (job.stopped > 1)
@@ -441,13 +489,19 @@ bool World::validJob() const
     case JobKind::taxi:
     case JobKind::patient:
         if (job.actor < 0 || job.actor >= int(people.size()) || job.ride.car < -1 ||
-            job.ride.car >= int(cars.size()) || (job.acquired && job.ride.car < 0) ||
-            job.ride.away < 0 || job.ride.boardBy < 0 || job.ride.scares < 0 || job.ride.scares > 3 ||
-            !(job.ride.healthAtLastScare >= 0 && job.ride.healthAtLastScare <= 1) || !std::isfinite(job.ride.crimeAt)) return false;
-        if (job.ride.car >= 0 && (cars[job.ride.car].responding || cars[job.ride.car].line >= 0 ||
-            cars[job.ride.car].kind > 2)) return false;
+            job.ride.car >= int(cars.size()) || (job.acquired && job.ride.car < 0) || job.ride.away < 0 ||
+            job.ride.boardBy < 0 || job.ride.scares < 0 || job.ride.scares > 3 ||
+            !(job.ride.healthAtLastScare >= 0 && job.ride.healthAtLastScare <= 1) ||
+            !std::isfinite(job.ride.crimeAt))
+            return false;
+        if (job.ride.car >= 0 &&
+            (cars[job.ride.car].responding || cars[job.ride.car].line >= 0 || cars[job.ride.car].kind > 2))
+            return false;
         if (job.kind == JobKind::patient)
-            return job.ride.line == -1 && site(job.destination) && sites[job.destination].kind == ServiceKind::clinic;
+            return job.ride.line == -1 && site(job.destination) &&
+                   sites[job.destination].kind == ServiceKind::clinic;
+        if (job.ride.line == busStopRide)
+            return job.destination >= 0 && job.destination < int(busStops.size());
         return job.ride.line >= 0 && job.ride.line < int(lines.size()) && job.destination >= 0 &&
                job.destination < int(lines[job.ride.line].stops.size());
     case JobKind::leaflets:

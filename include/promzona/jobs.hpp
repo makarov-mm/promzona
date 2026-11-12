@@ -11,7 +11,13 @@ enum class ServiceKind
     garage,
     market
 };
-enum class ShopItem { pistol, automatic, pills, energy };
+enum class ShopItem
+{
+    pistol,
+    automatic,
+    pills,
+    energy
+};
 struct ServiceSite
 {
     ServiceKind kind;

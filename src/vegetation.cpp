@@ -11,7 +11,7 @@ std::vector<TreePlant> planTrees(const World &w)
         {
             Random r(w.seed ^ (std::uint32_t(i + j * l.nodes()) * 747796405u + 2891336453u));
             bool park = l.park(i, j);
-            if (l.industrial(i,j) || CityLayout::clinic(i, j) || CityLayout::station(i, j))
+            if (l.industrial(i, j) || CityLayout::clinic(i, j) || CityLayout::station(i, j))
                 continue;
             for (int k = 0; k < (park ? 6 : 2); ++k)
             {

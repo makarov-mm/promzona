@@ -4,10 +4,12 @@ namespace pz
 {
 void World::splash(Vec2 point, double strength)
 {
-    if ((point - position()).length2() > 200 * 200 || terrain.bedHeight(point.x, point.z) >= CityLayout::waterLevel)
+    if ((point - position()).length2() > 200 * 200 ||
+        terrain.bedHeight(point.x, point.z) >= CityLayout::waterLevel)
         return;
     strength = clamp(strength, .15, 3.);
-    if (ripples.size() == 96) ripples.pop_front();
+    if (ripples.size() == 96)
+        ripples.pop_front();
     ripples.push_back({point, time, strength});
     sounds.push_back({"splash", point, clamp(strength * .35, .12, .9)});
 
@@ -22,7 +24,9 @@ void World::splash(Vec2 point, double strength)
         float up = float((1.6 + 1.6 * spray.next()) * std::sqrt(strength));
         particles.push_back({{float(point.x), float(CityLayout::waterLevel + .035), float(point.z)},
                              {float(outward.x) * speed, up, float(outward.z) * speed},
-                             {.62f, .83f, .86f}, up / 3.f, float(.025 + .04 * strength)});
+                             {.62f, .83f, .86f},
+                             up / 3.f,
+                             float(.025 + .04 * strength)});
     }
 }
 
@@ -33,13 +37,14 @@ void World::generatePuddles()
     for (int j = 0; j < nodes - 1; ++j)
         for (int i = 0; i < nodes - 1; ++i)
         {
-            if ((i * 7 + j * 11) % 13 || !layout.road(i, j, 0)) continue;
+            if ((i * 7 + j * 11) % 13 || !layout.road(i, j, 0))
+                continue;
             Vec2 centre{layout.coordinate(i) + 1.8, layout.coordinate(j) + spacing * .5};
             if (!layout.urbanSite(centre, RoadPuddle::radiusX) || levelAt(centre, RoadPuddle::radiusX))
                 continue;
             RoadPuddle puddle{centre};
             constexpr double x = RoadPuddle::radiusX, z = RoadPuddle::radiusZ;
-            constexpr Vec2 offsets[]{{-x,-z}, {-x,z}, {x,z}, {x,-z}};
+            constexpr Vec2 offsets[]{{-x, -z}, {-x, z}, {x, z}, {x, -z}};
             for (size_t n = 0; n < puddle.corners.size(); ++n)
             {
                 Vec2 p = centre + offsets[n];
@@ -50,17 +55,106 @@ void World::generatePuddles()
         }
 }
 
+// Port of CityRoadDetail.Holes: one xorshift sequence per block, seeded by the city seed
+// and the block, so the holes are a property of the city and need no place in a save.
+std::vector<Pothole> blockPotholes(std::uint32_t seed, int i, int j, bool roadNorth, bool roadEast)
+{
+    std::vector<Pothole> holes;
+    std::uint32_t state =
+        (seed * 16777619u + std::uint32_t(i) * 73856093u + std::uint32_t(j) * 19349663u) | 1u;
+    auto next = [&]
+    {
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        return (state + .5) / 4294967296.;
+    };
+    for (int axis = 0; axis < 2; ++axis)
+    {
+        if (!(axis == 0 ? roadNorth : roadEast))
+            continue;
+        const int count = next() < .42 ? 0 : next() < .68 ? 1 : 2;
+        double last = -10;
+        for (int k = 0; k < count; ++k)
+        {
+            const double along = 12 + next() * 13;
+            if (std::abs(along - last) < 3.5)
+                continue;
+            last = along;
+            const double across = -3.5 + next() * 7;
+            const double size = .48 + next() * .65;
+            const int style = std::min(2, int(next() * 3));
+            holes.push_back({axis == 0 ? Vec2{across, along} : Vec2{along, across}, size, style});
+        }
+    }
+    return holes;
+}
+
+void World::generatePotholes()
+{
+    potholes.clear();
+    const int blocks = nodes - 1;
+    potholeFirst.assign(size_t(blocks) * blocks + 1, 0);
+    for (int j = 0; j < blocks; ++j)
+        for (int i = 0; i < blocks; ++i)
+        {
+            potholeFirst[size_t(j) * blocks + i] = std::uint32_t(potholes.size());
+            const Vec2 node{layout.coordinate(i), layout.coordinate(j)};
+            for (auto hole : blockPotholes(seed, i, j, layout.road(i, j, 0), layout.road(i, j, 1)))
+            {
+                hole.p += node;
+                // Bridge decks, ramps and tunnel mouths have their own surface.
+                if (layout.urbanSite(hole.p, hole.size) && !levelAt(hole.p, hole.size + 1) &&
+                    !openCut(hole.p, hole.size))
+                    potholes.push_back(hole);
+            }
+        }
+    potholeFirst.back() = std::uint32_t(potholes.size());
+}
+
+// The managed rule: above 4 m/s a hole under the car kicks it up and pitches the nose;
+// half a second passes before the next jolt or impact damage.
+void World::potholeJolt(Car &car)
+{
+    const double speed = std::abs(dot(car.body.v, forward(car.heading())));
+    if (car.destroyed || car.falling || car.body.roadLevel || !car.grounded() || speed <= 4 ||
+        car.impactCooldown > 0 || potholeFirst.empty())
+        return;
+    const int blocks = nodes - 1;
+    const int i = int(std::floor((car.body.p.x - layout.coordinate(0)) / spacing)),
+              j = int(std::floor((car.body.p.z - layout.coordinate(0)) / spacing));
+    for (int dj = -1; dj <= 1; ++dj)
+        for (int di = -1; di <= 1; ++di)
+        {
+            const int x = i + di, z = j + dj;
+            if (x < 0 || z < 0 || x >= blocks || z >= blocks)
+                continue;
+            const size_t block = size_t(z) * blocks + x;
+            for (auto n = potholeFirst[block]; n < potholeFirst[block + 1]; ++n)
+                if ((car.body.p - potholes[n].p).length() < potholes[n].size * .65)
+                {
+                    car.verticalVelocity = std::min(.8, speed * .035);
+                    car.pitchRate += .18;
+                    car.impactCooldown = .5;
+                    ++potholeJolts;
+                    return;
+                }
+        }
+}
+
 bool World::inRoadPuddle(Vec2 wheel) const
 {
     // Each patch is inside one grid square. Sample the same ellipse drawn on the asphalt.
     int i = int(std::floor((wheel.x - layout.coordinate(0)) / spacing));
     int j = int(std::floor((wheel.z - layout.coordinate(0)) / spacing));
-    if (i < 0 || j < 0 || i >= nodes || j >= nodes || puddleCells.empty()) return false;
+    if (i < 0 || j < 0 || i >= nodes || j >= nodes || puddleCells.empty())
+        return false;
     int index = puddleCells[j * nodes + i];
-    if (index < 0) return false;
+    if (index < 0)
+        return false;
     Vec2 d = wheel - puddles[index].centre;
     double x = d.x / RoadPuddle::radiusX, z = d.z / RoadPuddle::radiusZ;
-    return x*x + z*z < .86;
+    return x * x + z * z < .86;
 }
 
 double World::precipitationSurface(Vec2 p) const
@@ -112,8 +206,8 @@ void World::updateTireMarks(Vec2 focus, double dt)
 
         auto forwardDir = forward(car.heading()), right = Vec2{forwardDir.z, -forwardDir.x};
         auto rear = body.p - forwardDir * (.5 * car.wheelbase);
-        bool sand = !body.roadLevel && !layout.bridge(rear) &&
-                    layout.sandyGround(rear, layout.roadDistance(rear));
+        bool sand =
+            !body.roadLevel && !layout.bridge(rear) && layout.sandyGround(rear, layout.roadDistance(rear));
         bool skid = body.v.length2() > 20. && (car.braking || std::abs(dot(body.v, right)) > 2.);
         bool wet = rain > .45 && (body.roadLevel || layout.roadDistance(rear) < layout.roadHalf());
         if (wet)

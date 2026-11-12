@@ -266,9 +266,11 @@ double CityLayout::riverDistance(double x) const
 }
 bool CityLayout::sandyGround(Vec2 p, double streetDistance) const
 {
-    if (riverDistance(p.x) < bankHalf()) return true;
+    if (riverDistance(p.x) < bankHalf())
+        return true;
     const double rim = std::max(std::abs(p.x), std::abs(p.z)) - coordinate(nodes_ - 1);
-    if (revision_ == 0) return rim > 12.;
+    if (revision_ == 0)
+        return rim > 12.;
     return rim >= 0 && streetDistance > roadHalf();
 }
 bool CityLayout::bridge(Vec2 p) const
@@ -291,12 +293,17 @@ bool CityLayout::urbanSite(Vec2 p, double radius) const
     return std::max(std::abs(p.x), std::abs(p.z)) + radius <= coordinate(nodes_ - 1) + 7 &&
            riverDistance(p.x) > 18 + radius;
 }
+double CityLayout::signalPhase(int i, int j, double time)
+{
+    return std::fmod(time + (i * 3 + j * 5) % 9, 28.);
+}
 bool CityLayout::green(int i, int j, int d, double time)
 {
-    double phase = std::fmod(time + (i * 3 + j * 5) % 9, 28.);
+    const double phase = signalPhase(i, j, time);
     return d % 2 == 0 ? phase >= 14 && phase < 26 : phase < 12;
 }
-void CityLayout::generate(std::int32_t seed, int n, bool wide, std::function<void(float)> progress, int revision)
+void CityLayout::generate(std::int32_t seed, int n, bool wide, std::function<void(float)> progress,
+                          int revision)
 {
     if (n != 33 && n != 49)
         throw std::invalid_argument("City size must be 33 or 49 nodes");
@@ -337,7 +344,8 @@ void CityLayout::generate(std::int32_t seed, int n, bool wide, std::function<voi
         {
             auto f = direction(d);
             int x = i + int(f.x), z = j + int(f.z);
-            if (x >= 0 && z >= 0 && x < n && z < n && !seen[x + z * n] && allowedEdge(i, j, d) && !railEdge(i,j,d))
+            if (x >= 0 && z >= 0 && x < n && z < n && !seen[x + z * n] && allowedEdge(i, j, d) &&
+                !railEdge(i, j, d))
                 options.push_back(d);
         }
         if (options.empty())
@@ -361,7 +369,8 @@ void CityLayout::generate(std::int32_t seed, int n, bool wide, std::function<voi
                 auto f = direction(d);
                 int x = i + int(f.x), z = j + int(f.z);
                 bool artery = d == 0 ? (i % 8 == 0 || i == n / 2) : (j % 8 == 0 || j == n / 2);
-                if (x < n && z < n && allowedEdge(i, j, d) && (artery || random.next() < .61) && !railEdge(i,j,d))
+                if (x < n && z < n && allowedEdge(i, j, d) && (artery || random.next() < .61) &&
+                    !railEdge(i, j, d))
                     link(i, j, d);
             }
             report(.18 + .07 * (i + j * n + 1) / (n * n));
@@ -372,14 +381,18 @@ void CityLayout::generate(std::int32_t seed, int n, bool wide, std::function<voi
         for (int i = left; i <= left + 8; ++i)
             for (int j = row - 1; j <= row + 2; ++j)
             {
-                if (i < left+8) link(i,j,1);
-                if (j < row+2) link(i,j,0);
+                if (i < left + 8)
+                    link(i, j, 1);
+                if (j < row + 2)
+                    link(i, j, 0);
             }
-        for (int dx : {1,2,6,7}) setRoad(left+dx,row,0,false);
+        for (int dx : {1, 2, 6, 7})
+            setRoad(left + dx, row, 0, false);
     }
     link(n / 2, n / 2, 2);
     if (revision)
-        for (int i = yardWest(); i < yardEast()-1; ++i) link(i,yardRow(),1);
+        for (int i = yardWest(); i < yardEast() - 1; ++i)
+            link(i, yardRow(), 1);
     for (int j = 0; j < n - 1; ++j)
         for (int i = 0; i < n - 1; ++i)
         {
@@ -396,13 +409,17 @@ void CityLayout::generate(std::int32_t seed, int n, bool wide, std::function<voi
                                 8);
                 buildings.push_back({{px, pz}, {hx, hz}, h, style});
             };
-            const bool reserved = std::ranges::any_of(levels, [&](const RoadLevel &s) {
-                constexpr double plotRadius = 16.;
-                const double dx = std::abs(x-s.x);
-                const double centre = s.z + 18*smooth((s.length-dx)/36.);
-                return dx <= s.length+plotRadius+1.3 && std::abs(z-centre) <= s.halfWidth+plotRadius+1.3 &&
-                       (!s.tunnel || dx+plotRadius > s.covered-.8);
-            });
+            const bool reserved =
+                std::ranges::any_of(levels,
+                                    [&](const RoadLevel &s)
+                                    {
+                                        constexpr double plotRadius = 16.;
+                                        const double dx = std::abs(x - s.x);
+                                        const double centre = s.z + 18 * smooth((s.length - dx) / 36.);
+                                        return dx <= s.length + plotRadius + 1.3 &&
+                                               std::abs(z - centre) <= s.halfWidth + plotRadius + 1.3 &&
+                                               (!s.tunnel || dx + plotRadius > s.covered - .8);
+                                    });
             if (!isPark && !canalColumn(i) && !reserved)
             {
                 int style = random.index(6);
@@ -446,17 +463,17 @@ void CityLayout::generate(std::int32_t seed, int n, bool wide, std::function<voi
                 buildings.resize(begin);
                 add(x, z, 9, 8, 8);
             }
-            if (industrial(i,j))
+            if (industrial(i, j))
             {
-                parks_[i+j*n] = false;
+                parks_[i + j * n] = false;
                 buildings.resize(begin);
-                industrialPlot(*this,i,j,{x,z});
+                industrialPlot(*this, i, j, {x, z});
             }
-            else if (revision && !isPark && !canalColumn(i) && !reserved && !clinic(i,j) && !station(i,j))
+            else if (revision && !isPark && !canalColumn(i) && !reserved && !clinic(i, j) && !station(i, j))
             {
                 buildings.resize(begin);
-                unsigned variant = (std::uint32_t(seed) + i*7919u + j*104729u) % 4;
-                residentialPlot(buildings,district(i,j),{x,z},variant);
+                unsigned variant = (std::uint32_t(seed) + i * 7919u + j * 104729u) % 4;
+                residentialPlot(buildings, district(i, j), {x, z}, variant);
             }
             report(.25 + .16 * (i + j * (n - 1) + 1) / ((n - 1) * (n - 1)));
         }
@@ -484,7 +501,7 @@ void CityLayout::generate(std::int32_t seed, int n, bool wide, std::function<voi
         {
             int i = int(std::floor((b.p.x - coordinate(0)) / 36)),
                 j = int(std::floor((b.p.z - coordinate(0)) / 36));
-            if (clinic(i, j) || station(i, j) || industrial(i,j))
+            if (clinic(i, j) || station(i, j) || industrial(i, j))
                 continue;
             auto centre = Vec2{coordinate(i) + 18, coordinate(j) + 18};
             b.p = centre + (b.p - centre) * .73;

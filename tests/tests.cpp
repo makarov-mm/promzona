@@ -163,8 +163,10 @@ int main(int argc, char **argv)
         world.inventory.give(WeaponId::pistol);
         world.inventory.select(WeaponId::pistol);
         // Only pedestrians on the street are eligible for these test events.
-        const auto firstWalker = std::ranges::find_if(world.people, [](const auto &p) { return p.riding < 0; });
-        const auto secondWalker = std::find_if(std::next(firstWalker), world.people.end(), [](const auto &p) { return p.riding < 0; });
+        const auto firstWalker =
+            std::ranges::find_if(world.people, [](const auto &p) { return p.riding < 0; });
+        const auto secondWalker = std::find_if(std::next(firstWalker), world.people.end(),
+                                               [](const auto &p) { return p.riding < 0; });
         const auto victim = firstWalker - world.people.begin();
         const auto witness = secondWalker - world.people.begin();
         world.people[victim].dead = true;
@@ -242,11 +244,12 @@ int main(int argc, char **argv)
         radio.pause(false, true);
         std::array<float, 8> song{};
         radio.mix(song);
-        check(song[0] > song[2] && song[2] > 0 && song[4] < 0 && song[6] == song[0] &&
-              song[0] == song[1] && radio.voiceCount() == 1, "radio crosses a track boundary in the menu");
+        check(song[0] > song[2] && song[2] > 0 && song[4] < 0 && song[6] == song[0] && song[0] == song[1] &&
+                  radio.voiceCount() == 1,
+              "radio crosses a track boundary in the menu");
         radio.pause(true);
         radio.mix(song);
-        check(std::ranges::all_of(song, [](float s){return s == 0;}), "unfocused radio is silent");
+        check(std::ranges::all_of(song, [](float s) { return s == 0; }), "unfocused radio is silent");
         std::array<float, 2> one{};
         radio.pause(false, true);
         radio.mix(one);
@@ -262,7 +265,8 @@ int main(int argc, char **argv)
         oneTrack.addClip("radio1", {.5f});
         oneTrack.pause(false);
         oneTrack.mix(song);
-        check(std::ranges::all_of(song, [](float s){return s>0;}), "one available track loops without silence");
+        check(std::ranges::all_of(song, [](float s) { return s > 0; }),
+              "one available track loops without silence");
         oneTrack.setLevels({0, 50});
         oneTrack.mix(song);
         check(song[0] == 0, "master mute includes music");
@@ -271,7 +275,10 @@ int main(int argc, char **argv)
         check(AudioLevels{75, 10}.save(levelsPath), "write volume preferences");
         auto levels = AudioLevels::load(levelsPath);
         check(levels.master == 75 && levels.radio == 10, "read independent volume preferences");
-        { std::ofstream file(levelsPath); file << "95 garbage"; }
+        {
+            std::ofstream file(levelsPath);
+            file << "95 garbage";
+        }
         levels = AudioLevels::load(levelsPath);
         check(levels.master == 65 && levels.radio == 20, "malformed volume settings restore defaults");
         std::filesystem::remove(levelsPath);
@@ -279,9 +286,10 @@ int main(int argc, char **argv)
         World street;
         street.controlledCar = -1;
         street.cars.resize(12);
-        for (size_t i=0; i<street.cars.size(); ++i) {
+        for (size_t i = 0; i < street.cars.size(); ++i)
+        {
             street.cars[i].id = unsigned(i);
-            street.cars[i].body.p = {double(i+1),0};
+            street.cars[i].body.p = {double(i + 1), 0};
         }
         auto &unit = street.cars.back();
         unit.kind = 3;
@@ -292,7 +300,8 @@ int main(int argc, char **argv)
         traffic.pause(false);
         traffic.update(street, 0);
         traffic.mix(one);
-        check(traffic.voiceCount() == 1 && one[0] > one[1], "siren beyond ten motors follows approaching car");
+        check(traffic.voiceCount() == 1 && one[0] > one[1],
+              "siren beyond ten motors follows approaching car");
         traffic.update(street, pi);
         traffic.mix(one);
         check(one[1] > one[0], "turning the camera reverses siren pan");

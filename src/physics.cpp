@@ -217,7 +217,14 @@ void ContactWorld::step(std::span<Body *> bodies, double dt, Vec2 gravity)
         if (a.sleeping != b.sleeping)
         {
             auto &awake = a.sleeping ? b : a;
-            if (awake.v.length() + std::abs(awake.w) > .35)
+            const auto &asleep = a.sleeping ? a : b;
+            // Something heavy that leans on something light moves it, however slowly it
+            // comes. Below the speed that wakes a sleeper, a walker who had stopped at a
+            // cigarette packet could not set off again: the packet held him like a wall,
+            // and the truck that waited for him to cross the street stood there with him.
+            const double leaning = dot(awake.v, c.n) * (a.sleeping ? -1 : 1);
+            if (awake.v.length() + std::abs(awake.w) > .35 ||
+                (leaning > .02 && asleep.invMass > awake.invMass * 3))
             {
                 a.wake();
                 b.wake();

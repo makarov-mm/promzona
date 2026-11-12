@@ -90,8 +90,8 @@ void Minimap::rebuild(const World &world)
         {
             auto p = line.curb(stop);
             int x = coordinate(p.x), z = coordinate(p.z);
-            rect(x-2,z-2,x+2,z+2,0x2d575d);
-            rect(x-1,z-1,x+1,z+1,0x8ce1d3);
+            rect(x - 2, z - 2, x + 2, z + 2, 0x2d575d);
+            rect(x - 1, z - 1, x + 1, z + 1, 0x8ce1d3);
         }
     for (const auto &s : world.sites)
     {
@@ -102,7 +102,10 @@ void Minimap::rebuild(const World &world)
             rect(x - 1, y - 3, x + 1, y + 3, 0x78cdf9);
         }
         else
-            rect(x - 1, y - 1, x + 1, y + 1, s.kind == ServiceKind::market ? 0xc987d8 : s.food() ? 0x6ed386 : 0xc29851);
+            rect(x - 1, y - 1, x + 1, y + 1,
+                 s.kind == ServiceKind::market ? 0xc987d8
+                 : s.food()                    ? 0x6ed386
+                                               : 0xc29851);
     }
 }
 

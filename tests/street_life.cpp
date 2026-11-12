@@ -1,3 +1,4 @@
+#include "promzona/names.hpp"
 #include "promzona/audio.hpp"
 #include "json.hpp"
 #include <chrono>
@@ -120,14 +121,14 @@ void voiceTest()
     w.people.emplace_back();
     auto &elder = w.people.front();
     elder.style = 2;
-    Vec2 dir{0,1};
+    Vec2 dir{0, 1};
     double speed = 1.;
     w.socialIntent(elder, dir, speed);
     check(elder.idleVoiceAt >= 30. && w.sounds.empty(), "pedestrians wait before speaking");
     w.time = elder.idleVoiceAt + .1;
     w.socialIntent(elder, dir, speed);
-    check(w.sounds.size() == 1 && w.sounds.back().name.starts_with("elder_") &&
-          w.sounds.back().speaker == 0, "nearby pensioner speaks from their own position");
+    check(w.sounds.size() == 1 && w.sounds.back().name.starts_with("elder_") && w.sounds.back().speaker == 0,
+          "nearby pensioner speaks from their own position");
     w.scarePerson(elder, {}, 2.);
     check(w.sounds.size() == 2 && w.sounds.back().name.starts_with("fear_"),
           "a startle can immediately interrupt an idle line");
@@ -251,10 +252,12 @@ void conversationTest()
     auto &entrance = w.sites[market].entrance;
     const auto originalEntrance = entrance;
     entrance = p.body.p + Vec2{0, 15};
-    check(w.talk() && w.notice == L"До рынка 20 м на север.", "market directions disagree with map north");
+    check(w.talk() && w.notice == L"Рынок — на " + streetAt(entrance) + L", 20 м на север.",
+          "market directions disagree with map north");
     w.time += 1;
     entrance = p.body.p + Vec2{-15, 0};
-    check(w.talk() && w.notice == L"До рынка 20 м на восток.", "market directions disagree with map east");
+    check(w.talk() && w.notice == L"Рынок — на " + streetAt(entrance) + L", 20 м на восток.",
+          "market directions disagree with map east");
     entrance = originalEntrance;
     p.body.id = originalId;
     w.time += 1;

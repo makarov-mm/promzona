@@ -36,7 +36,8 @@ void run()
     w.refreshDroneObstacles(b.p);
     check(!w.droneClear(b.p, w.terrain.height(b.p) + 2, .35), "collision with building");
     const auto path = std::filesystem::temp_directory_path() /
-        ("promzona-drone-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+                      ("promzona-drone-" +
+                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
     int initial = w.money;
     for (int n = 0; n < 3; ++n)
     {
@@ -60,9 +61,10 @@ void run()
             w.save(path);
             World loaded;
             loaded.load(path);
-            check(loaded.drone.active && loaded.drone.targets == w.drone.targets && loaded.drone.scanned == 1 &&
-                  loaded.drone.battery == w.drone.battery && loaded.drone.pitch == w.drone.pitch &&
-                  !loaded.drone.obstacles.empty(), "mid-flight save");
+            check(loaded.drone.active && loaded.drone.targets == w.drone.targets &&
+                      loaded.drone.scanned == 1 && loaded.drone.battery == w.drone.battery &&
+                      loaded.drone.pitch == w.drone.pitch && !loaded.drone.obstacles.empty(),
+                  "mid-flight save");
             w = std::move(loaded);
         }
     }
@@ -80,7 +82,14 @@ void run()
     data["drone"]["targets"] = {0, 0, 0};
     std::ofstream(path) << data;
     bool rejected = false;
-    try { restored.load(path); } catch (const std::runtime_error &) { rejected = true; }
+    try
+    {
+        restored.load(path);
+    }
+    catch (const std::runtime_error &)
+    {
+        rejected = true;
+    }
     check(rejected && !restored.drone.active, "accepted invalid targets");
     data.erase("drone");
     std::ofstream(path) << data;

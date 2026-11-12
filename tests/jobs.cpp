@@ -102,7 +102,8 @@ void shopAndGarage(const std::filesystem::path &path)
     w.money = 600;
     check(w.buyAtMarket(ShopItem::pistol) && w.money == 480 && w.inventory.ammo(WeaponId::pistol) == 30,
           "first pistol includes ammunition");
-    for (int i = 0; i < 30; ++i) w.inventory.consume(WeaponId::pistol);
+    for (int i = 0; i < 30; ++i)
+        w.inventory.consume(WeaponId::pistol);
     check(w.buyAtMarket(ShopItem::pistol) && w.money == 440 && w.inventory.ammo(WeaponId::pistol) == 30,
           "empty owned pistol receives the ammunition price");
     check(w.buyAtMarket(ShopItem::automatic) && w.money == 90 && w.inventory.ammo(WeaponId::automatic) == 30,
@@ -126,20 +127,21 @@ void shopAndGarage(const std::filesystem::path &path)
     w.controlledCar = 0;
     auto &car = w.cars[0];
     const auto &site = w.sites[garage];
-    car.body.p = site.entrance + (site.entrance - site.centre).unit()*4;
+    car.body.p = site.entrance + (site.entrance - site.centre).unit() * 4;
     car.body.height = w.terrain.height(car.body.p) + .8;
     car.body.roadLevel = -1;
     car.health = .5;
     w.wanted = 2;
     check(!w.serviceGarage(), "upper street workshop ignores traffic on another level");
     car.body.roadLevel = 0;
-    car.body.v = {3,0};
+    car.body.v = {3, 0};
     check(!w.serviceGarage(), "moving vehicle cannot buy service");
     car.body.v = {};
     check(w.garageQuote() == 90, "scaled repair and respray have one quote");
     w.money = 89;
     w.interactJob();
-    check(car.health == .5 && car.paint == 0 && w.wanted > 0 && w.money == 89, "unpaid repair changes nothing");
+    check(car.health == .5 && car.paint == 0 && w.wanted > 0 && w.money == 89,
+          "unpaid repair changes nothing");
     w.money = 100;
     w.interactJob();
     check(car.health == 1 && car.paint > 0 && w.wanted == 0 && w.money == 10, "repair and repaint in game");
@@ -152,14 +154,17 @@ void shopAndGarage(const std::filesystem::path &path)
     w.save(path);
     World restored;
     restored.load(path);
-    check(restored.ownedGarage == garage && restored.cars[0].personal && restored.cars[0].paint == car.paint &&
-          restored.cars[0].id == car.id && (restored.cars[0].body.p - car.body.p).length2() < .001 &&
-          restored.money == 10 && restored.inventory.ammo(WeaponId::automatic) == 30,
+    check(restored.ownedGarage == garage && restored.cars[0].personal &&
+              restored.cars[0].paint == car.paint && restored.cars[0].id == car.id &&
+              (restored.cars[0].body.p - car.body.p).length2() < .001 && restored.money == 10 &&
+              restored.inventory.ammo(WeaponId::automatic) == 30,
           "owned garage, physical car, paint, money and purchases survive load");
     restored.player.p = {car.body.p.x > 0 ? -400. : 400., 40};
     restored.player.height = restored.terrain.height(restored.player.p) + .85;
-    for (int frame = 0; frame < 60; ++frame) restored.step({}, 1./60);
-    check((restored.cars[0].body.p - car.body.p).length() < .4, "distant traffic leaves the owned car parked");
+    for (int frame = 0; frame < 60; ++frame)
+        restored.step({}, 1. / 60);
+    check((restored.cars[0].body.p - car.body.p).length() < .4,
+          "distant traffic leaves the owned car parked");
     w.controlledCar = 0;
     car.personal = false;
     int count = 0;
@@ -170,7 +175,8 @@ void shopAndGarage(const std::filesystem::path &path)
             ++count;
         }
     w.useOwnedGarage();
-    check(count == 3 && w.controlledCar == 0 && !car.personal, "fourth car refused without ejecting its driver");
+    check(count == 3 && w.controlledCar == 0 && !car.personal,
+          "fourth car refused without ejecting its driver");
 }
 void peaceContracts(const std::filesystem::path &path)
 {
@@ -245,7 +251,8 @@ void careerSeries(const std::filesystem::path &path)
 {
     World w;
     w.generate(17);
-    check(w.startSeries() && w.job.fare == 300 && w.job.deadline == w.time + 600, "start series at first vehicle");
+    check(w.startSeries() && w.job.fare == 300 && w.job.deadline == w.time + 600,
+          "start series at first vehicle");
     w.finishJob(false);
     check(w.seriesStage == 0 && w.jobEarnings == 0 && w.startSeries(), "failed stage can be replayed");
     auto deliver = [&](World &city, double health)
@@ -265,11 +272,13 @@ void careerSeries(const std::filesystem::path &path)
     check(w.startContract(JobKind::elimination), "ordinary contract remains available");
     w.killPerson(w.people.at(w.job.actor), {}, true);
     check(w.seriesStage == 1 && w.jobEarnings == 650, "ordinary contract does not advance series");
-    check(w.startSeries() && w.job.kind == JobKind::elimination && w.job.deadline == w.time + 510, "second stage selected");
+    check(w.startSeries() && w.job.kind == JobKind::elimination && w.job.deadline == w.time + 510,
+          "second stage selected");
     w.save(path);
     World resumed;
     resumed.load(path);
-    check(resumed.job.series && resumed.seriesStage == 1 && resumed.jobEarnings == 650, "active series restored after loading");
+    check(resumed.job.series && resumed.seriesStage == 1 && resumed.jobEarnings == 650,
+          "active series restored after loading");
     resumed.killPerson(resumed.people.at(resumed.job.actor), {}, false);
     check(resumed.seriesStage == 1 && resumed.startSeries(), "third-party kill does not advance stage");
     resumed.killPerson(resumed.people.at(resumed.job.actor), {}, true);
@@ -279,19 +288,22 @@ void careerSeries(const std::filesystem::path &path)
     check(resumed.seriesStage == 2 && resumed.job.acquired, "last vehicle needs seventy percent health");
     deliver(resumed, .70);
     check(resumed.lastPay == 1200 && resumed.jobEarnings == 2350 && resumed.seriesStage == 0 &&
-          resumed.seriesCompleted == 1 && resumed.startSeries(), "final bonus paid once and new series available");
+              resumed.seriesCompleted == 1 && resumed.startSeries(),
+          "final bonus paid once and new series available");
 }
 void consoleAndHail(const std::filesystem::path &path)
 {
     World w;
     w.generate(17);
     GameConsole console;
-    for (wchar_t c : std::wstring_view(L"moey 75")) console.insert(c);
+    for (wchar_t c : std::wstring_view(L"moey 75"))
+        console.insert(c);
     console.move(-5);
     console.insert(L'n');
     console.execute(w, console.submit());
     check(w.money == 75, "middle-of-command insertion uses caret");
-    for (wchar_t c : std::wstring_view(L"spe")) console.insert(c);
+    for (wchar_t c : std::wstring_view(L"spe"))
+        console.insert(c);
     console.history(-1);
     check(console.input() == L"money 75", "up recalls previous command");
     console.history(1);
@@ -314,11 +326,13 @@ void consoleAndHail(const std::filesystem::path &path)
     auto count = w.people.size();
     w.updateHailers();
     int actor = w.hailers.front().actor;
-    check(actor >= 0 && w.waitingForTaxi(actor) && w.people.size() == count, "street hail selects an existing pedestrian");
+    check(actor >= 0 && w.waitingForTaxi(actor) && w.people.size() == count,
+          "street hail selects an existing pedestrian");
     w.save(path);
     World restored;
     restored.load(path);
-    check(restored.waitingForTaxi(actor) && !restored.dayNightCycle && restored.simulationSpeed == 2, "street hail and world settings persist");
+    check(restored.waitingForTaxi(actor) && !restored.dayNightCycle && restored.simulationSpeed == 2,
+          "street hail and world settings persist");
     auto &car = restored.cars.at(restored.controlledCar);
     auto &p = restored.people.at(actor);
     car.body.angle = 0;
@@ -330,12 +344,14 @@ void consoleAndHail(const std::filesystem::path &path)
     check(restored.hailerInReach() == actor, "waiting passenger reachable when parked");
     restored.interactJob();
     check(restored.job.actor == actor && restored.job.ride.car == restored.controlledCar &&
-          !restored.waitingForTaxi(actor), "E accepts hail and begins normal boarding");
+              !restored.waitingForTaxi(actor),
+          "E accepts hail and begins normal boarding");
 }
 void passengerContracts(const std::filesystem::path &path)
 {
     World w;
-    auto board = [&](JobKind kind) {
+    auto board = [&](JobKind kind)
+    {
         w.generate(17);
         w.controlledCar = 0;
         check(w.startContract(kind), "passenger contract started");
@@ -348,21 +364,41 @@ void passengerContracts(const std::filesystem::path &path)
         car.body.height = p.body.height - .05;
         w.interactJob();
         check(!w.job.acquired && w.job.ride.car == 0, "passenger directed to a real car door");
-        for (int i = 0; i < 100 && !w.job.acquired; ++i) w.step({}, 1./60);
+        for (int i = 0; i < 100 && !w.job.acquired; ++i)
+            w.step({}, 1. / 60);
         check(w.job.acquired && p.riding == 0, "passenger seated by the simulation");
     };
     for (auto kind : {JobKind::taxi, JobKind::patient})
     {
         board(kind);
         int passenger = w.job.actor;
+        if (kind == JobKind::taxi)
+        {
+            // As in the managed game the ride goes to a bus stop some way off, and whoever
+            // the passenger is decides which.
+            check(w.job.ride.line == World::busStopRide && w.job.destination >= 0 &&
+                      w.job.destination < int(w.busStops.size()) &&
+                      (w.jobTarget() - w.busStops[w.job.destination]).length() < 1e-9,
+                  "a taxi ride does not end at a bus stop");
+            const Vec2 from = w.cars[0].body.p;
+            std::vector<double> within;
+            for (Vec2 stop : w.busStops)
+                if (const double d = (stop - from).length(); d >= 150 && d <= 530)
+                    within.push_back(d);
+            const double ride = (w.jobTarget() - from).length();
+            check(!within.empty() && ride >= 150 && ride <= 530,
+                  "the bus stop of a taxi ride is next door or across town");
+        }
         w.save(path);
         World loaded;
         loaded.load(path);
         check(loaded.job.kind == kind && loaded.people[passenger].riding == 0 &&
-              (loaded.jobTarget() - w.jobTarget()).length() < .01, "mid-trip save restores passenger and destination");
+                  (loaded.jobTarget() - w.jobTarget()).length() < .01,
+              "mid-trip save restores passenger and destination");
         auto &car = w.cars[0];
         auto &rider = w.people[passenger];
-        if (kind == JobKind::patient) check(rider.health < 1, "patient needs treatment");
+        if (kind == JobKind::patient)
+            check(rider.health < 1, "patient needs treatment");
         car.body.p = w.jobTarget();
         car.body.v = {};
         car.body.height = w.terrain.height(car.body.p) + .8;
@@ -372,7 +408,8 @@ void passengerContracts(const std::filesystem::path &path)
         check(w.job.kind == JobKind::none, "parked passenger trip closes");
         check(rider.riding < 0 && !rider.dead, "passenger walks after drop-off");
         check(w.lastPay > 0, "passenger fare paid");
-        if (kind == JobKind::patient) check(rider.health == 1, "clinic treats delivered patient");
+        if (kind == JobKind::patient)
+            check(rider.health == 1, "clinic treats delivered patient");
     }
     board(JobKind::taxi);
     auto &taxi = w.cars.at(w.controlledCar);
@@ -388,24 +425,34 @@ void passengerContracts(const std::filesystem::path &path)
     w.save(path);
     World resumed;
     resumed.load(path);
-    check(resumed.job.ride.scares == 2 && resumed.expectedPay() == w.expectedPay(), "adjusted fare survives reload");
+    check(resumed.job.ride.scares == 2 && resumed.expectedPay() == w.expectedPay(),
+          "adjusted fare survives reload");
     nlohmann::json old;
-    { std::ifstream in(path); in >> old; }
-    for (auto key : {"hailers","nextHail","seriesStage","seriesCompleted","jobEarnings","dayNightCycle","simulationSpeed"})
+    {
+        std::ifstream in(path);
+        in >> old;
+    }
+    for (auto key : {"hailers", "nextHail", "seriesStage", "seriesCompleted", "jobEarnings", "dayNightCycle",
+                     "simulationSpeed"})
         old.erase(key);
-    for (auto key : {"healthAtLastScare","crimeAt","scares"}) old["job"]["ride"].erase(key);
-    { std::ofstream out(path); out << old; }
+    for (auto key : {"healthAtLastScare", "crimeAt", "scares"})
+        old["job"]["ride"].erase(key);
+    {
+        std::ofstream out(path);
+        out << old;
+    }
     resumed.load(path);
     resumed.servicesStep(.01);
     check(resumed.job.acquired && resumed.job.ride.scares == 0 && resumed.job.fare == w.job.fare &&
-          resumed.seriesStage == 0 && resumed.dayNightCycle && resumed.simulationSpeed == 1,
+              resumed.seriesStage == 0 && resumed.dayNightCycle && resumed.simulationSpeed == 1,
           "older mid-trip save retains the fare and starts tracking damage at its actual vehicle health");
     taxi.body.v = {3, 0};
     w.interactJob();
     check(w.job.acquired, "cannot eject passenger while moving");
     taxi.body.v = {};
     w.interactJob();
-    check(w.job.kind == JobKind::none && w.jobsFailed == 1 && w.jobEarnings == 0, "early drop-off has no fare");
+    check(w.job.kind == JobKind::none && w.jobsFailed == 1 && w.jobEarnings == 0,
+          "early drop-off has no fare");
     board(JobKind::taxi);
     int passenger = w.job.actor;
     w.controlledCar = -1;
@@ -434,7 +481,8 @@ int main()
             w.generate(seed);
             test(w);
         }
-        auto armed = std::ranges::find_if(w.people, [](const Person &p) { return !p.dead && p.sidearm != WeaponId::none; });
+        auto armed = std::ranges::find_if(w.people, [](const Person &p)
+                                          { return !p.dead && p.sidearm != WeaponId::none; });
         check(armed != w.people.end(), "city has armed civilians");
         auto index = size_t(armed - w.people.begin());
         armed->alertUntil = w.time + 5;
@@ -445,7 +493,8 @@ int main()
         World resumed;
         resumed.load(path);
         check(resumed.people[index].sidearm == armed->sidearm && resumed.people[index].aimSeconds == .7 &&
-              resumed.people[index].shotAt == armed->shotAt && resumed.people[index].alertUntil == armed->alertUntil,
+                  resumed.people[index].shotAt == armed->shotAt &&
+                  resumed.people[index].alertUntil == armed->alertUntil,
               "civilian weapon and interrupted firing cadence survive save");
         check(resumed.job.actor == w.job.actor && resumed.job.destination == w.job.destination &&
                   resumed.energySeconds == 17 && resumed.jobsCompleted == 4,
@@ -458,8 +507,13 @@ int main()
         auto old = j;
         old["format"] = "promzona-cpp-5";
         old.erase("ownedGarage");
-        for (auto &c : old["cars"]) { c.erase("paint"); c.erase("personal"); }
-        for (auto &p : old["people"]) p.erase("defence");
+        for (auto &c : old["cars"])
+        {
+            c.erase("paint");
+            c.erase("personal");
+        }
+        for (auto &p : old["people"])
+            p.erase("defence");
         auto &pickups = old["pickups"];
         auto first = std::remove_if(pickups.begin(), pickups.end(),
                                     [](const auto &p) { return p.at("energy") == true; });

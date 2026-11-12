@@ -1,5 +1,7 @@
 #pragma once
 #include "math.hpp"
+#include <cstdint>
+#include <vector>
 
 namespace pz
 {
@@ -24,6 +26,17 @@ struct WaterRipple
     Vec2 centre;
     double born{}, strength{};
 };
+// A hole in the asphalt: a decal of half-width `size` that jolts a car driving over it.
+struct Pothole
+{
+    Vec2 p;
+    double size{};
+    int style{};
+};
+// Holes of the block north-east of node (i, j), relative to that node, exactly as the
+// managed CityRoadDetail.Holes yields them. The flags say whether a street leaves the
+// node toward +Z and toward +X.
+std::vector<Pothole> blockPotholes(std::uint32_t seed, int i, int j, bool roadNorth, bool roadEast);
 struct RoadPuddle
 {
     static constexpr double radiusX = 1.48, radiusZ = .96;

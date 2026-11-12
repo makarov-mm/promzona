@@ -13,7 +13,7 @@ uniform int uSurface;
 uniform int uInstanced;
 uniform float uTime;
 uniform float uPose, uPreviousPose, uPoseBlend;
-out vec3 vWorld, vNormal;
+out vec3 vWorld, vNormal, vLocal;
 out vec2 vUv;
 flat out vec4 vDetail;
 
@@ -52,6 +52,7 @@ void main()
         p = skin * p;
         n = mat3(skin) * n;
     }
+    vLocal = p.xyz;
     vec4 world = uModel * p;
     vec4 detail = aJoints;
     if (uInstanced != 0) {

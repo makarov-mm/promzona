@@ -163,7 +163,7 @@ void World::updateRescues()
     {
         int id = int((casualtyCursor + i) % people.size());
         auto &p = people[id];
-        if (!p.dead || time < p.rescueAfter || paramedicCall(id) ||
+        if (!p.dead || p.drowned || time < p.rescueAfter || paramedicCall(id) ||
             std::ranges::any_of(rescues, [&](const Rescue &r) { return r.patient == id; }))
             continue;
         casualtyCursor = (id + 1) % people.size();
@@ -183,7 +183,8 @@ void World::updateRescues()
         for (auto &c : cars)
         {
             if (c.id == 0 || int(c.id) == controlledCar || c.destroyed || c.falling || c.fireTime > 0 ||
-                c.line >= 0 || c.driverless || c.responding || c.summoned || c.personal || route.distances[c.routeTo] < 0)
+                c.line >= 0 || c.driverless || c.responding || c.summoned || c.personal ||
+                route.distances[c.routeTo] < 0)
                 continue;
             const auto *crew = ambulanceCall(c.id);
             if (crew && crew->stage != RescueStage::standby)

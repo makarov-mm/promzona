@@ -4,8 +4,31 @@
 
 namespace pz
 {
-enum class District { estate, courtyard, cottages, centre, garages, industry };
-enum class BuildingKind { apartment, cottage, garage, hall, chimney, tank, shed, pump, fence, crate, wagon, buffer, stall };
+enum class District
+{
+    estate,
+    courtyard,
+    cottages,
+    centre,
+    garages,
+    industry
+};
+enum class BuildingKind
+{
+    apartment,
+    cottage,
+    garage,
+    hall,
+    chimney,
+    tank,
+    shed,
+    pump,
+    fence,
+    crate,
+    wagon,
+    buffer,
+    stall
+};
 
 struct Building
 {
@@ -81,6 +104,9 @@ class CityLayout
     static bool clinic(int i, int j);
     static bool station(int i, int j) { return i == 21 && j == 13; }
     static Vec2 direction(int d);
+    // Every junction runs one 28 s programme: 12 s for the east-west street, 2 s all red,
+    // 12 s for the north-south street, 2 s all red.
+    static double signalPhase(int i, int j, double time);
     static bool green(int i, int j, int direction, double time);
 };
 } // namespace pz

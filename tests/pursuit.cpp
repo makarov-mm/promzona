@@ -58,7 +58,11 @@ void arrestTest()
     check(!w.canTakePassengerJob(officer), "taxi can recruit arresting officer");
     w.player.p = cop.body.p + (cop.body.p - car.body.p).unit() * 1.1;
     w.player.height = w.terrain.height(w.player.p) + .85;
-    auto advance = [&](int steps) { for (int i = 0; i < steps; ++i) w.arrestStep(.02); };
+    auto advance = [&](int steps)
+    {
+        for (int i = 0; i < steps; ++i)
+            w.arrestStep(.02);
+    };
     w.aiming = true;
     advance(100);
     check(w.patrol.hold == 0, "armed suspect arrested");
@@ -84,34 +88,44 @@ void arrestTest()
     w.patrol.hold = 0;
     advance(45);
     check(w.patrol.hold > .85 && !w.arrests, "no continuous contact timer");
-    w.player.v = {3,0};
+    w.player.v = {3, 0};
     advance(30);
     check(w.patrol.hold == 0, "moving suspect still in custody");
     w.player.v = {};
     advance(45);
     auto path = std::filesystem::temp_directory_path() /
-        ("promzona-booking-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+                ("promzona-booking-" +
+                 std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
     w.save(path);
     World resumed;
-    try { resumed.load(path); }
-    catch (...) { std::filesystem::remove(path); throw; }
+    try
+    {
+        resumed.load(path);
+    }
+    catch (...)
+    {
+        std::filesystem::remove(path);
+        throw;
+    }
     std::filesystem::remove(path);
-    check(resumed.patrol.officer == officer && resumed.patrol.hold == w.patrol.hold, "arrest timer lost on reload");
-    for (int i = 0; i < 34; ++i) resumed.arrestStep(.02);
-    check(resumed.arrests == 1 && resumed.money == 240 && resumed.lastFine == 160 &&
-          resumed.wanted == 0 && !resumed.inventory.active() &&
-          std::abs(resumed.clock.hour - (w.clock.hour + 5)) < .001 &&
-          (resumed.position() - resumed.stationEntrance).length() < 3, "wrong station, time or fine after booking");
+    check(resumed.patrol.officer == officer && resumed.patrol.hold == w.patrol.hold,
+          "arrest timer lost on reload");
+    for (int i = 0; i < 34; ++i)
+        resumed.arrestStep(.02);
+    check(resumed.arrests == 1 && resumed.money == 240 && resumed.lastFine == 160 && resumed.wanted == 0 &&
+              !resumed.inventory.active() && std::abs(resumed.clock.hour - (w.clock.hour + 5)) < .001 &&
+              (resumed.position() - resumed.stationEntrance).length() < 3,
+          "wrong station, time or fine after booking");
 
     w.controlledCar = 0;
     auto &target = w.cars[0];
-    target.body.p = w.player.p + Vec2{6,0};
+    target.body.p = w.player.p + Vec2{6, 0};
     target.body.angle = 0;
     target.body.v = {};
     target.body.roadLevel = 0;
     target.body.height = w.terrain.height(target.body.p) + .8;
     auto door = w.passengerDoor(target, cop.body.p);
-    w.resumeWalk(cop, door + Vec2{-.4,0}, 0);
+    w.resumeWalk(cop, door + Vec2{-.4, 0}, 0);
     w.patrol.hold = 0;
     target.recovering = true;
     advance(150);
@@ -121,70 +135,89 @@ void arrestTest()
     advance(120);
     check(!w.arrests, "car booked before door contact time");
     advance(7);
-    check(w.arrests == 1 && w.money == 0 && w.lastFine == 30 && w.controlledCar < 0, "vehicle booking failed");
+    check(w.arrests == 1 && w.money == 0 && w.lastFine == 30 && w.controlledCar < 0,
+          "vehicle booking failed");
 }
 void vehicleEntryTest()
 {
     World w;
     w.generate(20261105);
     w.controlledCar = -1;
-    auto candidate = std::ranges::find_if(w.cars,[&](const Car &c) {
-        if (c.kind != 3 || c.body.roadLevel || w.levelAt(c.body.p,14)) return false;
-        w.player.p = World::driverDoor(c,-1);
-        w.player.height = w.surface(w.player.p,0) + .85;
-        return w.entryPath(c,w.player.p);
-    });
-    check(candidate != w.cars.end(),"missing accessible patrol car in fixture");
+    auto candidate = std::ranges::find_if(w.cars,
+                                          [&](const Car &c)
+                                          {
+                                              if (c.kind != 3 || c.body.roadLevel || w.levelAt(c.body.p, 14))
+                                                  return false;
+                                              w.player.p = World::driverDoor(c, -1);
+                                              w.player.height = w.surface(w.player.p, 0) + .85;
+                                              return w.entryPath(c, w.player.p);
+                                          });
+    check(candidate != w.cars.end(), "missing accessible patrol car in fixture");
     auto &car = *candidate;
     const int id = int(car.id);
-    car.body.v = {5,0};
+    car.body.v = {5, 0};
     w.enterExit();
-    check(w.vehicleEntry.car != id,"boarded a moving vehicle");
+    check(w.vehicleEntry.car != id, "boarded a moving vehicle");
     w.vehicleEntry = {};
     car.body.v = {};
     w.enterExit();
-    check(w.vehicleEntry.car == id && w.controlledCar == -1,"expected approach to patrol door");
+    check(w.vehicleEntry.car == id && w.controlledCar == -1, "expected approach to patrol door");
     PlayerInput input;
-    input.walking = {1,0};
-    w.stepEntry(input,.1);
-    check(w.vehicleEntry.car < 0 && !car.driverless,"walking failed to cancel entry");
+    input.walking = {1, 0};
+    w.stepEntry(input, .1);
+    check(w.vehicleEntry.car < 0 && !car.driverless, "walking failed to cancel entry");
     w.enterExit();
     input = {};
-    w.stepEntry(input,.4);
-    check(w.controlledCar < 0 && car.doorOpen > .4,"transferred before the door opened");
+    w.stepEntry(input, .4);
+    check(w.controlledCar < 0 && car.doorOpen > .4, "transferred before the door opened");
     input.shooting = true;
-    w.stepEntry(input,.01);
-    check(w.vehicleEntry.car < 0,"shooting failed to cancel entry");
+    w.stepEntry(input, .01);
+    check(w.vehicleEntry.car < 0, "shooting failed to cancel entry");
 
     // Both sides blocked: nobody disembarks and there is no partial crime/transfer.
     const auto originalSize = w.staticBodies.size();
-    for (int side : {-1,1})
+    for (int side : {-1, 1})
     {
         Body wall{};
-        wall.circle = false; wall.invMass = 0;
-        wall.angle = car.body.angle; wall.height = car.body.height; wall.verticalExtent = 3;
-        wall.halfW = 2; wall.halfH = 6;
-        wall.p = car.body.p + rotate({side * (car.body.halfW + 2.),0},car.body.angle);
+        wall.circle = false;
+        wall.invMass = 0;
+        wall.angle = car.body.angle;
+        wall.height = car.body.height;
+        wall.verticalExtent = 3;
+        wall.halfW = 2;
+        wall.halfH = 6;
+        wall.p = car.body.p + rotate({side * (car.body.halfW + 2.), 0}, car.body.angle);
         w.staticBodies.push_back(wall);
     }
     check(!w.unloadCrew(car) && !car.driverless && !w.wanted, "blocked crew partially committed");
     w.staticBodies.resize(originalSize);
     w.enterExit();
     input = {};
-    for (int i=0;i<130 && w.controlledCar<0;++i) w.stepEntry(input,.01);
-    auto cops = [&] { return std::ranges::count(w.people,Person::Uniform::police,&Person::uniform); };
-    check(w.controlledCar==id && cops()==2 && car.driverless && w.wanted>0,"patrol crew not ejected");
+    for (int i = 0; i < 130 && w.controlledCar < 0; ++i)
+        w.stepEntry(input, .01);
+    auto cops = [&] { return std::ranges::count(w.people, Person::Uniform::police, &Person::uniform); };
+    check(w.controlledCar == id && cops() == 2 && car.driverless && w.wanted > 0, "patrol crew not ejected");
     w.enterExit();
-    check(w.controlledCar<0 && car.driverless,"empty vehicle restored AI driver on exit");
+    check(w.controlledCar < 0 && car.driverless, "empty vehicle restored AI driver on exit");
     double crime = w.wanted;
-    check(w.unloadCrew(car) && cops()==2 && w.wanted==crime,"duplicate crew or crime on re-entry");
+    check(w.unloadCrew(car) && cops() == 2 && w.wanted == crime, "duplicate crew or crime on re-entry");
     auto path = std::filesystem::temp_directory_path() /
-        ("promzona-carjack-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+                ("promzona-carjack-" +
+                 std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
     w.save(path);
     World resumed;
-    try { resumed.load(path); } catch (...) { std::filesystem::remove(path); throw; }
+    try
+    {
+        resumed.load(path);
+    }
+    catch (...)
+    {
+        std::filesystem::remove(path);
+        throw;
+    }
     std::filesystem::remove(path);
-    check(resumed.cars[id].driverless && std::ranges::count(resumed.people,Person::Uniform::police,&Person::uniform)==2,
+    check(resumed.cars[id].driverless &&
+              std::ranges::count(resumed.people, Person::Uniform::police, &Person::uniform) == 2,
           "empty car or expelled crew lost on reload");
 }
 
@@ -197,10 +230,11 @@ void test()
     auto &armour = w.cars[tank];
     check(armour.kind == 11 && armour.summoned && armour.mass == 32000, "wrong summoned tank");
     w.controlledCar = -1;
-    w.player.p = World::driverDoor(armour,-1);
+    w.player.p = World::driverDoor(armour, -1);
     w.player.height = armour.body.height;
     w.enterExit();
-    for (int tick=0; tick<150 && w.vehicleEntry.car>=0; ++tick) w.step({}, 1./120);
+    for (int tick = 0; tick < 150 && w.vehicleEntry.car >= 0; ++tick)
+        w.step({}, 1. / 120);
     check(w.controlledCar == tank, "tank cannot be boarded");
     double bearing = armour.heading() + .52;
     w.shoot(bearing);

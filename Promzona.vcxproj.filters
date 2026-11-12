@@ -19,6 +19,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include/promzona\animation.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\appearance.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\architecture.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\assets.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\audio.hpp"><Filter>Заголовки</Filter></ClInclude>
@@ -34,8 +35,10 @@
     <ClInclude Include="include/promzona\front_end.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\jobs.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\layout.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\localization.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\math.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\minimap.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\names.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\physics.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\renderer.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\road_levels.hpp"><Filter>Заголовки</Filter></ClInclude>
@@ -50,7 +53,11 @@
     <ClInclude Include="third_party\json.hpp"><Filter>Заголовки</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <None Include="src\localization_phrases.inc"><Filter>Исходники</Filter></None>
+  </ItemGroup>
+  <ItemGroup>
     <ClCompile Include="src\animation.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\appearance.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\architecture.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\assets.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\audio.cpp"><Filter>Исходники</Filter></ClCompile>
@@ -59,6 +66,7 @@
     <ClCompile Include="src\civilian_combat.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\civilian_cover.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\combat.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\consequences.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\control_hints.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\core.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\detail_stream.cpp"><Filter>Исходники</Filter></ClCompile>
@@ -71,15 +79,20 @@
     <ClCompile Include="src\jobs.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\shops.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\layout.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\localization.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\main.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\managed_import.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\minimap.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\names.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\passenger_jobs.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\peace_jobs.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\physics.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\pursuit.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\arrest.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\renderer.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\renewal.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\road_levels.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\roles.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\save.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\social.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\street_fixtures.cpp"><Filter>Исходники</Filter></ClCompile>

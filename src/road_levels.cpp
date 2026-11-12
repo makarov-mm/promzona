@@ -56,12 +56,21 @@ double RoadLevel::floor(const Terrain &t, Vec2 p) const
 Path RoadLevel::route(bool east) const
 {
     std::vector<Vec2> points;
-    // Match the street/junction path endpoints (9 m after and 11 m before each node).
-    for (int n = 9; n <= 277; ++n)
+    // Match the street/junction path endpoints (9 m after each node and the stop line before it).
+    // The lane lies beside the centre line square to the road, not along z: on the diagonal
+    // stretch at either end that left oncoming traffic 2.6 m apart, less than a truck and a
+    // car need, and the two stood facing each other with the road behind them filling up.
+    auto point = [&](double n)
     {
         double px = x + (east ? -length + n : length - n);
-        points.push_back({px, centreZ(px) + (east ? CityLayout::lane : -CityLayout::lane)});
-    }
+        const double slope = centreZ(px + .5) - centreZ(px - .5);
+        const double side = (east ? CityLayout::lane : -CityLayout::lane) / std::sqrt(1 + slope * slope);
+        points.push_back({px - slope * side, centreZ(px) + side});
+    };
+    const double last = 2 * length - stopLine;
+    for (int n = 9; n < last; ++n)
+        point(n);
+    point(last);
     return Path(std::move(points));
 }
 std::vector<RoadLevel> planRoadLevels(const CityLayout &l, std::uint32_t seed)
@@ -71,7 +80,8 @@ std::vector<RoadLevel> planRoadLevels(const CityLayout &l, std::uint32_t seed)
         return levels;
     const bool districts = l.revision() == CityLayout::districtRevision;
     LayoutRandom random(std::bit_cast<std::int32_t>(seed ^ (districts ? 0x4c371u : 0x64726177u)));
-    auto add = [&](int col, int row) {
+    auto add = [&](int col, int row)
+    {
         row += random.index(3) - 1;
         RoadLevel s;
         s.id = int(levels.size()) + 1;
@@ -87,8 +97,8 @@ std::vector<RoadLevel> planRoadLevels(const CityLayout &l, std::uint32_t seed)
             for (int row : {8, 23, 38})
                 add(col, row);
     else
-        for (auto [col,row] : std::array<std::pair<int,int>,4>{{{8,8},{24,16},{40,32},{8,40}}})
-            add(col,row);
+        for (auto [col, row] : std::array<std::pair<int, int>, 4>{{{8, 8}, {24, 16}, {40, 32}, {8, 40}}})
+            add(col, row);
     return levels;
 }
 

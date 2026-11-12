@@ -206,8 +206,8 @@ void districtBuilding(CityChunk &data, const BuildingPlan &p, int style)
             float strip = (x + .14f) / 3;
             float dx = -x - .14f + (i + .5f) * strip;
             int canvas = i % 2 ? Paint : Canvas;
-            part(canvas, dx, h + .025f, 0, strip/2, .025f, z + .2f);
-            part(canvas, dx, h - .075f, front * (z + .18f), strip/2, .075f, .02f);
+            part(canvas, dx, h + .025f, 0, strip / 2, .025f, z + .2f);
+            part(canvas, dx, h - .075f, front * (z + .18f), strip / 2, .075f, .02f);
         }
         for (int n = 0; n < 4; ++n)
         {
@@ -238,7 +238,8 @@ BuildingPlan planBuilding(const Building &b, double ground)
                   std::uint32_t(b.style));
     p.kind = b.kind;
     p.front = b.front;
-    if (p.kind != BuildingKind::apartment) return p;
+    if (p.kind != BuildingKind::apartment)
+        return p;
     float half = p.windowsOnZ ? p.halfWidth : p.halfDepth;
     int columns = std::max(1, int((2 * half - 1.2f) / bay));
     for (int side : {-1, 1})
@@ -269,7 +270,11 @@ BuildingPlan planBuilding(const Building &b, double ground)
 }
 void buildingCore(CityChunk &data, const BuildingPlan &p, int facade)
 {
-    if (p.kind != BuildingKind::apartment) { districtBuilding(data,p,facade); return; }
+    if (p.kind != BuildingKind::apartment)
+    {
+        districtBuilding(data, p, facade);
+        return;
+    }
     auto centre = p.origin + Vec3{0, p.height * .5f, 0};
     box(data[Facade + clamp(facade, 0, 7)], centre, {p.halfWidth, p.height * .5f, p.halfDepth}, 3.2f);
     box(data[Roof], p.origin + Vec3{0, p.height + .12f, 0}, {p.halfWidth + .12f, .12f, p.halfDepth + .12f});
@@ -280,7 +285,8 @@ void buildingCore(CityChunk &data, const BuildingPlan &p, int facade)
 }
 void buildingDetails(CityChunk &data, const BuildingPlan &p)
 {
-    if (p.kind != BuildingKind::apartment) return;
+    if (p.kind != BuildingKind::apartment)
+        return;
     // Parapet, drainpipe, entrance canopy and roof ventilation: metre-sized silhouettes.
     for (int side : {-1, 1})
     {

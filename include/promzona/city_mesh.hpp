@@ -23,8 +23,14 @@ enum CitySurface
     Roof = 23,
     Foundation = 24,
     Sign = 25, // three existing texture signs
-    Rust = 28, Canvas, SeaCanvas, Ballast, WorkshopSteel, StationSign,
-    SurfaceCount
+    Rust = 28,
+    Canvas,
+    SeaCanvas,
+    Ballast,
+    WorkshopSteel,
+    StationSign,
+    PotholeDecal, // three photographs
+    SurfaceCount = PotholeDecal + 3
 };
 using CityChunk = std::array<MeshData, SurfaceCount>;
 inline void addCityTriangle(MeshData &mesh, Vec3 a, Vec3 b, Vec3 c)

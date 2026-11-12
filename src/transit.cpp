@@ -95,7 +95,7 @@ double platformRoughness(const World &world, Vec2 road, Vec2 direction, int kind
     const auto right = perpendicular(direction);
     const double width = kind == 9 ? 7.2 : 3.9;
     const auto curb = road + right * width;
-    if (!world.layout.urbanSite(curb,.6) || world.insideBuilding(curb,world.terrain.height(curb)+1,1))
+    if (!world.layout.urbanSite(curb, .6) || world.insideBuilding(curb, world.terrain.height(curb) + 1, 1))
         return 100.;
     double worst = 0;
     // A flat foundation can end in a steep cut between the vehicle and the pavement.
@@ -158,16 +158,17 @@ TransitLine makeLine(const World &world, std::span<const int> nodes, int kind)
         const double scheduled = stop;
         auto [point, heading] = line.pose(scheduled);
         double best = platformRoughness(world, point, forward(heading), kind);
-        if (best <= .25) continue;
+        if (best <= .25)
+            continue;
         // Keep the original stop count/order and only consider straight streets nearby.
-        for (auto it = std::lower_bound(midpoints.begin(),midpoints.end(),scheduled-72.);
-             it != midpoints.end() && *it <= scheduled+72.; ++it)
+        for (auto it = std::lower_bound(midpoints.begin(), midpoints.end(), scheduled - 72.);
+             it != midpoints.end() && *it <= scheduled + 72.; ++it)
             for (double shift : {0., -4., 4.})
             {
                 const double candidate = *it + shift;
                 auto [at, angle] = line.pose(candidate);
-                double score = platformRoughness(world, at, forward(angle), kind)
-                             + std::abs(candidate-scheduled) * .001;
+                double score = platformRoughness(world, at, forward(angle), kind) +
+                               std::abs(candidate - scheduled) * .001;
                 if (score < best)
                 {
                     best = score;
@@ -292,11 +293,10 @@ void World::resumeWalk(Person &p, Vec2 waiting, int level)
     p.body.v = {};
     p.body.roadLevel = level;
     p.body.height = surface(waiting, level) + .85;
-    // Pedestrians use the northeast corner of each junction as their path anchor.
-    int x = clamp(int(std::round((waiting.x - 9.1 - layout.coordinate(0)) / spacing)), 0, nodes - 1);
-    int z = clamp(int(std::round((waiting.z - 9.1 - layout.coordinate(0)) / spacing)), 0, nodes - 1);
-    p.node = p.next = node(x, z);
-    p.target = nodePoint(p.node) + Vec2{9.1, 9.1};
+    // Whoever is set down somewhere else has left the old haunt behind.
+    p.role = Person::Role::none;
+    p.roleHome = {};
+    anchorWalk(p);
     p.body.wake();
 }
 
@@ -309,10 +309,10 @@ int platformStop(const TransitLine &line, const Car &car)
 
 bool doorsOpen(const Car &car)
 {
-    return car.line >= 0 && !car.driverless && car.dwell > 0 && !car.destroyed && !car.falling && car.fireTime <= 0 &&
-           car.body.v.length2() <= .8 * .8;
+    return car.line >= 0 && !car.driverless && car.dwell > 0 && !car.destroyed && !car.falling &&
+           car.fireTime <= 0 && car.body.v.length2() <= .8 * .8;
 }
-}
+} // namespace
 
 double World::placeTransitRider(Body &body, const Car &car, int seat)
 {
@@ -330,9 +330,11 @@ double World::placeTransitRider(Body &body, const Car &car, int seat)
 int World::freeTransitSeat(const Car &car) const
 {
     std::array<bool, 8> used{};
-    if (transitPassenger() && controlledCar == int(car.id)) used[playerTransitSeat] = true;
+    if (transitPassenger() && controlledCar == int(car.id))
+        used[playerTransitSeat] = true;
     for (const auto &person : people)
-        if (person.riding == int(car.id)) used[person.seat] = true;
+        if (person.riding == int(car.id))
+            used[person.seat] = true;
     auto seat = std::ranges::find(used, false);
     return seat == used.end() ? -1 : int(seat - used.begin());
 }
@@ -345,15 +347,17 @@ int World::boardableTransit() const
     double best = 100;
     for (const auto &car : cars)
     {
-        if (!doorsOpen(car) || (car.body.p-player.p).length2() > 100 ||
-            std::abs(player.height - car.body.height) > 1.8) continue;
+        if (!doorsOpen(car) || (car.body.p - player.p).length2() > 100 ||
+            std::abs(player.height - car.body.height) > 1.8)
+            continue;
         const auto &line = lines[car.line];
-        auto curb = line.curb(platformStop(line,car));
-        if ((curb-car.body.p).length2() > 100) continue;
-        auto door = passengerDoor(car,curb);
-        double distance = std::min((player.p-door).length2(), (player.p-curb).length2());
+        auto curb = line.curb(platformStop(line, car));
+        if ((curb - car.body.p).length2() > 100)
+            continue;
+        auto door = passengerDoor(car, curb);
+        double distance = std::min((player.p - door).length2(), (player.p - curb).length2());
         if (distance < 2.5 * 2.5 && distance < best && freeTransitSeat(car) >= 0 &&
-            blastVisible(player.p,player.height,door,car.body.height+.05))
+            blastVisible(player.p, player.height, door, car.body.height + .05))
         {
             nearest = int(car.id);
             best = distance;
@@ -367,12 +371,14 @@ bool World::rideTransit()
     if (transitPassenger())
     {
         const auto &car = cars[controlledCar];
-        if (doorsOpen(car) && leaveTransitAt(car,platformStop(lines[car.line],car))) return true;
+        if (doorsOpen(car) && leaveTransitAt(car, platformStop(lines[car.line], car)))
+            return true;
         transitExitRequested = true;
         return true;
     }
     const int carIndex = boardableTransit();
-    if (carIndex < 0) return false;
+    if (carIndex < 0)
+        return false;
     auto &car = cars[carIndex];
     playerTransitSeat = freeTransitSeat(car);
     controlledCar = carIndex;
@@ -390,23 +396,29 @@ std::optional<Vec2> World::platformExit(const Car &car, int stop) const
 {
     const auto &line = lines[car.line];
     const auto centre = line.curb(stop);
-    if ((centre-car.body.p).length2() > 100) return {};
+    if ((centre - car.body.p).length2() > 100)
+        return {};
     const auto tangent = forward(line.pose(line.stops[stop]).second);
     for (double offset : {0., .9, -.9, 1.8, -1.8, 2.7, -2.7})
     {
         auto p = centre + tangent * offset;
         double y = terrain.height(p) + .85;
-        if (!layout.urbanSite(p,.4) || scenerySolid(p,y,.35) || insideBuilding(p,y,.35)) continue;
-        auto overlaps = [&](const Body &b) {
-            if (std::abs(b.height-y) > b.verticalExtent * .5 + .8) return false;
-            auto d = rotate(p-b.p,-b.angle);
-            return b.circle ? d.length2() < (b.radius+.4)*(b.radius+.4) :
-                   std::abs(d.x)<b.halfW+.4 && std::abs(d.z)<b.halfH+.4;
+        if (!layout.urbanSite(p, .4) || scenerySolid(p, y, .35) || insideBuilding(p, y, .35))
+            continue;
+        auto overlaps = [&](const Body &b)
+        {
+            if (std::abs(b.height - y) > b.verticalExtent * .5 + .8)
+                return false;
+            auto d = rotate(p - b.p, -b.angle);
+            return b.circle ? d.length2() < (b.radius + .4) * (b.radius + .4)
+                            : std::abs(d.x) < b.halfW + .4 && std::abs(d.z) < b.halfH + .4;
         };
-        if (std::ranges::any_of(people,[&](const Person &v){return v.riding<0 && !v.dead && overlaps(v.body);}) ||
+        if (std::ranges::any_of(people, [&](const Person &v)
+                                { return v.riding < 0 && !v.dead && overlaps(v.body); }) ||
             (controlledCar < 0 && overlaps(player)) ||
-            std::ranges::any_of(cars,[&](const Car &v){return overlaps(v.body);}) ||
-            std::ranges::any_of(staticBodies,[&](const Body &v){return v.invMass<1 && overlaps(v);})) continue;
+            std::ranges::any_of(cars, [&](const Car &v) { return overlaps(v.body); }) ||
+            std::ranges::any_of(staticBodies, [&](const Body &v) { return v.invMass < 1 && overlaps(v); }))
+            continue;
         return p;
     }
     return {};
@@ -414,8 +426,9 @@ std::optional<Vec2> World::platformExit(const Car &car, int stop) const
 
 bool World::leaveTransitAt(const Car &car, int stop)
 {
-    auto exit = platformExit(car,stop);
-    if (!exit) return false;
+    auto exit = platformExit(car, stop);
+    if (!exit)
+        return false;
     disembarkPlayer(car, *exit);
     return true;
 }
@@ -437,35 +450,43 @@ void World::disembarkPlayer(const Car &car, Vec2 at)
 void World::exchangePassengers(Car &car, int stop)
 {
     if (transitPassenger() && controlledCar == int(car.id) && transitExitRequested)
-        leaveTransitAt(car,stop);
+        leaveTransitAt(car, stop);
     for (auto &p : people)
         if (p.riding == int(car.id) && p.alight == stop)
-            if (auto at = platformExit(car,stop)) resumeWalk(p,*at,0);
+            if (auto at = platformExit(car, stop))
+                resumeWalk(p, *at, 0);
 }
 
 void World::updatePlatforms()
 {
     nextPlatformScan = time + .5;
-    if (trafficCells.empty()) indexTraffic();
+    if (trafficCells.empty())
+        indexTraffic();
     for (const auto &car : cars)
     {
-        if (car.line < 0 || (!car.driverless && car.fireTime <= 0) || car.destroyed || car.falling || car.body.v.length2() > .8*.8) continue;
+        if (car.line < 0 || (!car.driverless && car.fireTime <= 0) || car.destroyed || car.falling ||
+            car.body.v.length2() > .8 * .8)
+            continue;
         if (transitPassenger() && int(car.id) == controlledCar)
-            if (auto exit = vehicleExit(car)) disembarkPlayer(car, *exit);
+            if (auto exit = vehicleExit(car))
+                disembarkPlayer(car, *exit);
         for (auto &p : people)
             if (p.riding == int(car.id))
                 if (auto exit = vehicleExit(car))
                 {
                     resumeWalk(p, *exit, car.body.roadLevel);
-                    if (car.fireTime > 0) scarePerson(p, car.body.p, 1.);
+                    if (car.fireTime > 0)
+                        scarePerson(p, car.body.p, 1.);
                 }
     }
-    auto eligible = [&](int i) {
+    auto eligible = [&](int i)
+    {
         const auto &p = people[i];
-        return !p.dead && p.riding < 0 && !p.body.roadLevel && p.ownedScooter < 0 && !p.inCompany &&
-               !p.courier && p.fear < .15 && p.health > 0 && p.burnUntil <= time && p.alertUntil <= time &&
-               p.watchUntil <= time && p.boardAfter <= time && !waitingForTaxi(i) && !paramedicCall(i) &&
-               i != patrol.officer && !((job.passenger() || job.kind == JobKind::elimination) && job.actor == i);
+        return !p.dead && p.injuredUntil <= time && p.riding < 0 && !p.body.roadLevel && p.ownedScooter < 0 &&
+               p.role == Person::Role::none && !p.inCompany && !p.courier && p.fear < .15 && p.health > 0 &&
+               p.burnUntil <= time && p.alertUntil <= time && p.watchUntil <= time && p.boardAfter <= time &&
+               !waitingForTaxi(i) && !paramedicCall(i) && i != patrol.officer &&
+               !((job.passenger() || job.kind == JobKind::elimination) && job.actor == i);
     };
     for (int i = 0; i < int(people.size()); ++i)
     {
@@ -483,17 +504,19 @@ void World::updatePlatforms()
         std::vector<Car *> arrivals(line.stops.size());
         for (auto &c : cars)
             if (c.line == l && doorsOpen(c) && (int(c.id) != controlledCar || transitPassenger()))
-                arrivals[platformStop(line,c)] = &c;
-        int waiting = int(std::ranges::count(people,l,&Person::waitingLine));
+                arrivals[platformStop(line, c)] = &c;
+        int waiting = int(std::ranges::count(people, l, &Person::waitingLine));
         for (int s = 0; s < int(line.stops.size()); ++s)
         {
             const auto curb = line.curb(s);
-            walkersNear(curb,14,candidates);
+            walkersNear(curb, 14, candidates);
             const auto tangent = forward(line.pose(line.stops[s]).second);
             Car *car = arrivals[s];
-            if (car && (car->body.p-curb).length2()>100) car = nullptr;
-            if (car) exchangePassengers(*car,s);
-            const Vec2 door = car ? passengerDoor(*car,curb) : curb;
+            if (car && (car->body.p - curb).length2() > 100)
+                car = nullptr;
+            if (car)
+                exchangePassengers(*car, s);
+            const Vec2 door = car ? passengerDoor(*car, curb) : curb;
             int queued = 0, first = -1;
             for (int i : candidates)
             {
@@ -501,28 +524,34 @@ void World::updatePlatforms()
                 if (p.waitingLine == l && p.waitingStop == s)
                 {
                     ++queued;
-                    p.platformTarget = curb + tangent * (double(int(p.body.id % 3)-1) * .85);
-                    if (!car) continue;
+                    // Three places along the kerb, and on the pavement wherever the stop is: at
+                    // a stop in a bend the row ran out into the carriageway, and the car that
+                    // came round the corner waited for the people who waited for the tram.
+                    p.platformTarget = kerbside(curb + tangent * (double(int(p.body.id % 3) - 1) * .85));
+                    if (!car)
+                        continue;
                     int seat = freeTransitSeat(*car);
-                    if (seat < 0) continue;
+                    if (seat < 0)
+                        continue;
                     p.platformTarget = door;
-                    if ((p.body.p-door).length2() > .8*.8 ||
-                        !blastVisible(p.body.p,p.body.height,door,car->body.height+.05)) continue;
+                    if ((p.body.p - door).length2() > .8 * .8 ||
+                        !blastVisible(p.body.p, p.body.height, door, car->body.height + .05))
+                        continue;
                     p.waitingLine = p.waitingStop = -1;
                     p.riding = int(car->id);
                     p.seat = seat;
-                    p.alight = (s+1+int(p.body.id%3)) % int(line.stops.size());
+                    p.alight = (s + 1 + int(p.body.id % 3)) % int(line.stops.size());
                     seatPassenger(p);
                     --waiting;
                 }
                 else if (first < 0 && waiting < 16 && p.waitingLine < 0 && eligible(i) &&
-                         (p.body.p-curb).length2() < 144 &&
-                         std::abs(dot(p.body.p-curb,perpendicular(tangent))) < 3 &&
-                         blastVisible(p.body.p,p.body.height,curb,terrain.height(curb)+.85))
+                         (p.body.p - curb).length2() < 144 &&
+                         std::abs(dot(p.body.p - curb, perpendicular(tangent))) < 3 &&
+                         blastVisible(p.body.p, p.body.height, curb, terrain.height(curb) + .85))
                     first = i;
             }
-            if (first >= 0 && queued < 3 && layout.urbanSite(curb,.4) &&
-                !insideBuilding(curb,terrain.height(curb)+.85,.4))
+            if (first >= 0 && queued < 3 && layout.urbanSite(curb, .4) &&
+                !insideBuilding(curb, terrain.height(curb) + .85, .4))
             {
                 auto &p = people[first];
                 p.waitingLine = l;
@@ -547,6 +576,19 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
     }
     if (c.kind == 10 && driving && (local || c.driverless))
     {
+        // Port of the managed TrolleyPower: the motor runs off the wires over the route, and
+        // three metres from them there is nothing to drive it. Brakes and steering work on,
+        // and what speed there is carries the trolleybus further.
+        if ((line.track.sample(line.track.closestDistance(b.p)).first - b.p).length2() >= 9)
+        {
+            // The managed game leaves the driver to guess why the pedal does nothing.
+            if (controls.throttle != 0 && !c.driverless && time >= wiresNoticeAt)
+            {
+                notify(L"Штанги сошли с проводов: тяги нет");
+                wiresNoticeAt = time + 6;
+            }
+            controls.throttle = 0;
+        }
         stepVehicle(c, controls, dt, 1 - rain * .2);
         c.checkTrafficAt = 0;
         return;
@@ -561,6 +603,8 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
     auto [point, heading] = line.pose(c.along);
     auto f = forward(heading);
     double speed = dot(b.v, f);
+    if (driving)
+        c.claimed = -1;
     if (!driving)
     {
         c.dwell = std::max(0., c.dwell - dt);
@@ -577,16 +621,60 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
             c.serviceTarget = 7;
             auto slow = [&](double clearance)
             { c.serviceTarget = std::min(c.serviceTarget, std::sqrt(3.6 * std::max(0., clearance))); };
+            // Metres of clear rail ahead of the nose, as far as the look along the rails goes.
+            double clearRail = 1e9;
+            c.claimed = -1;
+            {
+                // Far from the player too: a tram that ran through the queue in front of it
+                // came to rest inside a car at the lights, and neither could ever move again.
+                // What is ahead is what stands on the rails ahead, round the bend as well: the
+                // line of the bonnet in a curve points at cars the tram will never meet.
+                std::array<Vec2, 14> rails;
+                for (size_t k = 0; k < rails.size(); ++k)
+                    rails[k] = line.pose(c.along + b.halfH + 2. * double(k)).first;
+                for (const auto &other : cars)
+                {
+                    const Vec2 gap = other.body.p - b.p;
+                    if (&c == &other || gap.length2() > 40 * 40 || std::abs(other.body.height - b.height) > 2)
+                        continue;
+                    const Vec2 spine =
+                        forward(other.heading()) * std::max(0., other.body.halfH - other.body.halfW);
+                    const Vec2 tail = other.body.p - spine;
+                    const double room = b.halfW + other.body.halfW + .1;
+                    if (other.line >= 0 && other.line != c.line && c.id < other.id && !other.destroyed)
+                    {
+                        // Two lines that cross: each found the other on its rails, and both
+                        // stood. Where the other's way ahead leads into this one too, the lower
+                        // number goes first.
+                        const Vec2 theirs = forward(other.heading());
+                        const Vec2 mine = f * std::max(.01, b.halfH - b.halfW);
+                        bool mutual = false;
+                        for (int k = 0; k < 4 && !mutual; ++k)
+                        {
+                            const Vec2 from = other.body.p + theirs * (other.body.halfH + 2. * k) - b.p;
+                            const double t = clamp(dot(from, mine) / mine.length2(), -1., 1.);
+                            mutual = (from - mine * t).length() < room;
+                        }
+                        if (mutual)
+                            continue;
+                    }
+                    for (size_t k = 0; k < rails.size(); ++k)
+                    {
+                        const double t =
+                            spine.length2() > 1e-9
+                                ? clamp(dot(rails[k] - tail, spine) / (2 * spine.length2()), 0., 1.)
+                                : 0.;
+                        if ((rails[k] - tail - spine * (2 * t)).length() < room)
+                        {
+                            slow(2. * double(k) - other.body.halfW - 1.);
+                            clearRail = std::min(clearRail, 2. * double(k));
+                            break;
+                        }
+                    }
+                }
+            }
             if (local)
             {
-                for (auto &other : cars)
-                {
-                    auto d = other.body.p - b.p;
-                    if (&c == &other || std::abs(other.body.height - b.height) > 2 || dot(d, f) <= 0 ||
-                        dot(d, f) > 28 || std::abs(cross(d, f)) > b.halfW + other.body.halfW)
-                        continue;
-                    slow(dot(d, f) - b.halfH - other.body.halfH - 1.);
-                }
                 for (auto &p : people)
                 {
                     auto d = p.body.p - b.p;
@@ -596,7 +684,9 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
                 }
             }
             int dir = std::abs(f.x) > std::abs(f.z) ? (f.x > 0 ? 1 : 3) : (f.z > 0 ? 0 : 2);
-            for (double d = b.halfH + 1; d < 24; d += 2)
+            // One-metre steps: the nose stops 3.4 to 4.4 m short of the junction box, before
+            // the zebra and whoever walks on it.
+            for (double d = b.halfH + 1; d < 24; d += 1)
             {
                 auto ahead = line.pose(c.along + d).first;
                 int x = clamp(int(std::round((ahead.x - layout.coordinate(0)) / spacing)), 0, N - 1);
@@ -605,15 +695,42 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
                 auto delta = ahead - junction, now = b.p - junction;
                 if (std::max(std::abs(delta.x), std::abs(delta.z)) < layout.roadHalf() &&
                     std::max(std::abs(now.x), std::abs(now.z)) > layout.roadHalf() + b.halfH &&
-                    layout.degree(node(x, z)) >= 3 && !CityLayout::green(x, z, dir, time))
+                    layout.degree(node(x, z)) >= 3)
                 {
-                    slow(d - b.halfH - .9);
+                    // Besides the lights: a car that is crossing has the junction, and beyond
+                    // it there must be room for the whole tram. Trams used to follow each
+                    // other into the box and stand across it, the cross traffic behind them.
+                    bool wait = !CityLayout::green(x, z, dir, time);
+                    if (!wait && local)
+                    {
+                        const double need = d + 2 * layout.roadHalf() + 2 * b.halfH + 2;
+                        for (const auto &other : cars)
+                        {
+                            const auto gap = other.body.p - b.p;
+                            if (&c != &other && std::abs(other.body.height - b.height) <= 2 &&
+                                dot(gap, f) > d && dot(gap, f) - other.body.halfH < need &&
+                                std::abs(cross(gap, f)) <= b.halfW + other.body.halfW &&
+                                dot(other.body.v, f) < 1)
+                            {
+                                wait = true;
+                                break;
+                            }
+                        }
+                    }
+                    // With a green light and the rails clear through the box the tram asks
+                    // for the junction: whoever is crossing finishes, and nobody else starts.
+                    if (!wait && c.dwell <= 0 && toStop > d &&
+                        clearRail > d - b.halfH + 2 * layout.roadHalf() + 2)
+                        c.claimed = node(x, z);
+                    if (wait || junctionHeld(node(x, z), &c))
+                        slow(d - b.halfH - 4.4);
                     break;
                 }
             }
         }
-        double target =
-            (c.dwell > 0 || c.fireTime > 0) ? 0. : std::min(c.serviceTarget, std::sqrt(3.6 * std::max(0., toStop - .3)));
+        double target = (c.dwell > 0 || c.fireTime > 0)
+                            ? 0.
+                            : std::min(c.serviceTarget, std::sqrt(3.6 * std::max(0., toStop - .3)));
         controls = {clamp((target - speed) * .7, -1., 1.), 0, target < .1, false};
         if (local && c.kind == 10)
         {

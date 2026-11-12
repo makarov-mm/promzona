@@ -36,73 +36,81 @@ CityChunk cityChunk(const World &w, double x0, double z0, double size)
     CityChunk data;
     auto &l = w.layout;
     auto owns = [&](Vec2 p) { return p.x >= x0 && p.x < x0 + size && p.z >= z0 && p.z < z0 + size; };
-    auto ground = [&](double x, double z, double add = 0, bool bed = false)
-    {
+    auto ground = [&](double x, double z, double add = 0, bool bed = false) {
         return Vec3{float(x), float((bed ? w.terrain.bedHeight(x, z) : w.terrain.height(x, z)) + add),
                     float(z)};
     };
     // Rails and contact wires follow the very same polyline that constrains the tram.
-    std::set<std::array<int,5>> segments;
-    std::set<std::pair<int,int>> poles;
-    std::set<std::pair<int,int>> platforms;
-    for(const auto &line:w.lines)
+    std::set<std::array<int, 5>> segments;
+    std::set<std::pair<int, int>> poles;
+    std::set<std::pair<int, int>> platforms;
+    for (const auto &line : w.lines)
     {
         for (int stop = 0; stop < int(line.stops.size()); ++stop)
         {
             auto direction = forward(line.pose(line.stops[stop]).second);
-            auto post = line.curb(stop) + direction*1.6 + perpendicular(direction)*.50;
-            if (!owns(post) || !l.urbanSite(post,.35) ||
-                !platforms.emplace(int(std::round(post.x)),int(std::round(post.z))).second) continue;
-            Vec3 foot = ground(post.x,post.z,.06);
-            box(data[Metal], foot+Vec3{0,1.26f,0},{.042f,1.26f,.042f});
+            auto post = line.curb(stop) + direction * 1.6 + perpendicular(direction) * .50;
+            if (!owns(post) || !l.urbanSite(post, .35) ||
+                !platforms.emplace(int(std::round(post.x)), int(std::round(post.z))).second)
+                continue;
+            Vec3 foot = ground(post.x, post.z, .06);
+            box(data[Metal], foot + Vec3{0, 1.26f, 0}, {.042f, 1.26f, .042f});
             const bool eastWest = std::abs(direction.x) > .5;
-            auto plate = [&](int surface,float width,float halfHeight,float depth,float height) {
-                box(data[surface],foot+Vec3{0,height,0},
-                    eastWest ? Vec3{width,halfHeight,depth} : Vec3{depth,halfHeight,width});
-            };
-            plate(SeaCanvas,.32f,.39f,.048f,2.38f);
-            plate(Metal,.23f,.14f,.054f,2.43f);
-            plate(Frame,.17f,.048f,.061f,2.46f);
-            plate(Metal,.17f,.019f,.054f,2.14f);
-        }
-        const auto &points=line.track.points();
-        for(size_t i=1;i<points.size();++i)
-        {
-            auto a=points[i-1], b=points[i], mid=(a+b)*.5;
-            if(!owns(mid)) continue;
-            auto f=(b-a).unit(), r=perpendicular(f);
-            auto quant=[](double x){return int(std::round(x*100));};
-            if(!segments.insert({quant(a.x),quant(a.z),quant(b.x),quant(b.z),line.kind}).second) continue;
-            auto previous=i>1?points[i-2]:points[points.size()-2];
-            auto next=i+1<points.size()?points[i+1]:points[1];
-            auto ra=perpendicular((b-previous).unit()), rb=perpendicular((next-a).unit());
-            auto strip=[&](double offset,double width,double height,int material){
-                auto corner=[&](Vec2 p){return ground(p.x,p.z,height);};
-                quad(data[material],corner(a+ra*(offset-width)),corner(a+ra*(offset+width)),
-                     corner(b+rb*(offset+width)),corner(b+rb*(offset-width)));
-            };
-            if(line.kind==9)
-                for(double rail:{-.762,.762}) strip(rail,.045,.042,Metal);
-            for(int n=0;n<(line.kind==9?1:2);++n)
+            auto plate = [&](int surface, float width, float halfHeight, float depth, float height)
             {
-                const double wire=line.kind==9?0.:(n?.28:-.28);
-                auto u=a+ra*wire, v=b+rb*wire;
-                auto base=ground(u.x,u.z,5.75), end=ground(v.x,v.z,5.75);
-                Vec3 up{0,.028f,0};
-                quad(data[Frame],base-up,end-up,end+up,base+up);
-                quad(data[Frame],base+up,end+up,end-up,base-up);
+                box(data[surface], foot + Vec3{0, height, 0},
+                    eastWest ? Vec3{width, halfHeight, depth} : Vec3{depth, halfHeight, width});
+            };
+            plate(SeaCanvas, .32f, .39f, .048f, 2.38f);
+            plate(Metal, .23f, .14f, .054f, 2.43f);
+            plate(Frame, .17f, .048f, .061f, 2.46f);
+            plate(Metal, .17f, .019f, .054f, 2.14f);
+        }
+        const auto &points = line.track.points();
+        for (size_t i = 1; i < points.size(); ++i)
+        {
+            auto a = points[i - 1], b = points[i], mid = (a + b) * .5;
+            if (!owns(mid))
+                continue;
+            auto f = (b - a).unit(), r = perpendicular(f);
+            auto quant = [](double x) { return int(std::round(x * 100)); };
+            if (!segments.insert({quant(a.x), quant(a.z), quant(b.x), quant(b.z), line.kind}).second)
+                continue;
+            auto previous = i > 1 ? points[i - 2] : points[points.size() - 2];
+            auto next = i + 1 < points.size() ? points[i + 1] : points[1];
+            auto ra = perpendicular((b - previous).unit()), rb = perpendicular((next - a).unit());
+            auto strip = [&](double offset, double width, double height, int material)
+            {
+                auto corner = [&](Vec2 p) { return ground(p.x, p.z, height); };
+                quad(data[material], corner(a + ra * (offset - width)), corner(a + ra * (offset + width)),
+                     corner(b + rb * (offset + width)), corner(b + rb * (offset - width)));
+            };
+            if (line.kind == 9)
+                for (double rail : {-.762, .762})
+                    strip(rail, .045, .042, Metal);
+            for (int n = 0; n < (line.kind == 9 ? 1 : 2); ++n)
+            {
+                const double wire = line.kind == 9 ? 0. : (n ? .28 : -.28);
+                auto u = a + ra * wire, v = b + rb * wire;
+                auto base = ground(u.x, u.z, 5.75), end = ground(v.x, v.z, 5.75);
+                Vec3 up{0, .028f, 0};
+                quad(data[Frame], base - up, end - up, end + up, base + up);
+                quad(data[Frame], base + up, end + up, end - up, base - up);
             }
-            double along=std::abs(f.x)>.999 ? a.x : std::abs(f.z)>.999 ? a.z : 1e10;
+            double along = std::abs(f.x) > .999 ? a.x : std::abs(f.z) > .999 ? a.z : 1e10;
             // Stops occupy the block midpoint. Keep the overhead-wire mast clear of the boarding area.
-            if(along==1e10 || std::abs(std::remainder(along-l.coordinate(0)-12.,36.))>.05) continue;
-            auto post=a+r*(line.kind==9?7.2:3.9);
-            if(!l.urbanSite(post,.25) || l.roadDistance(post)<l.roadHalf()+.4 ||
-               !poles.emplace(quant(post.x),quant(post.z)).second) continue;
-            auto foot=ground(post.x,post.z);
-            box(data[Metal],foot+Vec3{0,2.93f,0},{.065f,2.93f,.065f});
-            auto end=ground(a.x,a.z,5.79), root=foot+Vec3{0,5.84f,0}, edge=Vec3{float(f.x*.035),0,float(f.z*.035)};
-            quad(data[Metal],root-edge,root+edge,end+edge,end-edge);
-            quad(data[Metal],end-edge,end+edge,root+edge,root-edge);
+            if (along == 1e10 || std::abs(std::remainder(along - l.coordinate(0) - 12., 36.)) > .05)
+                continue;
+            auto post = a + r * (line.kind == 9 ? 7.2 : 3.9);
+            if (!l.urbanSite(post, .25) || l.roadDistance(post) < l.roadHalf() + .4 ||
+                !poles.emplace(quant(post.x), quant(post.z)).second)
+                continue;
+            auto foot = ground(post.x, post.z);
+            box(data[Metal], foot + Vec3{0, 2.93f, 0}, {.065f, 2.93f, .065f});
+            auto end = ground(a.x, a.z, 5.79), root = foot + Vec3{0, 5.84f, 0},
+                 edge = Vec3{float(f.x * .035), 0, float(f.z * .035)};
+            quad(data[Metal], root - edge, root + edge, end + edge, end - edge);
+            quad(data[Metal], end - edge, end + edge, root + edge, root - edge);
         }
     }
     // Clip real holes in the terrain, not transparent rectangles above it.
@@ -237,56 +245,64 @@ CityChunk cityChunk(const World &w, double x0, double z0, double size)
     // No overlapping alpha planes and no invisible collision on top of a canal.
     const float y = float(CityLayout::waterLevel);
     // Extend only the outside edges. Adjacent water patches still share vertices.
-    const double gridEdge = std::ceil(l.edge()/size)*size;
-    auto seaLimit = [&](double x) {
-        return l.revision() && std::abs(x) == gridEdge ? std::copysign(gridEdge+1800.,x) : x;
-    };
-    float west=float(seaLimit(x0)), east=float(seaLimit(x0+size));
-    float startZ=float(seaLimit(z0)), endZ=float(seaLimit(z0+size));
-    quad(data[Water], {west,y,endZ}, {east,y,endZ}, {east,y,startZ}, {west,y,startZ}, float(size));
+    const double gridEdge = std::ceil(l.edge() / size) * size;
+    auto seaLimit = [&](double x)
+    { return l.revision() && std::abs(x) == gridEdge ? std::copysign(gridEdge + 1800., x) : x; };
+    float west = float(seaLimit(x0)), east = float(seaLimit(x0 + size));
+    float startZ = float(seaLimit(z0)), endZ = float(seaLimit(z0 + size));
+    quad(data[Water], {west, y, endZ}, {east, y, endZ}, {east, y, startZ}, {west, y, startZ}, float(size));
     if (l.revision() == CityLayout::districtRevision)
     {
         const double z = l.railZ();
-        if (z >= z0 && z < z0+size)
-            for (double x=l.railStart(); x<l.railEnd(); x+=1.)
+        if (z >= z0 && z < z0 + size)
+            for (double x = l.railStart(); x < l.railEnd(); x += 1.)
             {
-                if (!owns({x+.5,z})) continue;
-                auto band = [&](int mat,double x1,double x2,double offset,double halfWidth,double height) {
-                    quad(data[mat],ground(x1,z+offset+halfWidth,height), ground(x2,z+offset+halfWidth,height),
-                         ground(x2,z+offset-halfWidth,height),ground(x1,z+offset-halfWidth,height));
+                if (!owns({x + .5, z}))
+                    continue;
+                auto band = [&](int mat, double x1, double x2, double offset, double halfWidth, double height)
+                {
+                    quad(data[mat], ground(x1, z + offset + halfWidth, height),
+                         ground(x2, z + offset + halfWidth, height),
+                         ground(x2, z + offset - halfWidth, height),
+                         ground(x1, z + offset - halfWidth, height));
                 };
-                bool crossing = l.roadDistance({x+.5,z}) < l.roadHalf();
+                bool crossing = l.roadDistance({x + .5, z}) < l.roadHalf();
                 if (!crossing)
                 {
-                    band(Ballast,x,x+1,0,1.65,.025);
-                    band(Rust,x+.36,x+.61,0,1.2,.050);
+                    band(Ballast, x, x + 1, 0, 1.65, .025);
+                    band(Rust, x + .36, x + .61, 0, 1.2, .050);
                 }
-                for (double offset : {-.762,.762}) band(Metal,x,x+1,offset,.055,crossing?.045:.094);
+                for (double offset : {-.762, .762})
+                    band(Metal, x, x + 1, offset, .055, crossing ? .045 : .094);
             }
 
-        for (int side=0; side<4; ++side)
-            for (int i=0; i<l.nodes()-1; ++i)
+        for (int side = 0; side < 4; ++side)
+            for (int i = 0; i < l.nodes() - 1; ++i)
             {
-                if ((i+side)%3 != 1) continue;
-                const double along = l.coordinate(i)+l.spacing*.5;
-                for (int k=-1; k<=1; ++k)
+                if ((i + side) % 3 != 1)
+                    continue;
+                const double along = l.coordinate(i) + l.spacing * .5;
+                for (int k = -1; k <= 1; ++k)
                 {
-                    const double shore = l.edge()-38+(k%2)*3.;
-                    Vec2 p = CityLayout::direction(side)*shore + perpendicular(CityLayout::direction(side))*(along+k*4.);
-                    if (!owns(p) || l.riverDistance(p.x)<l.deckHalf()+2 ||
-                        !l.sandyGround(p,l.roadDistance(p)) || w.terrain.bedHeight(p.x,p.z)<y+.65) continue;
-                    auto at=ground(p.x,p.z);
-                    box(data[Metal],at+Vec3{0,1.07f,0},{.032f,1.07f,.032f});
-                    int cloth = (i+side+k)%2 ? Canvas : SeaCanvas;
-                    quad(data[cloth],ground(p.x-.65,p.z+1.1,.028),ground(p.x+.65,p.z+1.1,.028),
-                         ground(p.x+.65,p.z-1.1,.028),ground(p.x-.65,p.z-1.1,.028));
-                    auto rim = [&](int n) {
-                        double a = n*pi/6;
-                        return at+Vec3{float(std::cos(a)*1.4),1.85f,float(std::sin(a)*1.4)};
+                    const double shore = l.edge() - 38 + (k % 2) * 3.;
+                    Vec2 p = CityLayout::direction(side) * shore +
+                             perpendicular(CityLayout::direction(side)) * (along + k * 4.);
+                    if (!owns(p) || l.riverDistance(p.x) < l.deckHalf() + 2 ||
+                        !l.sandyGround(p, l.roadDistance(p)) || w.terrain.bedHeight(p.x, p.z) < y + .65)
+                        continue;
+                    auto at = ground(p.x, p.z);
+                    box(data[Metal], at + Vec3{0, 1.07f, 0}, {.032f, 1.07f, .032f});
+                    int cloth = (i + side + k) % 2 ? Canvas : SeaCanvas;
+                    quad(data[cloth], ground(p.x - .65, p.z + 1.1, .028), ground(p.x + .65, p.z + 1.1, .028),
+                         ground(p.x + .65, p.z - 1.1, .028), ground(p.x - .65, p.z - 1.1, .028));
+                    auto rim = [&](int n)
+                    {
+                        double a = n * pi / 6;
+                        return at + Vec3{float(std::cos(a) * 1.4), 1.85f, float(std::sin(a) * 1.4)};
                     };
-                    auto top=at+Vec3{0,2.2f,0};
-                    for (int n=0;n<12;++n)
-                        addCityTriangle(data[n%2 ? Paint : cloth],top,rim(n+1),rim(n));
+                    auto top = at + Vec3{0, 2.2f, 0};
+                    for (int n = 0; n < 12; ++n)
+                        addCityTriangle(data[n % 2 ? Paint : cloth], top, rim(n + 1), rim(n));
                 }
             }
     }
@@ -306,10 +322,12 @@ CityChunk cityChunk(const World &w, double x0, double z0, double size)
                              d = a + r * width;
                         auto mid = (a + c) * .5;
                         // A stripe has area. At the coast a legal centre alone can still put its tip on sand.
-                        if (l.revision() && std::max(std::abs(mid.x),std::abs(mid.z)) >= l.coordinate(l.nodes()-1)-12 &&
-                            std::ranges::any_of(std::array{a,b,c,d},[&](Vec2 v) {
-                                return !l.bridge(v) && l.sandyGround(v,l.roadDistance(v));
-                            })) return;
+                        if (l.revision() &&
+                            std::max(std::abs(mid.x), std::abs(mid.z)) >= l.coordinate(l.nodes() - 1) - 12 &&
+                            std::ranges::any_of(
+                                std::array{a, b, c, d},
+                                [&](Vec2 v) { return !l.bridge(v) && l.sandyGround(v, l.roadDistance(v)); }))
+                            return;
                         if (w.openCut(a, .03) || w.openCut(b, .03) || w.openCut(c, .03) ||
                             w.openCut(d, .03) || l.roadDistance(mid) > l.roadHalf() ||
                             (l.riverDistance(mid.x) < l.bankHalf() && !l.bridge(mid)))
@@ -340,9 +358,11 @@ CityChunk cityChunk(const World &w, double x0, double z0, double size)
             for (int side : {-1, 1})
                 for (double t = -l.deckHalf(); t < l.deckHalf(); t += 1)
                 {
-                    double x = p.x + t, end = std::min(p.x + l.deckHalf(), x + 1), z = p.z + side * (l.roadHalf() + 3.05);
+                    double x = p.x + t, end = std::min(p.x + l.deckHalf(), x + 1),
+                           z = p.z + side * (l.roadHalf() + 3.05);
                     auto a = ground(x, z), b = ground(end, z);
-                    quad(data[Pavement], a, b, b - Vec3{0, l.canalDeckThickness, 0}, a - Vec3{0, l.canalDeckThickness, 0});
+                    quad(data[Pavement], a, b, b - Vec3{0, l.canalDeckThickness, 0},
+                         a - Vec3{0, l.canalDeckThickness, 0});
                     quad(data[Metal], a + Vec3{0, .9f, 0}, b + Vec3{0, .9f, 0}, b + Vec3{0, 1, 0},
                          a + Vec3{0, 1, 0});
                     if (int(t + l.deckHalf()) % 2 == 0)
@@ -456,43 +476,55 @@ CityChunk cityChunk(const World &w, double x0, double z0, double size)
             const Vec3 centre = plan.origin + Vec3{0, 4.f, plan.halfDepth + .18f};
             box(data[Metal], centre, {4.f, .65f, .08f});
             Vec3 face = centre + Vec3{0, 0, .085f};
-            quad(data[StationSign], face + Vec3{-3.95f,-.60f,0}, face + Vec3{3.95f,-.60f,0},
-                 face + Vec3{3.95f,.60f,0}, face + Vec3{-3.95f,.60f,0});
+            quad(data[StationSign], face + Vec3{-3.95f, -.60f, 0}, face + Vec3{3.95f, -.60f, 0},
+                 face + Vec3{3.95f, .60f, 0}, face + Vec3{-3.95f, .60f, 0});
         }
     }
     for (const auto &site : w.sites)
     {
-        if (site.existingBuilding || !owns(site.centre)) continue;
-        auto p = ground(site.centre.x,site.centre.z);
+        if (site.existingBuilding || !owns(site.centre))
+            continue;
+        auto p = ground(site.centre.x, site.centre.z);
         if (site.kind == ServiceKind::garage)
         {
             float d = float(site.halfDepth), h = float(site.height), width = float(site.halfWidth);
-            box(data[Foundation],p+Vec3{0,h/2,0},{width,h/2,d});
-            box(data[Roof],p+Vec3{0,h,0},{width+.13f,.11f,d+.15f});
-            box(data[Metal],p+Vec3{0,1.16f,-d-.04f},{width-.22f,1.14f,.04f});
-            for (int i=1; i<9; ++i)
-                box(data[Frame],p+Vec3{0,i*.25f,-d-.085f},{width-.26f,.017f,.014f});
+            box(data[Foundation], p + Vec3{0, h / 2, 0}, {width, h / 2, d});
+            box(data[Roof], p + Vec3{0, h, 0}, {width + .13f, .11f, d + .15f});
+            box(data[Metal], p + Vec3{0, 1.16f, -d - .04f}, {width - .22f, 1.14f, .04f});
+            for (int i = 1; i < 9; ++i)
+                box(data[Frame], p + Vec3{0, i * .25f, -d - .085f}, {width - .26f, .017f, .014f});
         }
         else if (site.kind == ServiceKind::market)
         {
-            Building stall{site.centre, {site.halfWidth, site.halfDepth}, site.height, 1, BuildingKind::stall, -1};
+            Building stall{site.centre, {site.halfWidth, site.halfDepth}, site.height, 1, BuildingKind::stall,
+                           -1};
             buildingCore(data, planBuilding(stall, p.y), stall.style);
         }
         else if (site.kind == ServiceKind::clinic)
         {
-            auto sign = p + Vec3{0,3.35f,float(site.halfDepth)+.24f};
-            box(data[Metal],sign,{.84f,.84f,.055f});
-            box(data[Lamps],sign+Vec3{0,0,.08f},{.60f,.17f,.035f});
-            box(data[Lamps],sign+Vec3{0,0,.08f},{.17f,.60f,.04f});
+            auto sign = p + Vec3{0, 3.35f, float(site.halfDepth) + .24f};
+            box(data[Metal], sign, {.84f, .84f, .055f});
+            box(data[Lamps], sign + Vec3{0, 0, .08f}, {.60f, .17f, .035f});
+            box(data[Lamps], sign + Vec3{0, 0, .08f}, {.17f, .60f, .04f});
         }
     }
     for (const auto &b : l.furniture)
     {
-        if (b.height <= 3 || !owns(b.p)) continue;
+        if (b.height <= 3 || !owns(b.p))
+            continue;
         auto p = ground(b.p.x, b.p.z);
         box(data[Metal], p + Vec3{0, float(b.height * .5), 0}, {.07f, float(b.height * .5), .07f});
         box(data[Metal], p + Vec3{.3f, float(b.height), 0}, {.36f, .05f, .08f});
         box(data[Lamps], p + Vec3{.5f, float(b.height - .06), 0}, {.19f, .03f, .13f});
+    }
+    // Pothole photographs lie just above the lane paint; the shader dissolves their border.
+    for (const auto &hole : w.potholes)
+    {
+        if (!owns(hole.p))
+            continue;
+        const double x = hole.p.x, z = hole.p.z, s = hole.size;
+        quad(data[PotholeDecal + hole.style], ground(x - s, z - s, .03), ground(x - s, z + s, .03),
+             ground(x + s, z + s, .03), ground(x + s, z - s, .03));
     }
     return data;
 }

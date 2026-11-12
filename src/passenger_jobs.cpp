@@ -10,7 +10,7 @@ int passengerFare(JobKind kind, double distance)
     const double fare = kind == JobKind::taxi ? 20 + distance * .11 : 35 + distance * .10;
     return std::max(5, 5 * int(std::round(fare / 5)));
 }
-}
+} // namespace
 Vec2 World::passengerDoor(const Car &c, Vec2 from) const
 {
     auto side = rotate(Vec2{c.body.halfW + .65, 0}, c.body.angle);
@@ -20,9 +20,11 @@ Vec2 World::passengerDoor(const Car &c, Vec2 from) const
 bool World::canTakePassengerJob(int actor) const
 {
     const auto &p = people.at(actor);
-    return p.waitingLine < 0 && actor != patrol.officer && !paramedicCall(actor) && !p.dead && p.ownedScooter < 0 && !p.courier && !p.inCompany && p.riding < 0 &&
+    return p.waitingLine < 0 && actor != patrol.officer && !paramedicCall(actor) && !p.dead &&
+           p.knockedUntil <= time && p.ownedScooter < 0 && !p.courier && !p.inCompany && p.riding < 0 &&
            p.health > 0 && !p.body.roadLevel && p.burnUntil <= time && p.fear <= 0 &&
-           layout.urbanSite(p.body.p) && !levelAt(p.body.p, 2) && !insideBuilding(p.body.p, p.body.height, .5);
+           layout.urbanSite(p.body.p) && !levelAt(p.body.p, 2) &&
+           !insideBuilding(p.body.p, p.body.height, .5);
 }
 
 bool World::waitingForTaxi(int actor) const
@@ -32,15 +34,18 @@ bool World::waitingForTaxi(int actor) const
 
 int World::hailerInReach() const
 {
-    if (job.kind != JobKind::none || controlledCar < 0 || drone.active) return -1;
+    if (job.kind != JobKind::none || controlledCar < 0 || drone.active)
+        return -1;
     const auto &c = cars[controlledCar];
-    if (c.kind > 2 || c.responding || c.destroyed || c.fireTime || c.falling ||
-        !c.grounded() || c.body.roadLevel || c.body.v.length() >= 1.5) return -1;
+    if (c.kind > 2 || c.responding || c.destroyed || c.fireTime || c.falling || !c.grounded() ||
+        c.body.roadLevel || c.body.v.length() >= 1.5)
+        return -1;
     int best = -1;
     double distance = 8 * 8;
     for (auto h : hailers)
     {
-        if (h.actor < 0 || time >= h.until) continue;
+        if (h.actor < 0 || time >= h.until)
+            continue;
         const auto &p = people[h.actor];
         double d = (p.body.p - c.body.p).length2();
         if (d < distance && std::abs(p.body.height - c.body.height) < 1.8 && canTakePassengerJob(h.actor))
@@ -54,17 +59,21 @@ int World::hailerInReach() const
 
 void World::updateHailers()
 {
-    if (time < nextHail) return;
+    if (time < nextHail)
+        return;
     nextHail = time + 3;
     Vec2 here = position();
     for (auto &h : hailers)
-        if (h.actor >= 0 && (time >= h.until || job.kind != JobKind::none ||
-            (people[h.actor].body.p - here).length2() > 240 * 240 || !canTakePassengerJob(h.actor)))
+        if (h.actor >= 0 &&
+            (time >= h.until || job.kind != JobKind::none ||
+             (people[h.actor].body.p - here).length2() > 240 * 240 || !canTakePassengerJob(h.actor)))
             h = {};
     if (job.kind != JobKind::none || controlledCar < 0 || cars[controlledCar].kind > 2 ||
-        cars[controlledCar].destroyed || drone.active) return;
+        cars[controlledCar].destroyed || drone.active)
+        return;
     auto slot = std::ranges::find(hailers, -1, &StreetHail::actor);
-    if (slot == hailers.end() || people.empty()) return;
+    if (slot == hailers.end() || people.empty())
+        return;
     // Recruit a pedestrian already standing at a usable kerb. No extra actors or traffic RNG.
     const size_t first = (size_t(time / 3) * 137) % people.size();
     for (size_t n = 0; n < people.size(); ++n)
@@ -72,12 +81,15 @@ void World::updateHailers()
         const int actor = int((first + n) % people.size());
         const auto at = people[actor].body.p;
         const double distance = (at - here).length2();
-        if (distance < 45 * 45 || distance > 210 * 210) continue;
+        if (distance < 45 * 45 || distance > 210 * 210)
+            continue;
         double curb = layout.roadDistance(at) - layout.roadHalf();
-        if (curb < .45 || curb > 3.0 || !canTakePassengerJob(actor)) continue;
-        if (std::ranges::any_of(hailers,[&](auto h) {
-            return h.actor >= 0 && (people[h.actor].body.p - at).length2() < 14 * 14;
-        })) continue;
+        if (curb < .45 || curb > 3.0 || !canTakePassengerJob(actor))
+            continue;
+        if (std::ranges::any_of(
+                hailers,
+                [&](auto h) { return h.actor >= 0 && (people[h.actor].body.p - at).length2() < 14 * 14; }))
+            continue;
         *slot = {actor, time + 70 + actor % 50};
         break;
     }
@@ -86,7 +98,8 @@ void World::updateHailers()
 bool World::startPassengerJob(JobKind kind, int requestedActor)
 {
     if (job.kind != JobKind::none || health <= 0 || drone.active ||
-        (kind != JobKind::taxi && kind != JobKind::patient)) return false;
+        (kind != JobKind::taxi && kind != JobKind::patient))
+        return false;
     int actor = -1;
     double best = std::numeric_limits<double>::max();
     for (size_t i = 0; i < people.size(); ++i)
@@ -97,16 +110,45 @@ bool World::startPassengerJob(JobKind kind, int requestedActor)
         double distance = (p.body.p - position()).length();
         // Prefer an existing casualty for a medical call, then a civilian who has fallen ill.
         double score = distance + (kind == JobKind::patient && p.health > .7 ? 10000. : 0.);
-        if (score < best) { best = score; actor = int(i); }
+        if (score < best)
+        {
+            best = score;
+            actor = int(i);
+        }
     }
-    if (actor < 0) { notify(L"Свободных пассажиров поблизости нет"); return false; }
+    if (actor < 0)
+    {
+        notify(L"Свободных пассажиров поблизости нет");
+        return false;
+    }
 
     auto &p = people[actor];
     int destination = -1, line = -1;
     if (kind == JobKind::patient)
         destination = nearestSite(ServiceKind::clinic, p.body.p);
+    else if (busStops.size() >= 2)
+    {
+        // Port of the managed TaxiDestination: a bus stop 160 to 520 m away, or any stop
+        // past 40 m where there is none, picked by who the passenger is and not by chance.
+        std::vector<int> far;
+        auto distance = [&](int stop) { return (busStops[stop] - p.body.p).length(); };
+        for (int i = 0; i < int(busStops.size()); ++i)
+            if (distance(i) >= 160 && distance(i) <= 520)
+                far.push_back(i);
+        if (far.empty())
+            for (int i = 0; i < int(busStops.size()); ++i)
+                if (distance(i) > 40)
+                    far.push_back(i);
+        if (!far.empty())
+        {
+            std::ranges::sort(far, {}, distance);
+            destination = far[p.body.id % far.size()];
+            line = busStopRide;
+        }
+    }
     else
     {
+        // A city without bus stops: the kerb of a tram or trolleybus stop.
         double desired = 180. + double((size_t(actor) + jobsCompleted * 41u) % 260);
         best = std::numeric_limits<double>::max();
         for (size_t i = 0; i < lines.size(); ++i)
@@ -114,18 +156,30 @@ bool World::startPassengerJob(JobKind kind, int requestedActor)
             {
                 double d = (lines[i].curb(int(j)) - p.body.p).length();
                 double score = std::abs(d - desired);
-                if (d > 40 && score < best) { best = score; destination = int(j); line = int(i); }
+                if (d > 40 && score < best)
+                {
+                    best = score;
+                    destination = int(j);
+                    line = int(i);
+                }
             }
     }
-    if (destination < 0) { notify(L"Нет доступного пункта назначения"); return false; }
-    auto arrival = line < 0 ? sites[destination].entrance : lines[line].curb(destination);
+    if (destination < 0)
+    {
+        notify(L"Нет доступного пункта назначения");
+        return false;
+    }
+    auto arrival = rideEnd(line, destination);
     double length = (arrival - p.body.p).length();
-    if (kind == JobKind::patient) p.health = std::min(p.health, .65);
-    job = {kind, actor, destination, passengerFare(kind, length),
-           false, time + 180 + (p.body.p - position()).length() / 4};
+    if (kind == JobKind::patient)
+        p.health = std::min(p.health, .65);
+    job = {kind,        actor,
+           destination, passengerFare(kind, length),
+           false,       time + 180 + (p.body.p - position()).length() / 4};
     hailers = {};
     job.ride.line = line;
-    notify(kind == JobKind::patient ? L"Вызов из поликлиники. Заберите пациента" : L"Пассажир ждёт на отмеченном тротуаре");
+    notify(kind == JobKind::patient ? L"Вызов из поликлиники. Заберите пациента"
+                                    : L"Пассажир ждёт на отмеченном тротуаре");
     return true;
 }
 
@@ -133,13 +187,16 @@ void World::interactPassengerJob()
 {
     if (job.acquired)
     {
-        if (controlledCar != job.ride.car) return;
+        if (controlledCar != job.ride.car)
+            return;
         const auto &car = cars[controlledCar];
-        if (!car.grounded() || car.body.roadLevel || car.body.v.length() >= .8 || !vehicleExit(car)) return;
+        if (!car.grounded() || car.body.roadLevel || car.body.v.length() >= .8 || !vehicleExit(car))
+            return;
         finishJob((jobTarget() - car.body.p).length() < (job.kind == JobKind::patient ? 14 : 9));
         return;
     }
-    if (controlledCar < 0 || job.ride.car >= 0) return;
+    if (controlledCar < 0 || job.ride.car >= 0)
+        return;
     auto &c = cars[controlledCar];
     auto &p = people[job.actor];
     if (c.line >= 0 || c.responding || c.kind > 2 || c.fireTime || c.falling || c.destroyed || !c.grounded())
@@ -161,10 +218,19 @@ void World::interactPassengerJob()
 void World::stepPassengerJob(double dt)
 {
     auto &p = people[job.actor];
-    if (p.dead || (!job.acquired && time > job.deadline)) { finishJob(false); return; }
-    if (job.ride.car < 0) return;
+    if (p.dead || (!job.acquired && time > job.deadline))
+    {
+        finishJob(false);
+        return;
+    }
+    if (job.ride.car < 0)
+        return;
     auto &c = cars[job.ride.car];
-    if (c.destroyed || c.falling || c.fireTime > 0) { finishJob(false); return; }
+    if (c.destroyed || c.falling || c.fireTime > 0)
+    {
+        finishJob(false);
+        return;
+    }
     if (!job.acquired)
     {
         if (controlledCar != job.ride.car || time > job.ride.boardBy || c.body.v.length() > 2 ||
@@ -174,8 +240,10 @@ void World::stepPassengerJob(double dt)
             notify(L"Посадка прервана. Остановитесь ближе");
             return;
         }
-        if (c.body.v.length() >= 1.5 || p.fear > 0 || (p.body.p - passengerDoor(c,p.body.p)).length() > .85 ||
-            c.body.roadLevel != p.body.roadLevel || std::abs(c.body.height - p.body.height) > 1.8) return;
+        if (c.body.v.length() >= 1.5 || p.fear > 0 ||
+            (p.body.p - passengerDoor(c, p.body.p)).length() > .85 || c.body.roadLevel != p.body.roadLevel ||
+            std::abs(c.body.height - p.body.height) > 1.8)
+            return;
         p.riding = job.ride.car;
         p.seat = 1;
         p.alight = -1;
@@ -185,14 +253,16 @@ void World::stepPassengerJob(double dt)
         job.fare = passengerFare(job.kind, length);
         job.deadline = time + (job.kind == JobKind::taxi ? 45 + length / 7 : 40 + length / 8);
         job.ride.healthAtLastScare = c.health;
-        notify(job.kind == JobKind::patient ? L"Везите пациента в поликлинику" : L"Пассажир в салоне. Адрес на карте");
+        notify(job.kind == JobKind::patient ? L"Везите пациента в поликлинику"
+                                            : L"Пассажир в салоне. Адрес на карте");
         return;
     }
     if (controlledCar != job.ride.car)
     {
         job.stopped = 0;
         job.ride.away += dt;
-        if (job.ride.away > (controlledCar < 0 ? 25 : 3)) finishJob(false);
+        if (job.ride.away > (controlledCar < 0 ? 25 : 3))
+            finishJob(false);
         return;
     }
     job.ride.away = 0;
@@ -207,19 +277,30 @@ void World::stepPassengerJob(double dt)
     bool parked = c.grounded() && !c.body.roadLevel && c.body.v.length() < .8 &&
                   (c.body.p - jobTarget()).length() < reach;
     job.stopped = parked ? job.stopped + dt : 0;
-    if (job.stopped >= 1 && vehicleExit(c)) finishJob(true);
+    if (job.stopped >= 1 && vehicleExit(c))
+        finishJob(true);
 }
 
 void World::releasePassenger(const Job &trip, bool delivered)
 {
     auto &p = people[trip.actor];
-    if (!trip.acquired || p.riding < 0) return;
+    if (!trip.acquired || p.riding < 0)
+        return;
     auto &c = cars[p.riding];
-    if (p.dead) { p.riding = -1; return; }
-    if (c.destroyed || c.falling) { seatPassenger(p); return; }
+    if (p.dead)
+    {
+        p.riding = -1;
+        return;
+    }
+    if (c.destroyed || c.falling)
+    {
+        seatPassenger(p);
+        return;
+    }
     auto exit = vehicleExit(c);
     // A cancelled trip can return the actor to its sidewalk if the vehicle was boxed in.
     resumeWalk(p, exit.value_or(p.target), exit ? c.body.roadLevel : 0);
-    if (delivered && trip.kind == JobKind::patient) p.health = 1;
+    if (delivered && trip.kind == JobKind::patient)
+        p.health = 1;
 }
 } // namespace pz

@@ -21,9 +21,11 @@ void World::generateStreetLife()
         if (p.dead || p.riding >= 0 ||
             ((job.passenger() || job.kind == JobKind::elimination) && job.actor == int(i)))
             continue;
-        p.courier = i % 17 == 4 || i % 39 == 7;
+        // Denser cities keep about the managed game's share of couriers and scooters.
+        const bool dense = density != Density::low;
+        p.courier = dense ? i % 34 == 4 || i % 78 == 7 : i % 17 == 4 || i % 39 == 7;
         p.deliveryDistance = p.distance + 115 + streetRandom.next() * 90;
-        if (i % 13 != 7)
+        if (i % 13 != 7 || (dense && scooters.size() >= people.size() / 25))
             continue;
         p.ownedScooter = int(scooters.size());
         Scooter scooter;

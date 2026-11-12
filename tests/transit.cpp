@@ -30,7 +30,8 @@ void passengerJourney(World &w, Car &car, const std::filesystem::path &save)
         park(stop);
         w.player.p = line.curb(stop);
         w.player.height = w.terrain.height(w.player.p) + .85;
-        if (w.boardableTransit() == int(car.id) && w.platformExit(car, stop)) break;
+        if (w.boardableTransit() == int(car.id) && w.platformExit(car, stop))
+            break;
     }
     check(stop < int(line.stops.size()), "no reachable stop in city");
     double height = w.player.height;
@@ -44,13 +45,21 @@ void passengerJourney(World &w, Car &car, const std::filesystem::path &save)
     for (const auto &p : w.people)
         check(p.riding != int(car.id) || p.seat != w.playerTransitSeat, "occupied NPC seat");
 
-    auto it = std::ranges::find_if(w.people, [&](const auto &p) {
-        return !p.dead && p.riding < 0 && p.ownedScooter < 0 && !p.courier && !p.inCompany &&
-               w.canTakePassengerJob(int(&p - w.people.data()));
-    });
+    auto it = std::ranges::find_if(w.people,
+                                   [&](const auto &p)
+                                   {
+                                       return !p.dead && p.riding < 0 && p.ownedScooter < 0 && !p.courier &&
+                                              !p.inCompany &&
+                                              w.canTakePassengerJob(int(&p - w.people.data()));
+                                   });
     check(it != w.people.end(), "missing civilian for platform test");
     int actor = int(it - w.people.begin());
-    for (auto &p : w.people) { p.waitingLine = -1; p.waitingStop = -1; p.boardAfter = w.time + 90; }
+    for (auto &p : w.people)
+    {
+        p.waitingLine = -1;
+        p.waitingStop = -1;
+        p.boardAfter = w.time + 90;
+    }
     auto &walker = *it;
     walker.boardAfter = w.time;
     walker.body.p = line.curb(stop);
@@ -61,7 +70,7 @@ void passengerJourney(World &w, Car &car, const std::filesystem::path &save)
           "pedestrian did not queue at the curb");
     const auto door = w.passengerDoor(car, walker.body.p);
     w.updatePlatforms();
-    check(walker.riding < 0 && (walker.platformTarget-door).length() < .01,
+    check(walker.riding < 0 && (walker.platformTarget - door).length() < .01,
           "pedestrian must approach an open door before boarding");
 
     car.dwell = 0;
@@ -72,14 +81,15 @@ void passengerJourney(World &w, Car &car, const std::filesystem::path &save)
     restored.load(save);
     std::filesystem::remove(save);
     check(restored.transitPassenger() && restored.controlledCar == int(car.id) &&
-          restored.playerTransitSeat == w.playerTransitSeat && restored.transitExitRequested &&
-          restored.people.at(actor).waitingStop == stop && restored.people.at(actor).waitingLine == car.line,
+              restored.playerTransitSeat == w.playerTransitSeat && restored.transitExitRequested &&
+              restored.people.at(actor).waitingStop == stop &&
+              restored.people.at(actor).waitingLine == car.line,
           "lost player seat, stop request or waiting pedestrian after load");
 
     car.dwell = 3;
     w.updatePlatforms();
-    check(w.controlledCar < 0 && !w.transitExitRequested &&
-          (w.player.p-line.curb(stop)).length() < 3, "missed requested stop");
+    check(w.controlledCar < 0 && !w.transitExitRequested && (w.player.p - line.curb(stop)).length() < 3,
+          "missed requested stop");
     car.dwell = 6;
     for (int frame = 0; frame < 350 && walker.riding < 0; ++frame)
         w.step({}, 1. / 60);
@@ -127,8 +137,8 @@ void test(std::uint32_t seed)
         const auto &route = w.lines.at(service.line);
         auto road = route.pose(route.stops.at(3)).first;
         auto pavement = route.curb(3);
-        check(std::abs(w.terrain.height(road)-w.terrain.height(pavement)) < 1. &&
-              !w.insideBuilding(pavement,w.terrain.height(pavement)+1.,.6),
+        check(std::abs(w.terrain.height(road) - w.terrain.height(pavement)) < 1. &&
+                  !w.insideBuilding(pavement, w.terrain.height(pavement) + 1., .6),
               "trolley doors open onto an inaccessible pavement");
     }
     if (seed != 17)
@@ -169,6 +179,59 @@ void test(std::uint32_t seed)
         }
         check(c.dwell == 0 && c.nextStop == 1 && c.along > route.stops.front() + 1,
               "stalled after exchanging riders");
+    }
+    // A trolleybus runs on the wires over its route: three metres from them the pedal does
+    // nothing, the brake still does, and back under them it drives again. The kerb is on
+    // the other side: the trolleybus is put towards the middle of the street.
+    {
+        auto &trolley = *std::ranges::find(w.cars, 10, &Car::kind);
+        const auto &wires = w.lines[trolley.line];
+        const auto [on, heading] = wires.pose(trolley.along);
+        const Vec2 ahead = forward(heading);
+        auto put = [&](double aside, double pace)
+        {
+            trolley.body.p = on + perpendicular(ahead) * aside;
+            trolley.body.angle = -heading;
+            trolley.body.v = ahead * pace;
+            trolley.body.w = 0;
+            trolley.steering = 0;
+            trolley.body.height = w.surface(trolley.body.p, 0) + .8;
+            w.notice.clear();
+            w.wiresNoticeAt = 0;
+        };
+        auto drive = [&](double pedal, bool brake, int frames)
+        {
+            PlayerInput input;
+            input.car.throttle = pedal;
+            input.car.brake = brake;
+            for (int i = 0; i < frames; ++i)
+                w.step(input, 1. / 60);
+            return dot(trolley.body.v, ahead);
+        };
+        w.controlledCar = int(trolley.id);
+        trolley.driverless = false;
+        // The street may slope: what the pedal adds is the difference to a run without it.
+        auto pedal = [&](double aside, double pace)
+        {
+            put(aside, pace);
+            const double pressed = drive(1, false, 120);
+            const bool told = w.notice == L"Штанги сошли с проводов: тяги нет";
+            put(aside, pace);
+            return std::pair{pressed - drive(0, false, 120), told};
+        };
+        check(pedal(0, 0).first > 1.5 && !pedal(0, 0).second, "a trolleybus under its wires has no power");
+        check(pedal(-2, 0).first > 1.5, "a trolleybus near its wires has no power");
+        const auto away = pedal(-5, 0);
+        check(std::abs(away.first) < .01 && away.second,
+              "a trolleybus drives away from its wires, or its driver is not told why not");
+        // What speed it has carries it on.
+        put(-5, 6);
+        const double coasting = drive(1, false, 30);
+        check(coasting > 3 && coasting < 7, "a trolleybus off its wires stops dead or speeds up");
+        put(-5, 6);
+        check(drive(1, true, 240) < .3, "a trolleybus off its wires has no brakes");
+        w.controlledCar = -1;
+        w.notice.clear();
     }
     w.controlledCar = int(tram.id);
     tram.body.v = {};

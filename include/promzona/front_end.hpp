@@ -1,15 +1,30 @@
 #pragma once
+#include "localization.hpp"
 #include <array>
 #include <filesystem>
 #include <future>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace pz
 {
 struct World;
 struct AudioLevels;
-enum class SceneMode { original, enhanced, scaled };
+enum class Density;
+// Population of the next new game; a running game keeps the density it was made with.
+const wchar_t *densityTitle(Density density);
+const char *densityCode(Density density);
+Density densityFromCode(std::string_view code, Density fallback);
+Density cycleDensity(Density density, int step);
+Density loadDensity(const std::filesystem::path &file, Density fallback);
+bool saveDensity(const std::filesystem::path &file, Density density);
+enum class SceneMode
+{
+    original,
+    enhanced,
+    scaled
+};
 struct GraphicsPreferences
 {
     static constexpr int minimum = 130, maximum = 3000;
@@ -23,6 +38,7 @@ class SaveSlots
     std::filesystem::path first_;
     std::future<void> writer_;
     int writing_{};
+
   public:
     explicit SaveSlots(std::filesystem::path first) : first_(std::move(first)) {}
     std::filesystem::path path(int slot) const;
@@ -31,9 +47,35 @@ class SaveSlots
     void finish();
     bool completed();
 };
-enum class MenuPage { home, settings, confirmNew, confirmSave };
-enum class MenuItem { resume, newGame, slot, load, save, settings, quit, distance, quality,
-                      effects, bloom, display, master, radio, nextTrack, back, confirm };
+enum class MenuPage
+{
+    home,
+    settings,
+    confirmNew,
+    confirmSave
+};
+enum class MenuItem
+{
+    resume,
+    newGame,
+    slot,
+    load,
+    save,
+    settings,
+    quit,
+    distance,
+    quality,
+    effects,
+    bloom,
+    display,
+    master,
+    radio,
+    language,
+    population,
+    nextTrack,
+    back,
+    confirm
+};
 struct MenuRow
 {
     MenuItem item;
@@ -44,9 +86,16 @@ struct FrontEnd
 {
     MenuPage page = MenuPage::home;
     int focus{}, selected = 1, active = 1;
-    std::array<bool,3> occupied{};
-    void open(MenuPage next) { page = next; focus = 0; }
-    std::vector<MenuRow> rows(bool playing, const GraphicsPreferences &, SceneMode, const AudioLevels &) const;
+    std::array<bool, 3> occupied{};
+    Language language{Language::russian};
+    Density population{};
+    void open(MenuPage next)
+    {
+        page = next;
+        focus = 0;
+    }
+    std::vector<MenuRow> rows(bool playing, const GraphicsPreferences &, SceneMode,
+                              const AudioLevels &) const;
 };
 struct MenuLayout
 {
@@ -54,4 +103,4 @@ struct MenuLayout
     MenuLayout(int widthPx, int heightPx, int count);
     int hit(int mouseX, int mouseY, int count) const;
 };
-}
+} // namespace pz

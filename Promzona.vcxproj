@@ -76,6 +76,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include/promzona\animation.hpp" />
+    <ClInclude Include="include/promzona\appearance.hpp" />
     <ClInclude Include="include/promzona\architecture.hpp" />
     <ClInclude Include="include/promzona\assets.hpp" />
     <ClInclude Include="include/promzona\audio.hpp" />
@@ -91,8 +92,10 @@
     <ClInclude Include="include/promzona\front_end.hpp" />
     <ClInclude Include="include/promzona\jobs.hpp" />
     <ClInclude Include="include/promzona\layout.hpp" />
+    <ClInclude Include="include/promzona\localization.hpp" />
     <ClInclude Include="include/promzona\math.hpp" />
     <ClInclude Include="include/promzona\minimap.hpp" />
+    <ClInclude Include="include/promzona\names.hpp" />
     <ClInclude Include="include/promzona\physics.hpp" />
     <ClInclude Include="include/promzona\renderer.hpp" />
     <ClInclude Include="include/promzona\road_levels.hpp" />
@@ -107,7 +110,11 @@
     <ClInclude Include="third_party\json.hpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="src\localization_phrases.inc" />
+  </ItemGroup>
+  <ItemGroup>
     <ClCompile Include="src\animation.cpp" />
+    <ClCompile Include="src\appearance.cpp" />
     <ClCompile Include="src\architecture.cpp" />
     <ClCompile Include="src\assets.cpp" />
     <ClCompile Include="src\audio.cpp" />
@@ -116,6 +123,7 @@
     <ClCompile Include="src\civilian_combat.cpp" />
     <ClCompile Include="src\civilian_cover.cpp" />
     <ClCompile Include="src\combat.cpp" />
+    <ClCompile Include="src\consequences.cpp" />
     <ClCompile Include="src\control_hints.cpp" />
     <ClCompile Include="src\core.cpp" />
     <ClCompile Include="src\detail_stream.cpp" />
@@ -128,15 +136,20 @@
     <ClCompile Include="src\jobs.cpp" />
     <ClCompile Include="src\shops.cpp" />
     <ClCompile Include="src\layout.cpp" />
+    <ClCompile Include="src\localization.cpp" />
     <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\managed_import.cpp" />
     <ClCompile Include="src\minimap.cpp" />
+    <ClCompile Include="src\names.cpp" />
     <ClCompile Include="src\passenger_jobs.cpp" />
     <ClCompile Include="src\peace_jobs.cpp" />
     <ClCompile Include="src\physics.cpp" />
     <ClCompile Include="src\pursuit.cpp" />
     <ClCompile Include="src\arrest.cpp" />
     <ClCompile Include="src\renderer.cpp" />
+    <ClCompile Include="src\renewal.cpp" />
     <ClCompile Include="src\road_levels.cpp" />
+    <ClCompile Include="src\roles.cpp" />
     <ClCompile Include="src\save.cpp" />
     <ClCompile Include="src\social.cpp" />
     <ClCompile Include="src\street_fixtures.cpp" />

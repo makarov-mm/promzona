@@ -1,5 +1,5 @@
 #version 330 core
-in vec3 vWorld, vNormal;
+in vec3 vWorld, vNormal, vLocal;
 in vec2 vUv;
 flat in vec4 vDetail;
 out vec4 fragColor;
@@ -13,6 +13,13 @@ uniform sampler2D uShadow;
 uniform mat4 uShadowMatrix;
 uniform int uDepthPass, uTreeLod;
 uniform float uShadowStrength;
+// A dressed person: clothing choice plus one (zero: not a person), skin tone 0..5 and
+// flags (1 trouser legs, 2 sleeves); hair colour, or a negative red for the palette's.
+uniform vec3 uOutfit, uHair;
+uniform int uLocalLights, uGridNodes;
+uniform sampler2D uLampMap;
+uniform float uGridLow, uLampSide;
+uniform vec3 uLampPosition[12], uLampColor[12], uLampDirection[12];
 const float PI = 3.14159265;
 float hash(float n) { return fract(sin(n * 12.9898 + 1.312) * 43758.5453); }
 float foliage(vec2 uv, float species) {
@@ -49,6 +56,94 @@ float sunlight(vec3 normal) {
         for (int x=-1; x<=1; ++x)
             occlusion += step(texture(uShadow,p.xy+vec2(x,y)*texel).r+bias,p.z);
     return 1.-occlusion/9.*uShadowStrength*(1.-smoothstep(.8,1.,edge));
+}
+// Local lighting of the managed game: analytic street lamps on the road grid and a
+// few moving lights (headlights, beacons). Short ranges, no shadows.
+vec3 localLamp(vec3 pos, vec3 tint, vec3 axis, vec3 n, vec3 albedo, float range, float wet) {
+    vec3 delta = pos - vWorld;
+    float d2 = dot(delta, delta);
+    if (d2 > range*range) return vec3(0.);
+    vec3 l = delta * inversesqrt(max(d2, .001));
+    float cone = dot(axis, axis) > .1 ? smoothstep(.78, .94, dot(-l, normalize(axis))) : 1.;
+    float fall = pow(max(0., 1. - d2/(range*range)), 2.) / (1. + d2*.08);
+    vec3 view = normalize(uEye - vWorld), halfway = normalize(l + view + vec3(.00001));
+    float spec = pow(max(0., dot(n, halfway)), mix(32., 110., wet)) * (.08 + .30*wet);
+    return ((albedo*.9 + vec3(.05)) * (max(0., dot(n, l)) + .04) + spec) * tint * fall * cone;
+}
+// Covered tunnels, as in the managed LocalLighting: x, z and half-length of the roofed
+// part; floor height at the centre, floor slope along x and the phase of the lamp rows.
+uniform vec3 uTunnels[8], uTunnelFloors[8];
+uniform int uTunnelCount;
+int tunnelAt(vec3 p) {
+    for (int i = 0; i < 8; ++i) {
+        if (i >= uTunnelCount) break;
+        vec3 t = uTunnels[i];
+        if (abs(p.x - t.x) <= t.z && abs(p.z - t.y) <= 5.95 &&
+            p.y < uTunnelFloors[i].x + (p.x - t.x)*uTunnelFloors[i].y + 5.05) return i;
+    }
+    return -1;
+}
+vec3 localLights(vec3 n, vec3 albedo, bool underground) {
+    vec3 sum = vec3(0.);
+    float dark = underground ? 0. : 1. - uDay;
+    float wet = uRain * max(n.y, 0.);
+    if (dark > .001 && uGridNodes > 0) {
+        // Each node owns the posts beside its northern and eastern streets; the lamp
+        // map holds the height of every lamp head, or a large negative value for none.
+        ivec2 cell = ivec2(floor((vWorld.xz - vec2(uGridLow)) / 36.));
+        vec3 tint = vec3(3.8, 3.15, 2.15) * dark;
+        for (int j = 0; j < 2; ++j)
+            for (int i = 0; i < 2; ++i) {
+                ivec2 node = cell + ivec2(i, j);
+                if (node.x < 0 || node.y < 0 || node.x >= uGridNodes || node.y >= uGridNodes) continue;
+                vec4 head = texelFetch(uLampMap, node, 0);
+                vec2 o = vec2(uGridLow) + vec2(node)*36.;
+                if (head.r > -500.) sum += localLamp(vec3(o.x - uLampSide + .5, head.r, o.y + 12.), tint, vec3(0.), n, albedo, 15., wet);
+                if (head.g > -500.) sum += localLamp(vec3(o.x + uLampSide + .5, head.g, o.y + 12.), tint, vec3(0.), n, albedo, 15., wet);
+                if (head.b > -500.) sum += localLamp(vec3(o.x + 12.5, head.b, o.y - uLampSide), tint, vec3(0.), n, albedo, 15., wet);
+                if (head.a > -500.) sum += localLamp(vec3(o.x + 12.5, head.a, o.y + uLampSide), tint, vec3(0.), n, albedo, 15., wet);
+            }
+    }
+    for (int i = 0; i < 12; ++i)
+        if (dot(uLampColor[i], uLampColor[i]) > .001)
+            sum += localLamp(uLampPosition[i], uLampColor[i], uLampDirection[i], n, albedo, 22., wet);
+    return sum;
+}
+// Clothes of the managed Actor.frag on the 16-slot people palette: 0 top, 1 skin,
+// 2 trousers, 5 and 6 hair. The loader keeps the height of every vertex in the standing
+// pose in vUv.y (half metres) and adds one for the arms, so trouser legs and sleeves stay
+// put in any pose; the managed shader cut them at a height of the moving body.
+vec3 dress(vec3 c) {
+    int slot = int(vUv.x*16.), choice = int(uOutfit.x-.5), flags = int(uOutfit.z+.5);
+    float h = fract(vUv.y)*2., pick = float(choice);
+    bool arm = vUv.y >= 1.;
+    vec3 top = mix(vec3(.20,.30,.32), vec3(.55,.24,.15), fract(pick*.37));
+    if (choice > 5) top = mix(vec3(.42,.39,.30), vec3(.16,.19,.25), fract(pick*.61));
+    vec3 legs = mix(vec3(.10,.13,.18), vec3(.26,.23,.20), fract(pick*.43));
+    if (choice == 9) { top = vec3(.85,.88,.83); legs = vec3(.12,.18,.20); }
+    else if (choice == 10) { top = vec3(.19,.27,.34); legs = vec3(.10,.14,.20); }
+    else if (choice == 11) top = legs = vec3(.16,.21,.17)*(1.+.20*sin(h*37.)*sin(vLocal.x*25.));
+    else if (choice == 12) top = vec3(.56,.10,.29);
+    else if (choice == 13) top = vec3(.30,.26,.37);
+    else if (choice == 14 || choice == 15) top = vec3(.27,.26,.19);
+    else if (choice == 16) { top = vec3(.70,.61,.45); legs = vec3(.13,.41,.50); }
+    else if (choice == 17) top = legs = vec3(.055,.06,.07);
+    else if (choice == 18) top = legs = vec3(.20,.25,.14)*(1.+.15*sin(h*31.)*sin(vLocal.x*27.));
+    else if (choice == 19) { top = vec3(.085,.075,.07); legs = vec3(.15,.20,.31); }
+    // A medic's coat reaches the knee and covers whatever is worn under it.
+    bool coat = choice == 9 && h > .66;
+    bool service = choice == 9 || choice == 10 || choice == 11 || choice == 17 || choice == 18;
+    if (slot == 0) c = top;
+    else if (slot == 2) c = coat ? top : legs;
+    else if (slot == 1) {
+        c = mix(vec3(.39,.24,.15), vec3(.85,.65,.49), uOutfit.y/5.);
+        if (arm) { if ((flags & 2) != 0 && h > .78) c = top; }
+        else if (h < .94 && ((flags & 1) != 0 || service)) c = coat ? top : legs;
+    }
+    else if ((slot == 5 || slot == 6) && uHair.x >= 0.) c = uHair;
+    // Service boots instead of the summer shoes of the skin.
+    if (service && h < .16) c = vec3(.055,.06,.055);
+    return c;
 }
 float rectangle(vec2 p, vec2 centre, vec2 halfSize) {
     vec2 edge = abs(p - centre) - halfSize;
@@ -152,8 +247,17 @@ void main() {
         tex.a = 1.;
     }
     if (tex.a < .05) discard;
+    if (uOutfit.x > .5) tex.rgb = dress(tex.rgb);
     if (uSurface == 9) {
         if (foliage(vUv,vDetail.w) < .45) discard;
+    }
+    if (uSurface == 11) {
+        // Pothole photograph: the broken middle stays, the square border dissolves into the road.
+        vec2 q = vUv*2.-1.;
+        float rim = length(q)+.06*sin(atan(q.y,q.x)*5.+vWorld.x*2.3+vWorld.z*1.7);
+        float noise = fract(52.9829189*fract(dot(floor(gl_FragCoord.xy),vec2(.06711056,.00583715))));
+        if (1.0-smoothstep(.80,.98,rim) <= noise) discard;
+        tex.rgb = mix(tex.rgb*vec3(.72,.77,.80),vec3(.234,.252,.261),smoothstep(.50,.90,rim));
     }
     // Alpha-tested foliage casts its silhouette; skip the complete material shader.
     if (uDepthPass != 0) { fragColor = vec4(0.); return; }
@@ -245,9 +349,23 @@ void main() {
     vec3 light = mix(vec3(1,.97,.91),vec3(1,.64,.34),golden*.55);
     vec3 sky = pow(uFog,vec3(2.2));
     float sunVisibility = sunlight(n);
-    vec3 color = albedo*(.12+.28*uDay)*ao+(diffuse+specular)*light*nl*(.15+2.8*uDay)*sunVisibility;
+    // Cool skylight at night sets off the warm street lamps.
+    vec3 skylight = mix(vec3(.60, .76, 1.10), vec3(1.), uDay);
+    vec3 color = albedo*skylight*(.12+.28*uDay)*ao+(diffuse+specular)*light*nl*(.15+2.8*uDay)*sunVisibility;
     if (uSurface == 9) color += albedo*light*.42*uDay*max(dot(-n,l),0.)*sunVisibility;
     color += sky*f0*(.18+.45*(1.0-rough))*ao;
+    int tunnel = uTunnelCount > 0 ? tunnelAt(vWorld) : -1;
+    if (tunnel >= 0) {
+        // Under the roof: no sky and no sun, a dim fill and a ceiling lamp row every nine metres.
+        vec3 t = uTunnels[tunnel], f = uTunnelFloors[tunnel];
+        color = color*.16 + albedo*vec3(.13,.135,.12)*ao;
+        float first = floor((vWorld.x - f.z)/9.)*9. + f.z;
+        for (int k = 0; k < 2; ++k) {
+            float x = first + float(k)*9.;
+            color += localLamp(vec3(x, f.x + (x - t.x)*f.y + 4.7, t.y), vec3(3.2,2.9,2.1), vec3(0.), n, albedo, 13., 0.);
+        }
+    }
+    if (uLocalLights != 0) color += localLights(n, albedo, tunnel >= 0);
     if (vehicleMaterial < 0) color += albedo*uEmissive;
     if (vehicleMaterial == 22) color = mix(color, sky, .17+.49*pow(1.-nv, 5.));
     if (vehicleMaterial == 8) {

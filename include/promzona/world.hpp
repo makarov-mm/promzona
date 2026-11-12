@@ -62,7 +62,27 @@ struct Person
     int riding{-1}, seat{}, alight{};
     int ownedScooter{-1};
     bool courier{}, inCompany{};
-    enum class Uniform { none, medical, police } uniform{};
+    // The response forces of the managed game wear their own colours.
+    enum class Uniform
+    {
+        none,
+        medical,
+        police,
+        rosguard,
+        fsb,
+        army
+    } uniform{};
+    bool officer() const { return uniform >= Uniform::police; }
+    // A habit that keeps a person about one place: a towel on the beach, a night shift at
+    // the kerb, a homeless corner. Port of the managed CityTraffic.Roles.
+    enum class Role
+    {
+        none,
+        beach,
+        night,
+        vagrant
+    } role{};
+    Vec2 roleHome{};
     Vec2 incident{}, danger{};
     double watchUntil{}, voiceAt{}, idleVoiceAt{}, fleeUntil{};
     double deliveryDistance{}, deliveryUntil{};
@@ -71,6 +91,16 @@ struct Person
     Vec2 platformTarget{};
     bool dead{};
     double rescueAfter{};
+    // A survivor of a car hit lies where it fell, then limps about that spot.
+    double knockedUntil{}, injuredUntil{};
+    Vec2 injuryHome{};
+    // Walking and getting nowhere: for how long, and the way round that follows.
+    double blockedFor{}, roundUntil{};
+    int roundSide{};
+    Vec2 roundFrom{};
+    // Time of death; a body nobody treats is replaced by a new passer-by out of view.
+    double diedAt{};
+    bool drowned{};
     double fear{}, heading{}, phase{}, distance{}, health{1}, burnUntil{};
     bool burnPlayerCaused{};
     WeaponId sidearm{};
@@ -78,7 +108,12 @@ struct Person
     double alertUntil{}, aimSeconds{}, shotAt{};
     int burstLeft{};
     static WeaponId civilianWeapon(std::uint32_t citySeed, std::uint32_t id);
+    // Fourteen street types; four of them are the managed personas with manners of their own.
     std::uint32_t style{};
+    bool elder() const { return style == 2 || style == 8; }
+    bool bagElder() const { return style == 8; }
+    bool drunk() const { return style == 9; }
+    bool homeless() const { return style == 10; }
 };
 struct Scooter
 {
@@ -87,7 +122,13 @@ struct Scooter
     int owner{-1}, rider{free};
     double returnAt{};
 };
-enum class Species { cat, dog, pigeon, bird };
+enum class Species
+{
+    cat,
+    dog,
+    pigeon,
+    bird
+};
 struct Animal
 {
     Species species{};
@@ -140,6 +181,31 @@ struct SoundEvent
     bool ui{};
     int speaker{-1};
 };
+// How many cars and passers-by a new city gets. `low` is the population of every save
+// made before the setting existed; `high` is what the managed game starts with.
+enum class Density
+{
+    low,
+    medium,
+    high
+};
+struct PopulationSize
+{
+    size_t cars, people;
+};
+constexpr PopulationSize populationSize(Density density)
+{
+    return density == Density::high     ? PopulationSize{1080, 3240}
+           : density == Density::medium ? PopulationSize{540, 1800}
+                                        : PopulationSize{260, 720};
+}
+// What an imported managed (C#) save carried over; see World::importManaged.
+struct ManagedImport
+{
+    int format{}, roadRevision{}, weapons{};
+    std::uint32_t seed{};
+    bool samePlan{}, positionKept{};
+};
 struct World
 {
     static constexpr int nodes = 49;
@@ -171,7 +237,13 @@ struct World
     Random streetRandom;
     double animalClock{};
     int playerScooter{-1};
-    enum class StreetOffer { none, gift, taxi, patient };
+    enum class StreetOffer
+    {
+        none,
+        gift,
+        taxi,
+        patient
+    };
     struct Conversation
     {
         int actor{-1};
@@ -182,6 +254,14 @@ struct World
     void generateStreetLife();
     void formCompanies(bool loading);
     void socialIntent(Person &person, Vec2 &direction, double &speed);
+    // Dry land off the canal banks, and the bridges.
+    bool dryGround(Vec2 at) const;
+    // How far a walker who is held up turns aside, in radians.
+    static constexpr double roundTurn = 1.4;
+    void goRound(Person &person, Vec2 dir);
+    // Walkers keep out of each other's way; `afoot` is everybody walking near the player.
+    void passWalkers(const Person &person, const std::vector<const Person *> &afoot, Vec2 &direction,
+                     double speed) const;
     void scarePerson(Person &person, Vec2 origin, double fear);
     void releaseScooter(int index, Vec2 velocity);
     int nearbyScooter() const;
@@ -193,6 +273,8 @@ struct World
     Vec2 landingSite(Vec2 near, Vec2 away);
     void takeFlight(int flock, Vec2 from, Vec2 away);
     std::vector<TransitLine> lines;
+    // When the driver of a trolleybus that has left its wires is told so again.
+    double wiresNoticeAt{};
     int playerTransitSeat{-1};
     bool transitExitRequested{};
     double nextPlatformScan{};
@@ -213,7 +295,11 @@ struct World
     void seatPassenger(Person &person);
     std::vector<ServiceSite> sites;
     Job job;
-    struct StreetHail { int actor{-1}; double until{}; };
+    struct StreetHail
+    {
+        int actor{-1};
+        double until{};
+    };
     std::array<StreetHail, 3> hailers{};
     double nextHail{};
     void updateHailers();
@@ -238,12 +324,33 @@ struct World
     std::vector<int> puddleCells;
     void generatePuddles();
     bool inRoadPuddle(Vec2 wheel) const;
+    // Holes of block (i, j) are potholes[potholeFirst[b] .. potholeFirst[b + 1]), b = j * (nodes - 1) + i.
+    std::vector<Pothole> potholes;
+    std::vector<std::uint32_t> potholeFirst;
+    int potholeJolts{};
+    void generatePotholes();
+    void potholeJolt(Car &car);
     void addMark(SurfaceMark mark);
     void updateTireMarks(Vec2 focus, double dt);
     std::vector<Rocket> rockets;
-    enum class FixtureKind { bin, hydrant, dumpster, bench, phoneBooth, drinkMachine, mailbox,
-                             bag, bottle, packet, can, garbageBag, count };
-    struct StreetFixture {
+    enum class FixtureKind
+    {
+        bin,
+        hydrant,
+        dumpster,
+        bench,
+        phoneBooth,
+        drinkMachine,
+        mailbox,
+        bag,
+        bottle,
+        packet,
+        can,
+        garbageBag,
+        count
+    };
+    struct StreetFixture
+    {
         size_t body{};
         Vec2 home;
         FixtureKind kind{};
@@ -269,13 +376,68 @@ struct World
     int controlledCar{0}, money{};
     double wanted{};
     double health{1}, time{}, shotCooldown{}, wantedCooldown{}, rain{}, rainTarget{}, weatherClock{120};
+    // Console cheat of the managed game: the player and the driven vehicle take no damage.
+    bool godMode{};
+    double playerKnockedUntil{};
+    double lastCrimeAt{-100}, lastPoliceSightAt{-100}, policeSightCheckAt{};
+    int pedestrianImpacts{};
+    static constexpr double fatalImpactSpeed = 5.5;
+    bool carTouches(const Car &car, Vec2 point, double margin) const;
+    void strikePerson(Person &person, const Car &car, double closingSpeed, bool playerDriving);
+    // The nearest spot off the carriageway where somebody hurt in the road can wait.
+    Vec2 kerbside(Vec2 from) const;
+    void strikePlayer(const Car &car, double closingSpeed);
+    bool detectImpact(Person &person, const Car &car, bool playerDriving);
+    void detectPlayerImpact(std::span<const Car *const> traffic);
+    void hurtPlayer(double amount);
+    bool policeSees() const;
+    void fadeWanted(double dt);
+    // Depth of the canal or the sea under a body whose lowest point is at `feet`;
+    // zero on dry land and on a bridge deck.
+    double waterDepth(Vec2 point, double feet) const;
+    bool outOfSight(Vec2 point) const;
+    double nextWaterCheck{}, nextRenewal{};
+    size_t renewalCursor{};
+    int renewedPeople{}, renewedCars{}, drownings{}, sunkCars{}, clearedJams{};
+    void waterStep();
+    void sinkCar(Car &car);
+    void drownPerson(Person &person);
+    bool personEngaged(int actor) const;
+    bool carEngaged(int car) const;
+    bool renewPerson(int actor);
+    bool renewCar(int car);
+    void renewCity();
+    // Unhurried and frightened speed of a walker, metres per second.
+    static double walkingPace(const Person &person);
+    static double fleeingPace(const Person &person);
+    double nextRoleStep{};
+    size_t roleCursor{};
+    int rolesTaken{}, rolesLeft{}, dutiesEnded{};
+    // Its own sequence: habits must not change the seeded traffic or the wildlife.
+    Random roleRandom;
+    Vec2 towel{};
+    int towelGuests{};
+    size_t roleQuota(Person::Role role) const;
+    bool roleGround(Person::Role role, Vec2 at) const;
+    bool roleCandidate(int actor) const;
+    bool takeRole(int actor, Person::Role role, bool unseen);
+    void leaveRole(Person &person);
+    void anchorWalk(Person &person);
+    void roleIntent(Person &person, Vec2 &direction, double &speed);
+    void settleRoles();
+    void stepRoles();
+    // Seconds a walker has to wait before stepping off the kerb in front of it; zero
+    // away from a kerb, at a corner without lights and while the walk signal lasts.
+    double kerbWait(const Person &person) const;
+    bool onCrossing(const Person &person, bool caught) const;
     bool firing{}, aiming{};
     double playerBurnUntil{}, fireClock{}, nextFlameSound{};
     double playerDistance{};
     ContactWorld physics;
     std::vector<SoundEvent> sounds;
+    Density density{};
     void generate(std::uint32_t newSeed, std::function<void(float)> progress = {},
-                  int layoutRevision = CityLayout::districtRevision);
+                  int layoutRevision = CityLayout::districtRevision, Density population = Density::low);
     void step(PlayerInput input, double dt);
     Vec2 position() const { return controlledCar >= 0 ? cars[controlledCar].body.p : player.p; }
     double ground() const
@@ -292,9 +454,11 @@ struct World
     void supportCar(Car &car, Vec2 previousPosition, double dt);
     void supportPerson(Body &body, Vec2 previousPosition, double dt);
     void appendLevelContacts(std::uint32_t &id);
-    int chooseWalkNext(int n, int previous);
+    // `source` replaces the city's own sequence where a choice must not disturb it.
+    int chooseWalkNext(int n, int previous, Random *source = nullptr);
     std::optional<Vec2> vehicleExit(const Car &car, std::optional<Vec2> toward = {}) const;
-    struct VehicleEntry {
+    struct VehicleEntry
+    {
         int car{-1}, side{};
         double progress{}, deadline{};
     } vehicleEntry;
@@ -306,10 +470,25 @@ struct World
     void enterExit();
     void generateServices();
     void generateShops();
+    // Bus shelters, by their roadside signs: on the west pavement of a street that runs
+    // north, half-way along the block. The second list gives the stop of the block that
+    // leaves a node towards +z, or -1.
+    std::vector<Vec2> busStops;
+    std::vector<int> busStopOfNode;
+    void generateBusStops();
+    // The shelter stands behind its sign.
+    static constexpr Vec2 shelter(Vec2 sign) { return {sign.x - .8, sign.z}; }
+    // A bus at its stop, or pulling up to it: the speed it may still do.
+    double busStopLimit(Car &bus);
+    // A taxi ride that ends at a bus stop keeps this in place of the number of a transit line.
+    static constexpr int busStopRide = -2;
+    Vec2 rideEnd(int line, int destination) const;
     int marketInReach() const;
     int garageInReach() const;
     int ownedGarage{-1}, openMarket{-1};
     static constexpr int garagePrice = 400, garageCapacity = 3;
+    static constexpr double pillHealing = .35;
+    bool spawnPickup(bool energy);
     int ownedVehicleCount() const;
     int garageQuote() const;
     bool serviceGarage();
@@ -341,14 +520,23 @@ struct World
     void clinicRespawn(Vec2 fallen);
     void notify(std::wstring text);
     bool validJob() const;
-    static constexpr size_t trafficPopulation = 260, maxResponseVehicles = 32, maxSpawnVehicles = 8;
+    // Ordinary traffic occupies the first slots of `cars`; response and summoned vehicles follow.
+    size_t trafficPopulation = populationSize(Density::low).cars;
+    static constexpr size_t maxResponseVehicles = 32, maxSpawnVehicles = 8;
     bool spawnVehicle(unsigned model);
     int pursuitNode{-1};
     std::array<int, nodes * nodes> pursuitDistances{};
     double dispatchAt{};
     void updateDispatch();
-    enum class PatrolStage { stopping, approaching, returning, seated };
-    struct ArrestPatrol {
+    enum class PatrolStage
+    {
+        stopping,
+        approaching,
+        returning,
+        seated
+    };
+    struct ArrestPatrol
+    {
         int car{-1}, officer{-1};
         PatrolStage stage{};
         double hold{}, deadline{};
@@ -360,8 +548,15 @@ struct World
     void officerIntent(Vec2 &direction, double &speed) const;
     void arrestStep(double dt);
     std::optional<Vec2> clearEntrance(Vec2 door) const;
-    enum class RescueStage { standby, driving, care, returning };
-    struct Rescue {
+    enum class RescueStage
+    {
+        standby,
+        driving,
+        care,
+        returning
+    };
+    struct Rescue
+    {
         int car{-1}, medic{-1}, patient{-1}, destination{-1};
         RescueStage stage{};
         double deadline{}, treatment{};
@@ -381,6 +576,9 @@ struct World
     bool deployResponder(int kind);
     void responseFire(Car &car);
     void flyPatrol(Car &car, const PlayerInput &input, double dt);
+    // L in a piloted helicopter: descend and brake until the skids touch; ascending cancels.
+    bool helicopterLanding{};
+    void toggleHelicopterLanding();
     double recoveryReadyAt{};
     bool recover();
     bool safeRecoveryPose(const Car &car, Vec2 at, double heading) const;
@@ -391,7 +589,8 @@ struct World
     void destroyCar(Car &car);
     void damageCar(Car &car, double amount, bool playerCaused = false);
     void vehicleImpact(Car &car, double speedChange, Vec2 velocityChange = {});
-    void killPerson(Person &person, Vec2 velocity = {}, bool playerCaused = false);
+    // A drowning is silent: no blood, no alarmed witnesses and no ambulance call.
+    void killPerson(Person &person, Vec2 velocity = {}, bool playerCaused = false, bool drowned = false);
     AttackHit traceAttack(Vec2 from, Vec2 direction, double y, double slope, double range, int ignoreCar = -1,
                           bool includePlayer = false, const Person *shooter = nullptr) const;
     bool blastVisible(Vec2 from, double y, Vec2 to, double targetY) const;
@@ -406,6 +605,7 @@ struct World
     std::function<void()> captureSave(const std::filesystem::path &path) const;
     void save(const std::filesystem::path &path) const;
     void load(const std::filesystem::path &path);
+    ManagedImport importManaged(const std::filesystem::path &file);
     std::wstring command(const std::string &text);
     static int nearestNode(Vec2 p);
     static Vec2 nodePoint(int n)
@@ -416,8 +616,14 @@ struct World
     int chooseNext(int n, int previous);
     void newRoute(Car &car);
     bool intersectionClear(const Car &car) const;
+    void planExit(Car &car);
+    // A car is crossing this junction (the one reservation it has); `except` is not asked.
+    bool junctionHeld(int node, const Car *except) const;
     // Actors are binned by city block for nearby drivers' periodic perception.
-    struct TrafficCell { int car{-1}, person{-1}; };
+    struct TrafficCell
+    {
+        int car{-1}, person{-1};
+    };
     std::vector<TrafficCell> trafficCells;
     std::vector<int> nextTrafficCar, nextTrafficPerson;
     double trafficIndexAt{};

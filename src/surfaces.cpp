@@ -59,7 +59,8 @@ bool World::scenerySolid(Vec2 p, double y, double radius) const
     const auto *s = levelAt(p, radius);
     if (!s)
     {
-        if (y >= ground + radius) return false;
+        if (y >= ground + radius)
+            return false;
         if (y >= ground - CityLayout::canalDeckThickness - radius || !layout.bridge(p))
             return true;
         return y < terrain.bedHeight(p.x, p.z) + radius;
@@ -78,24 +79,30 @@ bool World::scenerySolid(Vec2 p, double y, double radius) const
 }
 bool World::vehicleSpace(Vec2 at, double height, const Car *ignore, bool includePlayer) const
 {
-    auto overlaps = [&](const Body &body) {
-        if (std::abs(body.height - height) > body.verticalExtent * .5 + .8) return false;
+    auto overlaps = [&](const Body &body)
+    {
+        if (std::abs(body.height - height) > body.verticalExtent * .5 + .8)
+            return false;
         const Vec2 delta = at - body.p;
-        if (body.circle) return delta.length2() < (body.radius + .35) * (body.radius + .35);
+        if (body.circle)
+            return delta.length2() < (body.radius + .35) * (body.radius + .35);
         const double bound = body.halfW + body.halfH + .7;
-        if (delta.length2() > bound * bound) return false;
+        if (delta.length2() > bound * bound)
+            return false;
         auto d = rotate(delta, -body.angle);
         return std::abs(d.x) < body.halfW + .35 && std::abs(d.z) < body.halfH + .35;
     };
     auto solidProp = [&](const Body &b) { return b.invMass < 1. && overlaps(b); };
-    bool nearby = staticQueryCount == staticBodies.size() && (at-staticQueryCentre).length2() < 110.*110.;
-    const bool blocked = nearby ? std::ranges::any_of(nearbyStaticBodies, [&](size_t i) {return solidProp(staticBodies[i]);})
-                                : std::ranges::any_of(staticBodies, solidProp);
-    return !(scenerySolid(at, height, .35) || insideBuilding(at, height, .35) ||
-        blocked ||
-        std::ranges::any_of(cars,[&](const Car &other){return &other != ignore && overlaps(other.body);}) ||
-        std::ranges::any_of(people,[&](const Person &p){return !p.dead && p.riding < 0 && overlaps(p.body);}) ||
-        (includePlayer && controlledCar < 0 && overlaps(player)));
+    bool nearby = staticQueryCount == staticBodies.size() && (at - staticQueryCentre).length2() < 110. * 110.;
+    const bool blocked =
+        nearby ? std::ranges::any_of(nearbyStaticBodies, [&](size_t i) { return solidProp(staticBodies[i]); })
+               : std::ranges::any_of(staticBodies, solidProp);
+    return !(scenerySolid(at, height, .35) || insideBuilding(at, height, .35) || blocked ||
+             std::ranges::any_of(cars, [&](const Car &other)
+                                 { return &other != ignore && overlaps(other.body); }) ||
+             std::ranges::any_of(people, [&](const Person &p)
+                                 { return !p.dead && p.riding < 0 && overlaps(p.body); }) ||
+             (includePlayer && controlledCar < 0 && overlaps(player)));
 }
 
 std::optional<Vec2> World::vehicleExit(const Car &car, std::optional<Vec2> toward) const
@@ -104,8 +111,10 @@ std::optional<Vec2> World::vehicleExit(const Car &car, std::optional<Vec2> towar
     for (double along : {0., -.6, .7, -1.3, 1.3})
         for (double side : {first, -first})
         {
-            Vec2 at = car.body.p + rotate({side * (car.body.halfW + .9), along * car.body.halfH}, car.body.angle);
-            if (!safeExitPoint(car, at)) continue;
+            Vec2 at =
+                car.body.p + rotate({side * (car.body.halfW + .9), along * car.body.halfH}, car.body.angle);
+            if (!safeExitPoint(car, at))
+                continue;
             return at;
         }
     return std::nullopt;
@@ -117,12 +126,14 @@ void World::supportCar(Car &c, Vec2 previousPosition, double dt)
     double previousFloor = surface(previousPosition, b.roadLevel), foot = b.height - .8;
     b.roadLevel = selectLevel(b.p, b.roadLevel, foot);
     double floor = surface(b.p, b.roadLevel);
-    if(c.kind==12 && c.destroyed)
+    if (c.kind == 12 && c.destroyed)
     {
-        double roof=flightFloor(b.p);
-        if(foot>=roof-.15) floor=std::max(floor,roof);
-        double oldRoof=flightFloor(previousPosition);
-        if(foot>=oldRoof-.15) previousFloor=std::max(previousFloor,oldRoof);
+        double roof = flightFloor(b.p);
+        if (foot >= roof - .15)
+            floor = std::max(floor, roof);
+        double oldRoof = flightFloor(previousPosition);
+        if (foot >= oldRoof - .15)
+            previousFloor = std::max(previousFloor, oldRoof);
     }
     bool attached = c.lift < .03 && c.verticalVelocity <= 0 && std::abs(foot - previousFloor) < .2;
     if (attached && std::abs(floor - previousFloor) < .45)
@@ -215,12 +226,17 @@ void World::appendLevelContacts(std::uint32_t &id)
                     Vec2 p{x, s.centreZ(x) + side * 7.1};
                     box(p, terrain.height(p), s.floor(terrain, p) - .55, {.7, .7});
                 }
+                // The cap beam is drawn 0.55 to 1.25 m under the deck. A body's height is its
+                // origin, 0.8 m above the wheels whatever the vehicle, and the contact test
+                // centres the vertical extent on it: a MAZ or an ambulance on the deck reached
+                // the beam under its own wheels and stood there, on the level deck and, with
+                // the beam ahead higher than the wheels, on the ramps. The collider sits lower.
                 Vec2 p{x, s.centreZ(x)};
-                box(p, s.floor(terrain, p) - 1.25, s.floor(terrain, p) - .55, {.8, 7.8});
+                box(p, s.floor(terrain, p) - 3.1, s.floor(terrain, p) - 2.4, {.8, 7.8});
             }
     }
 }
-int World::chooseWalkNext(int n, int previous)
+int World::chooseWalkNext(int n, int previous, Random *source)
 {
     auto options = layout.neighbours(n);
     std::erase_if(options,
@@ -234,6 +250,6 @@ int World::chooseWalkNext(int n, int previous)
                   });
     if (options.size() > 1)
         std::erase(options, previous);
-    return options.empty() ? n : options[random.index(int(options.size()))];
+    return options.empty() ? n : options[(source ? *source : random).index(int(options.size()))];
 }
 } // namespace pz

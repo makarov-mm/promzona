@@ -58,7 +58,8 @@ DetailStream::DetailStream(const World &world)
     std::map<std::pair<int, int>, std::vector<BuildingPlan>> grouped;
     for (const auto &b : world.buildings)
     {
-        if (b.kind != BuildingKind::apartment) continue; // Other facades are complete in the core mesh.
+        if (b.kind != BuildingKind::apartment)
+            continue; // Other facades are complete in the core mesh.
         grouped[{int(std::floor(b.p.x / 72)), int(std::floor(b.p.z / 72))}].push_back(
             planBuilding(b, world.terrain.height(b.p)));
     }

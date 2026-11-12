@@ -93,8 +93,10 @@ void AudioMixer::addClip(std::string name, std::vector<float> samples)
     if (clips_.contains(name))
         throw std::invalid_argument("Cannot replace an active audio clip");
     auto it = clips_.emplace(std::move(name), std::move(samples)).first;
-    if (it->first == "radio0") tracks_[0] = &it->second;
-    if (it->first == "radio1") tracks_[1] = &it->second;
+    if (it->first == "radio0")
+        tracks_[0] = &it->second;
+    if (it->first == "radio1")
+        tracks_[1] = &it->second;
 }
 void AudioMixer::trim()
 {
@@ -130,19 +132,27 @@ void AudioMixer::update(World &world, double cameraHeading)
         std::lock_guard lock(mutex_);
         listener_ = world.position();
         heading_ = cameraHeading;
-        std::erase_if(voices_, [&](Voice &voice) {
-            if (voice.speaker < 0) return false;
-            if (size_t(voice.speaker) >= world.people.size() || world.people[voice.speaker].dead) return true;
-            voice.source = world.people[voice.speaker].body.p;
-            return false;
-        });
+        std::erase_if(voices_,
+                      [&](Voice &voice)
+                      {
+                          if (voice.speaker < 0)
+                              return false;
+                          if (size_t(voice.speaker) >= world.people.size() ||
+                              world.people[voice.speaker].dead)
+                              return true;
+                          voice.source = world.people[voice.speaker].body.p;
+                          return false;
+                      });
         auto pa = clips_.find("peace_pa");
         if (pa != clips_.end())
         {
             const bool active = world.job.kind == JobKind::broadcast && world.job.route.enabled &&
                                 world.controlledCar == world.job.actor;
-            std::erase_if(voices_, [&](const Voice &v) {return !active && v.samples == &pa->second;});
-            if (active) for (auto &v: voices_) if(v.samples==&pa->second) v.source=world.position();
+            std::erase_if(voices_, [&](const Voice &v) { return !active && v.samples == &pa->second; });
+            if (active)
+                for (auto &v : voices_)
+                    if (v.samples == &pa->second)
+                        v.source = world.position();
         }
         for (auto &v : voices_)
         {
@@ -177,15 +187,19 @@ void AudioMixer::update(World &world, double cameraHeading)
         size_t count = 0;
         for (const auto &c : world.cars)
         {
-            if (c.destroyed || c.falling) continue;
+            if (c.destroyed || c.falling)
+                continue;
             double distance = (c.body.p - listener_).length2();
-            if (distance >= 100 * 100) continue;
+            if (distance >= 100 * 100)
+                continue;
             const auto *medical = c.kind == 4 ? world.ambulanceCall(c.id) : nullptr;
             if ((c.responding && c.kind != 12 && c.kind != 13 && c.kind != 14) ||
                 (medical && medical->stage == World::RescueStage::driving && !medical->braking))
                 loop(0x10000 + int(c.id), "siren", spatialAudio(c.body.p, listener_, heading_, .26), 1);
-            if (distance >= 55 * 55 || (count == engines.size() && distance >= distances.back())) continue;
-            if (count < engines.size()) ++count;
+            if (distance >= 55 * 55 || (count == engines.size() && distance >= distances.back()))
+                continue;
+            if (count < engines.size())
+                ++count;
             size_t at = count - 1;
             while (at && distance < distances[at - 1])
             {
@@ -208,8 +222,10 @@ void AudioMixer::update(World &world, double cameraHeading)
         std::erase_if(voices_, [](auto &v) { return v.loop && !v.touched; });
     }
     for (auto &event : world.sounds)
-        if ((event.speaker < 0 || (size_t(event.speaker) < world.people.size() && !world.people[event.speaker].dead)) &&
-            (event.name != "peace_pa" || (world.job.kind == JobKind::broadcast && world.job.route.enabled && world.controlledCar==world.job.actor)))
+        if ((event.speaker < 0 ||
+             (size_t(event.speaker) < world.people.size() && !world.people[event.speaker].dead)) &&
+            (event.name != "peace_pa" || (world.job.kind == JobKind::broadcast && world.job.route.enabled &&
+                                          world.controlledCar == world.job.actor)))
             play(event);
     world.sounds.clear();
 }
@@ -273,7 +289,8 @@ void AudioMixer::mix(std::span<float> stereo)
         size_t frame = 0;
         while (frame < stereo.size() / 2)
         {
-            if (!tracks_[track_]) track_ = 1 - track_;
+            if (!tracks_[track_])
+                track_ = 1 - track_;
             const auto &music = *tracks_[track_];
             size_t n = std::min(music.size() - trackCursor_, stereo.size() / 2 - frame);
             for (size_t i = 0; i < n; ++i)

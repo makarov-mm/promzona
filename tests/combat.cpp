@@ -93,15 +93,17 @@ int main()
             armed.alertUntil = 8;
             w.people.push_back(armed);
             auto &shooter = w.people.front();
-            auto aim = [&](int frames) {
-                for (int n = 0; n < frames; ++n) {
-                    w.time += 1./120;
-                    w.civilianCombat(shooter, 1./120);
+            auto aim = [&](int frames)
+            {
+                for (int n = 0; n < frames; ++n)
+                {
+                    w.time += 1. / 120;
+                    w.civilianCombat(shooter, 1. / 120);
                 }
             };
             aim(70);
             check(w.health == 1, "civilian takes time to aim");
-            w.staticBodies.push_back(box({0,-5},{2,.3},1,4));
+            w.staticBodies.push_back(box({0, -5}, {2, .3}, 1, 4));
             aim(40);
             check(w.health == 1 && w.sounds.empty(), "civilian cannot fire through a wall");
             w.staticBodies.clear();
@@ -110,9 +112,10 @@ int main()
             w.killPerson(shooter);
             auto count = w.pickups.size();
             w.killPerson(shooter);
-            check(count == w.pickups.size() && std::ranges::count_if(w.pickups,[](const Pickup &p) {
-                return p.weapon == WeaponId::automatic && p.dropped;
-            }) == 1, "armed civilian drops a single collectable rifle");
+            check(count == w.pickups.size() &&
+                      std::ranges::count_if(w.pickups, [](const Pickup &p)
+                                            { return p.weapon == WeaponId::automatic && p.dropped; }) == 1,
+                  "armed civilian drops a single collectable rifle");
             auto hp = w.health;
             aim(200);
             check(w.health == hp, "dead civilians cannot continue shooting");

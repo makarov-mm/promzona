@@ -6,6 +6,10 @@
 #include <vector>
 namespace pz
 {
+// Where a waiting car's centre is, metres before the middle of the junction: the nose of
+// an ordinary car stays clear of the zebra (8.8 to 10.3 m) and of whoever walks on it.
+// The managed game, and the native one before 12.11.2026, stopped on the zebra at 11 m.
+inline constexpr double stopLine = 12.6;
 class Path
 {
     std::vector<Vec2> points_;
@@ -115,8 +119,8 @@ struct Car
         terrainPitch{}, terrainRoll{};
     Vec2 terrainGradient{};
     bool terrainActive{}, falling{}, destroyed{}, recovering{}, braking{}, wreckSupported{};
-    double health{1}, fireTime{}, routeDistance{}, wheelTravel{}, turretYaw{}, turretPitch{}, lastDamageAt{-100}, safeDrivingTime{},
-        impactCooldown{};
+    double health{1}, fireTime{}, routeDistance{}, wheelTravel{}, turretYaw{}, turretPitch{},
+        lastDamageAt{-100}, safeDrivingTime{}, impactCooldown{};
     int paint{};
     bool personal{}, driverless{};
     int doorSide{};
@@ -126,6 +130,17 @@ struct Car
     std::uint32_t model{}, id{};
     int routeFrom{}, routeTo{}, previousNode{-1}, routePhase{};
     int routeLevel{}, laneIndex{};
+    // The junction after routeTo, chosen on the way to it: a driver enters a crossing only
+    // when the street beyond has room. Not saved; a loaded car simply chooses again.
+    int plannedTo{-1};
+    // The junction a tram or a trolleybus is ready to cross: no car enters it first.
+    int claimed{-1};
+    // A bus stands at its stop until the first and passes the stops by until the second.
+    double busUntil{}, nextBusStop{};
+    // Where and since when the car has not moved a metre: a driver who has waited two
+    // minutes for nothing gives up out of sight (World::renewCity). Not saved.
+    Vec2 stallAnchor{};
+    double stallSince{};
     double blockedSince{-1}, nextLaneDecision{}, senseAt{}, trafficLimit{100};
     int line{-1}, nextStop{};
     double along{}, dwell{}, serviceTarget{7}, checkTrafficAt{};

@@ -26,6 +26,7 @@ namespace pz::gl
     X(Uniform1i, void, GLint, GLint) \
     X(Uniform1f, void, GLint, GLfloat) \
     X(Uniform3f, void, GLint, GLfloat, GLfloat, GLfloat) \
+    X(Uniform3fv, void, GLint, GLsizei, const GLfloat *) \
     X(Uniform4f, void, GLint, GLfloat, GLfloat, GLfloat, GLfloat) \
     X(GenBuffers, void, GLsizei, GLuint *) \
     X(BindBuffer, void, GLenum, GLuint) \
