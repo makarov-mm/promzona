@@ -105,15 +105,14 @@ bool World::renewPerson(int actor)
     for (int attempt = 0; attempt < 16; ++attempt)
     {
         const int node = random.index(nodes * nodes), next = chooseWalkNext(node, -1);
-        if (next == node)
+        Person fresh;
+        if (!placeOnBlock(fresh, node, next, random.index(2) * 2 - 1, random.next()))
             continue;
-        const Vec2 from = nodePoint(node) + Vec2{9.1, 9.1}, target = nodePoint(next) + Vec2{9.1, 9.1};
-        const Vec2 at = from + (target - from) * random.next();
+        const Vec2 at = fresh.body.p, target = fresh.target;
         const double centre = terrain.height(at) + .85;
         if (!outOfSight(at) || !layout.urbanSite(at, .5) || openCut(at, .4) ||
             !vehicleSpace(at, centre, nullptr, true))
             continue;
-        Person fresh;
         fresh.body = old.body;
         fresh.body.p = at;
         fresh.body.v = {};
@@ -122,9 +121,6 @@ bool World::renewPerson(int actor)
         fresh.body.height = centre;
         fresh.body.verticalSpeed = 0;
         fresh.body.wake();
-        fresh.node = node;
-        fresh.next = next;
-        fresh.target = target;
         fresh.heading = std::atan2(target.x - at.x, target.z - at.z);
         fresh.style = random.index(14);
         fresh.phase = random.next() * 8;

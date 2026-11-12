@@ -74,13 +74,217 @@ bool World::roleCandidate(int actor) const
            p.injuredUntil <= time && p.knockedUntil <= time && p.health > .7 && !personEngaged(actor);
 }
 
-// Pedestrians use the northeast corner of each junction as their path anchor.
+// Whoever has been somewhere else -- on the beach, in a tram -- makes for the nearest corner
+// that leads anywhere and walks on from there.
 void World::anchorWalk(Person &p)
 {
-    const int x = clamp(int(std::round((p.body.p.x - 9.1 - layout.coordinate(0)) / spacing)), 0, nodes - 1);
-    const int z = clamp(int(std::round((p.body.p.z - 9.1 - layout.coordinate(0)) / spacing)), 0, nodes - 1);
-    p.node = p.next = z * nodes + x;
-    p.target = nodePoint(p.node) + Vec2{9.1, 9.1};
+    const int x = clamp(int(std::round((p.body.p.x - layout.coordinate(0)) / spacing)), 0, nodes - 1);
+    const int z = clamp(int(std::round((p.body.p.z - layout.coordinate(0)) / spacing)), 0, nodes - 1);
+    int node = z * nodes + x, sx = p.body.p.x < nodePoint(node).x ? -1 : 1,
+        sz = p.body.p.z < nodePoint(node).z ? -1 : 1;
+    // A corner is somewhere to walk from when a pavement or a crossing ends at it.
+    auto leads = [&](int n, int ex, int ez)
+    {
+        if (walkLegs.size() != size_t(nodes * nodes))
+            return true;
+        const int i = n % nodes, j = n / nodes;
+        const int west = ex > 0 ? n : n - 1, south = ez > 0 ? n : n - nodes;
+        return (walkLegs[n] & (1 << (ez > 0))) || (walkLegs[n] & (4 << (ex > 0))) ||
+               ((ex > 0 || i > 0) && (walkLegs[west] & (16 << (ez > 0)))) ||
+               ((ez > 0 || j > 0) && (walkLegs[south] & (64 << (ex > 0))));
+    };
+    double nearest = 1e18;
+    for (int dz = -1; dz <= 1; ++dz)
+        for (int dx = -1; dx <= 1; ++dx)
+        {
+            const int i = x + dx, j = z + dz;
+            if (i < 0 || j < 0 || i >= nodes || j >= nodes)
+                continue;
+            for (int ez : {-1, 1})
+                for (int ex : {-1, 1})
+                    if (const double d = (corner(j * nodes + i, ex, ez) - p.body.p).length2();
+                        d < nearest && leads(j * nodes + i, ex, ez))
+                    {
+                        nearest = d;
+                        node = j * nodes + i;
+                        sx = ex;
+                        sz = ez;
+                    }
+        }
+    p.node = p.next = node;
+    p.sx = p.nextSx = sx;
+    p.sz = p.nextSz = sz;
+    p.lastWalk = -1;
+    p.walkWait = 0;
+    p.target = corner(node, sx, sz);
+}
+
+// Which pavements and crossings exist. A pavement runs along either side of every street;
+// a corner is crossed to where there is a street to cross or where the pavement of the
+// other street simply carries on. Ramps cut into the ground and water leave legs out.
+void World::buildWalkLegs()
+{
+    walkLegs.assign(size_t(nodes * nodes), 0);
+    auto clear = [&](Vec2 a, Vec2 b)
+    {
+        for (int k = 0; k <= 18; ++k)
+            if (const Vec2 at = a + (b - a) * (k / 18.); openCut(at, .5) || !dryGround(at))
+                return false;
+        return true;
+    };
+    for (int n = 0; n < nodes * nodes; ++n)
+    {
+        const int i = n % nodes, j = n / nodes;
+        const bool north = layout.road(i, j, 0), east = layout.road(i, j, 1), south = layout.road(i, j, 2),
+                   west = layout.road(i, j, 3);
+        std::uint8_t legs = 0;
+        for (int side : {-1, 1})
+        {
+            const int bit = side > 0;
+            if (((side > 0 ? north : south) || (west && east)) &&
+                clear(corner(n, -1, side), corner(n, 1, side)))
+                legs |= 1 << bit;
+            if (((side > 0 ? east : west) || (north && south)) &&
+                clear(corner(n, side, -1), corner(n, side, 1)))
+                legs |= 4 << bit;
+            if (east && clear(corner(n, 1, side), corner(n + 1, -1, side)))
+                legs |= 16 << bit;
+            if (north && clear(corner(n, side, 1), corner(n + nodes, side, -1)))
+                legs |= 64 << bit;
+        }
+        walkLegs[n] = legs;
+    }
+}
+
+// Whether lights stop the cars on the stretch of street a walker crosses: `side` is the
+// side of the junction the crossing lies on, north or south for a walker along x.
+bool World::crossingLights(int node, bool alongX, int side) const
+{
+    return layout.degree(node) >= 3 &&
+           layout.road(node % nodes, node / nodes, alongX ? (side > 0 ? 0 : 2) : (side > 0 ? 1 : 3));
+}
+
+// Port of the managed Walk: the cars that cross the walker's way have red and keep it for
+// `seconds`.
+bool World::walkSignal(int node, bool alongX, double seconds) const
+{
+    const double phase = CityLayout::signalPhase(node % nodes, node / nodes, time);
+    // Cars along z have green for 14..26, cars along x for 0..12.
+    const double start = alongX ? 14 : 0, end = alongX ? 26 : 12;
+    return !(phase >= start && phase < end) && std::fmod(start - phase + 28, 28.) >= seconds;
+}
+
+// Port of the managed ChooseWalk. From a corner there are four ways on: across either
+// street, or along either block to the next junction. A street with lights is crossed
+// only while they allow it -- whoever cannot cross walks on instead of waiting -- and
+// nobody turns straight back while there is another way.
+void World::chooseWalk(Person &p)
+{
+    const int n = p.node, i = n % nodes, j = n / nodes;
+    const std::uint8_t here = walkLegs[n];
+    // The kerb is a few steps from the corner and nobody steps off it with less than
+    // eight seconds left.
+    constexpr double start = 9.5;
+    int options[4], count = 0;
+    if ((here & (1 << (p.sz > 0))) && (!crossingLights(n, true, p.sz) || walkSignal(n, true, start)))
+        options[count++] = 0;
+    if ((here & (4 << (p.sx > 0))) && (!crossingLights(n, false, p.sx) || walkSignal(n, false, start)))
+        options[count++] = 1;
+    if ((p.sx > 0 || i > 0) && (walkLegs[p.sx > 0 ? n : n - 1] & (16 << (p.sz > 0))))
+        options[count++] = 2;
+    if ((p.sz > 0 || j > 0) && (walkLegs[p.sz > 0 ? n : n - nodes] & (64 << (p.sx > 0))))
+        options[count++] = 3;
+    if (count > 1)
+        count = int(std::remove(options, options + count, p.lastWalk) - options);
+    p.next = n;
+    p.nextSx = p.sx;
+    p.nextSz = p.sz;
+    if (!count)
+    {
+        p.walkWait = time + .15 + random.next() * .3;
+        p.target = corner(n, p.sx, p.sz);
+        return;
+    }
+    const int way = options[random.index(count)];
+    if (way == 0)
+        p.nextSx = -p.sx;
+    else if (way == 1)
+        p.nextSz = -p.sz;
+    else if (way == 2)
+    {
+        p.next = n + p.sx;
+        p.nextSx = -p.sx;
+    }
+    else
+    {
+        p.next = n + p.sz * nodes;
+        p.nextSz = -p.sz;
+    }
+    p.lastWalk = way;
+    p.walkWait = 0;
+    p.target = corner(p.next, p.nextSx, p.nextSz);
+}
+
+// Puts a walker on the pavement between two neighbouring junctions, on the side asked for
+// if that pavement exists and on the other if it does not.
+bool World::placeOnBlock(Person &p, int from, int to, int side, double along)
+{
+    if (from == to)
+        return false;
+    const bool alongX = std::abs(to - from) == 1;
+    const int way = to > from ? 1 : -1, low = std::min(from, to);
+    for (int s : {side, -side})
+    {
+        if (!(walkLegs[low] & ((alongX ? 16 : 64) << (s > 0))))
+            continue;
+        p.node = from;
+        p.next = to;
+        p.sx = alongX ? way : s;
+        p.sz = alongX ? s : way;
+        p.nextSx = alongX ? -way : s;
+        p.nextSz = alongX ? s : -way;
+        p.lastWalk = alongX ? 2 : 3;
+        p.walkWait = 0;
+        p.target = corner(to, p.nextSx, p.nextSz);
+        const Vec2 start = corner(from, p.sx, p.sz);
+        p.body.p = start + (p.target - start) * along;
+        return true;
+    }
+    return false;
+}
+
+// From a place beside a street, the way to its middle.
+Vec2 World::roadward(Vec2 at) const
+{
+    const Vec2 beside = at - nodePoint(nearestNode(at));
+    return std::abs(beside.x) < std::abs(beside.z) ? Vec2{beside.x > 0 ? -1. : 1., 0}
+                                                   : Vec2{0, beside.z > 0 ? -1. : 1.};
+}
+
+// Where a walker heads. Port of the managed walking path, which bows to the right of the
+// straight line between the corners so that people who meet pass each other. Along a block
+// the house fronts stand a hand's breadth from that line: there only whoever has the kerb
+// on the right gives way, by the width of both bows.
+Vec2 World::walkAim(const Person &p) const
+{
+    const Vec2 straight = (p.target - p.body.p).unit(), from = corner(p.node, p.sx, p.sz),
+               leg = p.target - from;
+    const double length = leg.length();
+    if (length < 4 || (p.target - corner(p.next, p.nextSx, p.nextSz)).length2() > .01)
+        return straight;
+    const Vec2 along = leg / length, right = perpendicular(along);
+    const double ahead = dot(p.body.p - from, along) + 2.5;
+    if (ahead >= length - .5)
+        return straight;
+    double bow = .26;
+    if (p.node != p.next)
+    {
+        const Vec2 beside = from - nodePoint(p.node);
+        const Vec2 kerb = std::abs(along.x) > std::abs(along.z) ? Vec2{0, -beside.z} : Vec2{-beside.x, 0};
+        bow = dot(right, kerb) > 0 ? .52 : 0;
+    }
+    return (from + along * ahead + right * (bow * std::sin(pi * clamp(ahead / length, 0., 1.))) - p.body.p)
+        .unit();
 }
 
 void World::leaveRole(Person &p)
@@ -135,16 +339,15 @@ bool World::takeRole(int actor, Person::Role role, bool unseen)
         }
         else
         {
-            // A place at the kerb of a walked pavement, a third to two thirds along the block.
+            // A place at the kerb of either pavement, a third to two thirds along the block.
+            // Measured along the old walk, which took in the crossing at its end, the place
+            // could be the corner of a junction, within reach of every truck that turned there.
             from = roleRandom.index(nodes * nodes);
             to = chooseWalkNext(from, -1, &roleRandom);
-            if (to == from)
+            Person spot;
+            if (!placeOnBlock(spot, from, to, roleRandom.index(2) * 2 - 1, .34 + roleRandom.next() * .33))
                 continue;
-            const Vec2 a = nodePoint(from) + Vec2{9.1, 9.1}, b = nodePoint(to) + Vec2{9.1, 9.1};
-            const Vec2 along = (b - a).unit();
-            // The walked line runs 9.1 m beside the street axis: the kerb is towards the axis.
-            const Vec2 kerb = std::abs(along.x) > std::abs(along.z) ? Vec2{0, -1} : Vec2{-1, 0};
-            at = a + (b - a) * (.34 + roleRandom.next() * .33) + kerb * 1.1;
+            at = spot.body.p + roadward(spot.body.p) * 1.1;
         }
         const double centre = terrain.height(at) + .85;
         if ((unseen && !outOfSight(at)) || !roleGround(role, at) ||
@@ -162,18 +365,13 @@ bool World::takeRole(int actor, Person::Role role, bool unseen)
         p.body.height = centre;
         p.body.verticalSpeed = 0;
         p.body.wake();
+        // Whoever leaves the place later starts from the corner nearest to it.
+        anchorWalk(p);
         if (role == Person::Role::beach)
         {
-            anchorWalk(p);
             if (towelGuests == 0)
                 towel = at;
             ++towelGuests;
-        }
-        else
-        {
-            p.node = from;
-            p.next = to;
-            p.target = nodePoint(to) + Vec2{9.1, 9.1};
         }
         p.role = role;
         p.roleHome = at;
@@ -242,21 +440,16 @@ struct Crossing
 };
 std::optional<Crossing> crossingOf(const World &w, const Person &p)
 {
-    if (p.node == p.next || p.body.roadLevel)
+    // A leg from one corner of a junction to another of the same.
+    if (p.node != p.next || p.body.roadLevel || (p.sx == p.nextSx) == (p.sz == p.nextSz))
         return {};
-    const Vec2 from = World::nodePoint(p.node), to = World::nodePoint(p.next);
     Crossing c;
-    c.alongX = std::abs(to.x - from.x) > std::abs(to.z - from.z);
-    const double way = c.alongX ? to.x - from.x : to.z - from.z;
-    // The walked line runs northeast of the street axis: the street that is crossed
-    // belongs to the corner further east or further north.
-    const int corner = way > 0 ? p.next : p.node;
-    c.i = corner % World::nodes;
-    c.j = corner / World::nodes;
-    const Vec2 centre = World::nodePoint(corner);
-    c.offset = (c.alongX ? p.body.p.x - centre.x : p.body.p.z - centre.z) * (way > 0 ? 1 : -1);
-    // A walker along x crosses the arm that leaves the junction towards +z, and the reverse.
-    c.signalled = w.layout.road(c.i, c.j, c.alongX ? 0 : 1) && w.layout.degree(corner) >= 3;
+    c.alongX = p.sx != p.nextSx;
+    c.i = p.node % World::nodes;
+    c.j = p.node / World::nodes;
+    const Vec2 centre = World::nodePoint(p.node);
+    c.offset = c.alongX ? (p.body.p.x - centre.x) * p.nextSx : (p.body.p.z - centre.z) * p.nextSz;
+    c.signalled = w.crossingLights(p.node, c.alongX, c.alongX ? p.sz : p.sx);
     return c;
 }
 } // namespace

@@ -32,6 +32,12 @@ bool World::waitingForTaxi(int actor) const
     return actor >= 0 && std::ranges::any_of(hailers, [actor](auto h) { return h.actor == actor; });
 }
 
+const World::StreetHail *World::hailOf(int actor) const
+{
+    const auto hail = std::ranges::find(hailers, actor, &StreetHail::actor);
+    return actor >= 0 && hail != hailers.end() ? &*hail : nullptr;
+}
+
 int World::hailerInReach() const
 {
     if (job.kind != JobKind::none || controlledCar < 0 || drone.active)
@@ -74,7 +80,40 @@ void World::updateHailers()
     auto slot = std::ranges::find(hailers, -1, &StreetHail::actor);
     if (slot == hailers.end() || people.empty())
         return;
-    // Recruit a pedestrian already standing at a usable kerb. No extra actors or traffic RNG.
+    // Port of the managed MaintainHailers: somebody at a bus stop 45 to 210 m away, at the
+    // kerb between the shelter and the road. The managed game makes a new person there; the
+    // population here is fixed, and whoever is walking past the stop goes over to it.
+    const size_t start = (size_t(time / 3) * 53) % std::max<size_t>(1, busStops.size());
+    for (size_t k = 0; k < busStops.size(); ++k)
+    {
+        const Vec2 stop = busStops[(start + k) % busStops.size()];
+        if (const double away = (stop - position()).length(); away < 45 || away > 210)
+            continue;
+        if (std::ranges::any_of(
+                hailers, [&](const StreetHail &h)
+                { return h.actor >= 0 && (people[h.actor].body.p - stop).length2() < 12 * 12; }))
+            continue;
+        int nearest = -1;
+        double distance = 1e18;
+        for (int actor = 0; actor < int(people.size()); ++actor)
+        {
+            // On the pavement of the stop, on its block.
+            const Vec2 off = people[actor].body.p - stop;
+            if (std::abs(off.x) < 1.5 && std::abs(off.z) < 9 && off.length2() < distance &&
+                canTakePassengerJob(actor))
+            {
+                nearest = actor;
+                distance = off.length2();
+            }
+        }
+        if (nearest < 0)
+            continue;
+        const double along = .3 + double((size_t(nearest) * 29) % 10) * .09;
+        *slot = {nearest, time + 70 + nearest % 50, stop + Vec2{1.3, along}, true};
+        return;
+    }
+    // With nobody near a stop, a pedestrian already at a usable kerb. No extra actors or
+    // traffic RNG.
     const size_t first = (size_t(time / 3) * 137) % people.size();
     for (size_t n = 0; n < people.size(); ++n)
     {

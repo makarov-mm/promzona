@@ -274,12 +274,11 @@ void walkers()
     const Vec2 pavement = Vec2{w.layout.coordinate(column), w.layout.coordinate(20)} + Vec2{9.1, 22};
     require(!w.layout.urbanSite(pavement, .3) && w.layout.riverDistance(pavement.x) < 10,
             "this is not the embankment");
+    require(w.placeOnBlock(*shy, column + 20 * World::nodes, column + 21 * World::nodes, 1, .5),
+            "the embankment has no pavement");
     shy->body.p = pavement;
     shy->body.height = w.terrain.height(pavement) + .85;
     shy->body.roadLevel = 0;
-    shy->node = column + 20 * World::nodes;
-    shy->next = shy->node + World::nodes;
-    shy->target = World::nodePoint(shy->next) + Vec2{9.1, 9.1};
     w.scarePerson(*shy, pavement + Vec2{0, 2}, 2.);
     for (int k = 0; k < 150; ++k)
         w.step({}, frame);
@@ -328,9 +327,13 @@ void zebra()
     require(cast.size() == 3, "nobody to cross the street");
     auto put = [&](Person &p, Vec2 where, Vec2 pace)
     {
-        p.node = node - 1;
-        p.next = node;
-        p.target = centre + Vec2{9.1, 9.1};
+        // Across the northern arm of the junction, from its western corner to its eastern.
+        p.node = p.next = node;
+        p.sx = -1;
+        p.nextSx = p.sz = p.nextSz = 1;
+        p.lastWalk = 0;
+        p.walkWait = 0;
+        p.target = World::corner(node, 1, 1);
         p.body.p = centre + where;
         p.body.height = w.terrain.height(p.body.p) + .85;
         p.body.roadLevel = 0;

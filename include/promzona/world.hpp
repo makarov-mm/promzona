@@ -59,6 +59,25 @@ struct Person
     Body body;
     Vec2 target;
     int node{}, next{};
+    // Port of the managed I, J, Sx, Sz: the corner of the junction `node` a walk starts
+    // from and the corner of `next` it leads to -- east or west of the one street, north or
+    // south of the other. `lastWalk` is the kind of leg walked last: nobody turns straight
+    // back. With nothing to walk, `walkWait` is when to look again.
+    int sx{1}, sz{1}, nextSx{1}, nextSz{1}, lastWalk{-1};
+    double walkWait{};
+    // A company walks its leader's way.
+    void walkLike(const Person &lead)
+    {
+        node = lead.node;
+        next = lead.next;
+        target = lead.target;
+        sx = lead.sx;
+        sz = lead.sz;
+        nextSx = lead.nextSx;
+        nextSz = lead.nextSz;
+        lastWalk = lead.lastWalk;
+        walkWait = lead.walkWait;
+    }
     int riding{-1}, seat{}, alight{};
     int ownedScooter{-1};
     bool courier{}, inCompany{};
@@ -299,7 +318,13 @@ struct World
     {
         int actor{-1};
         double until{};
+        // Port of the managed MaintainHailers: the place at the kerb of a bus stop where
+        // the hailer waits. Without one -- no stop with anybody near it, or an older save --
+        // they wait where they stood.
+        Vec2 spot{};
+        bool posted{};
     };
+    const StreetHail *hailOf(int actor) const;
     std::array<StreetHail, 3> hailers{};
     double nextHail{};
     void updateHailers();
@@ -423,6 +448,25 @@ struct World
     bool takeRole(int actor, Person::Role role, bool unseen);
     void leaveRole(Person &person);
     void anchorWalk(Person &person);
+    // The pavements run 9.1 m either side of the middle of a street, and people walk from
+    // corner to corner of the junctions: across a street, or along the block to the next.
+    static constexpr double walkLine = 9.1;
+    static Vec2 corner(int node, int sx, int sz)
+    {
+        return nodePoint(node) + Vec2{sx * walkLine, sz * walkLine};
+    }
+    // Which legs can be walked at each junction. Bits 0 and 1: across the north-south street
+    // on the south and on the north side; 2 and 3: across the east-west street on the west
+    // and on the east side; 4 and 5: the block towards +x on the south and north pavement;
+    // 6 and 7: the block towards +z on the west and east pavement.
+    std::vector<std::uint8_t> walkLegs;
+    void buildWalkLegs();
+    bool crossingLights(int node, bool alongX, int side) const;
+    bool walkSignal(int node, bool alongX, double seconds) const;
+    void chooseWalk(Person &person);
+    bool placeOnBlock(Person &person, int from, int to, int side, double along);
+    Vec2 walkAim(const Person &person) const;
+    Vec2 roadward(Vec2 at) const;
     void roleIntent(Person &person, Vec2 &direction, double &speed);
     void settleRoles();
     void stepRoles();
@@ -483,6 +527,18 @@ struct World
     // A taxi ride that ends at a bus stop keeps this in place of the number of a transit line.
     static constexpr int busStopRide = -2;
     Vec2 rideEnd(int line, int destination) const;
+    // The public places of the peace jobs, as in the managed game: the food kiosks and,
+    // numbered on from them, the bus stops.
+    bool peacePlace(int index) const
+    {
+        return index >= 0 && (index < int(sites.size()) ? sites[size_t(index)].food()
+                                                        : index < int(sites.size() + busStops.size()));
+    }
+    Vec2 peacePoint(int index) const
+    {
+        return index < int(sites.size()) ? sites[size_t(index)].entrance
+                                         : busStops[size_t(index) - sites.size()];
+    }
     int marketInReach() const;
     int garageInReach() const;
     int ownedGarage{-1}, openMarket{-1};

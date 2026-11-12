@@ -3,6 +3,8 @@
 #include "promzona/world.hpp"
 #include "json.hpp"
 #include <algorithm>
+#include <array>
+#include <bit>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -45,6 +47,20 @@ size_t walker(const World &w, bool distant, size_t skip = size_t(-1))
                      : (w.people[i].body.p - w.position()).length() < 150))
             return i;
     throw std::runtime_error("no suitable walker");
+}
+// A walk across one street of a junction, on its north or its east side: along x between
+// the western and the eastern corner, along z between the southern and the northern one.
+// Whoever starts back on the block walks up to the corner first.
+void cross(Person &p, int node, bool alongX, int towards)
+{
+    p.node = p.next = node;
+    p.sx = alongX ? -towards : 1;
+    p.sz = alongX ? 1 : -towards;
+    p.nextSx = alongX ? towards : 1;
+    p.nextSz = alongX ? 1 : towards;
+    p.lastWalk = alongX ? 0 : 1;
+    p.walkWait = 0;
+    p.target = World::corner(node, p.nextSx, p.nextSz);
 }
 void rolePass(World &w)
 {
@@ -292,7 +308,7 @@ void habits()
         const int left = w.rolesLeft;
         rolePass(w);
         require(p.role == R::none && w.rolesLeft == left + 1 && p.roleHome.length() == 0 &&
-                    (p.target - (World::nodePoint(p.node) + Vec2{9.1, 9.1})).length() < 1e-9,
+                    (p.target - World::corner(p.node, p.sx, p.sz)).length() < 1e-9,
                 "a chased visitor kept the place");
     }
 
@@ -311,7 +327,7 @@ void habits()
             continue;
         const double street = w.layout.roadDistance(p.roleHome);
         require(w.outOfSight(p.roleHome) && w.roleGround(R::night, p.roleHome) && street > 7.85 &&
-                    street < 8.6 && p.node != p.next,
+                    street < 8.6 && (p.target - World::corner(p.node, p.sx, p.sz)).length() < 1e-9,
                 "night worker is not at a kerb out of sight");
         require(appearance(p).outfit == Appearance::nightWorker && appearance(p).model == 1 && !p.elder() &&
                     !p.homeless(),
@@ -330,7 +346,10 @@ void habits()
                 "the night shift did not end out of sight only");
         seen.body.p = seen.roleHome = kerb;
         rolePass(w);
-        require(count(w, R::night) == 0 && seen.node != seen.next, "a night worker stayed after dawn");
+        // Whoever leaves makes for the nearest corner and walks on from there.
+        require(count(w, R::night) == 0 &&
+                    (seen.target - World::corner(seen.next, seen.nextSx, seen.nextSz)).length() < 1e-9,
+                "a night worker stayed after dawn");
     }
 
     // Habits travel with the save; a file without them is the city of an earlier build.
@@ -511,9 +530,7 @@ void streets()
     };
     const size_t who = walker(w, true);
     auto &p = w.people[who];
-    p.node = corner - 1;
-    p.next = corner;
-    p.target = centre + Vec2{9.1, 9.1};
+    cross(p, corner, true, 1);
     const double kerb = w.layout.roadHalf();
     p.body.p = centre + Vec2{-kerb - .5, 9.1};
     p.body.height = w.terrain.height(p.body.p) + .85;
@@ -538,22 +555,19 @@ void streets()
         const int top = World::nodes * (World::nodes - 1) + ci;
         require(!w.layout.road(ci, World::nodes - 1, 0), "the city has a street beyond its edge");
         Person edge = p;
-        edge.node = top - 1;
-        edge.next = top;
+        cross(edge, top, true, 1);
         edge.body.p = World::nodePoint(top) + Vec2{-kerb - .5, 9.1};
         at(15);
         w.time += (ci * 3 + cj * 5) % 9 - (ci * 3 + (World::nodes - 1) * 5) % 9;
         require(w.kerbWait(edge) == 0, "walker waits where there is nothing to cross");
     }
     // Westbound the crossing comes first: the walker leaves the corner's own anchor.
-    p.node = corner;
-    p.next = corner - 1;
+    cross(p, corner, true, -1);
     p.body.p = centre + Vec2{kerb + .5, 9.1};
     at(20);
     require(std::abs(w.kerbWait(p) - 6) < 1e-9, "westbound walker ignores the lights");
     // Northbound walkers cross the east-west street, whose cars have green from 0 to 12.
-    p.node = corner - World::nodes;
-    p.next = corner;
+    cross(p, corner, false, 1);
     p.body.p = centre + Vec2{9.1, -kerb - .5};
     at(3);
     require(std::abs(w.kerbWait(p) - 9) < 1e-9, "northbound walker ignores the lights");
@@ -565,9 +579,7 @@ void streets()
         w.controlledCar = -1;
         w.player.p = centre + Vec2{-30, 12};
         w.player.height = w.terrain.height(w.player.p) + .85;
-        p.node = corner - 1;
-        p.next = corner;
-        p.target = centre + Vec2{9.1, 9.1};
+        cross(p, corner, true, 1);
         p.body.p = centre + Vec2{-kerb - 3, 9.1};
         p.body.height = w.terrain.height(p.body.p) + .85;
         p.body.v = {};
@@ -589,6 +601,166 @@ void streets()
             w.step({}, frame);
         require(p.body.p.x - centre.x >= kerb && !p.dead, "walker did not cross on the walk signal");
     }
+}
+
+// Port of the managed ChooseWalk: people stand at the four corners of a junction and go on
+// across either street or along either block -- on both pavements of every street.
+void corners()
+{
+    World w;
+    w.generate(20261105u);
+    w.dispatchAt = w.patrolScanAt = w.nextRescueDispatch = 1e9;
+    int corner = -1;
+    for (int n = 0; n < World::nodes * World::nodes && corner < 0; ++n)
+    {
+        const int i = n % World::nodes, j = n / World::nodes;
+        if (i > 0 && j > 0 && w.layout.degree(n) == 4 && w.layout.urbanSite(World::nodePoint(n), 30) &&
+            !w.levelAt(World::nodePoint(n), 60) && (World::nodePoint(n) - w.position()).length() > 320)
+            corner = n;
+    }
+    require(corner >= 0, "no ordinary crossing");
+    const int ci = corner % World::nodes, cj = corner / World::nodes;
+    require(w.walkLegs[corner] == 0xff && (w.walkLegs[corner - 1] & 0x30) == 0x30 &&
+                (w.walkLegs[corner - World::nodes] & 0xc0) == 0xc0,
+            "a junction of four streets lacks a pavement or a crossing");
+    // Whoever simply walks starts on a pavement, and the four kinds of corner share them.
+    int kinds[4]{}, walking = 0;
+    for (size_t i = 0; i < w.people.size(); ++i)
+    {
+        const auto &p = w.people[i];
+        if (!plain(w, i))
+            continue;
+        require(w.layout.roadDistance(p.body.p) >= w.layout.roadHalf() && p.node != p.next &&
+                    (p.target - World::corner(p.next, p.nextSx, p.nextSz)).length() < 1e-9,
+                "somebody starts in the road or with nowhere to go");
+        ++kinds[(p.sx > 0) * 2 + (p.sz > 0)];
+        ++walking;
+    }
+    for (int kind : kinds)
+        require(kind > walking / 6, "one side of the streets is left empty");
+
+    auto at = [&](double phase) { w.time = 28 * 50 + phase - (ci * 3 + cj * 5) % 9; };
+    const size_t who = walker(w, true);
+    // The north-eastern corner, reached along the block from the west.
+    auto arrive = [&]()
+    {
+        auto &p = w.people[who];
+        p.node = p.next = corner;
+        p.sx = p.sz = p.nextSx = p.nextSz = 1;
+        p.lastWalk = 2;
+        w.chooseWalk(p);
+        return p.lastWalk;
+    };
+    // East-west cars have green and the others get it in six seconds: nothing may be
+    // crossed, the way back is not taken, the block to the north is.
+    at(8);
+    for (int k = 0; k < 20; ++k)
+        require(arrive() == 3 && w.people[who].next == corner + World::nodes && w.people[who].nextSz == -1 &&
+                    w.people[who].nextSx == 1,
+                "a walker crosses against the lights or turns back");
+    // With the lights in favour the street is crossed about every other time.
+    auto ways = [&](double phase)
+    {
+        at(phase);
+        std::array<int, 4> taken{};
+        for (int k = 0; k < 200; ++k)
+            ++taken[size_t(arrive())];
+        return taken;
+    };
+    const auto early = ways(1), late = ways(13);
+    require(early[0] > 60 && early[3] > 60 && early[1] + early[2] == 0,
+            "the walk across the north-south street is not offered while its cars stand");
+    require(late[1] > 60 && late[3] > 60 && late[0] + late[2] == 0,
+            "the walk across the east-west street is not offered while its cars stand");
+    {
+        auto &p = w.people[who];
+        at(1);
+        while (arrive() != 0)
+            ;
+        require(p.next == corner && p.nextSx == -1 && p.nextSz == 1 &&
+                    (p.target - World::corner(corner, -1, 1)).length() < 1e-9 && w.kerbWait(p) == 0,
+                "the crossing does not lead to the other corner");
+    }
+    // Where a street ends there is one way on: back.
+    int end = -1;
+    for (int n = 0; n < World::nodes * World::nodes && end < 0; ++n)
+        if (w.layout.degree(n) == 1 && w.layout.road(n % World::nodes, n / World::nodes, 0) &&
+            std::popcount(unsigned(w.walkLegs[n])) == 3)
+            end = n;
+    if (end >= 0)
+    {
+        auto &p = w.people[who];
+        p.node = p.next = end;
+        p.sx = p.sz = p.nextSx = p.nextSz = 1;
+        p.lastWalk = 3;
+        // Across the end of the street to its other pavement, or back up the block.
+        w.chooseWalk(p);
+        require(p.lastWalk == 0 && p.nextSx == -1,
+                "a walker at the end of a street does not cross to its other side");
+        p.sx = -1;
+        p.lastWalk = 0;
+        w.chooseWalk(p);
+        require(p.lastWalk == 3 && p.next == end + World::nodes,
+                "a walker at the end of a street stays there");
+    }
+
+    // Two minutes of the city: every crossing with lights is begun while they allow it,
+    // far from the player as well as near.
+    w.generate(20261105u);
+    w.dispatchAt = w.patrolScanAt = w.nextRescueDispatch = 1e9;
+    std::vector<int> leg(w.people.size(), -1);
+    int crossings = 0;
+    for (int k = 0; k < 60 * 120; ++k)
+    {
+        w.step(parked(), frame);
+        for (size_t i = 0; i < w.people.size(); ++i)
+        {
+            const auto &p = w.people[i];
+            const bool crossing = p.node == p.next && ((p.sx != p.nextSx) != (p.sz != p.nextSz));
+            const int key = crossing ? p.node * 4 + (p.nextSx > 0) * 2 + (p.nextSz > 0) : -1;
+            if (key >= 0 && key != leg[i] && !p.inCompany && p.riding < 0)
+            {
+                const bool alongX = p.sx != p.nextSx;
+                if (w.crossingLights(p.node, alongX, alongX ? p.sz : p.sx))
+                {
+                    ++crossings;
+                    require(w.walkSignal(p.node, alongX, 9.4), "a crossing is begun against the lights");
+                }
+            }
+            leg[i] = key;
+        }
+    }
+    require(crossings > 200, "nobody crosses at the lights");
+
+    // The corners are saved, and a save from before them sends everybody to the nearest one.
+    const auto path = std::filesystem::temp_directory_path() / "promzona-corners-test.json";
+    w.save(path);
+    World loaded;
+    loaded.load(path);
+    for (size_t i = 0; i < w.people.size(); ++i)
+    {
+        const auto &a = w.people[i], &b = loaded.people[i];
+        require(a.sx == b.sx && a.sz == b.sz && a.nextSx == b.nextSx && a.nextSz == b.nextSz &&
+                    a.lastWalk == b.lastWalk && a.node == b.node && a.next == b.next,
+                "the corners of a walk are lost in a save");
+    }
+    nlohmann::json old;
+    {
+        std::ifstream in(path);
+        in >> old;
+    }
+    for (auto &entry : old["people"])
+        entry.erase("corner");
+    {
+        std::ofstream out(path);
+        out << old;
+    }
+    loaded.load(path);
+    std::filesystem::remove(path);
+    for (const auto &p : loaded.people)
+        require(p.node == p.next && (p.target - World::corner(p.node, p.sx, p.sz)).length() < 1e-9 &&
+                    (p.riding >= 0 || p.dead || (p.body.p - p.target).length() < 40),
+                "an older save leaves a walker without a corner");
 }
 
 // People on the same line of the pavement: before they gave each other room, two walkers
@@ -633,9 +805,11 @@ void passing()
         }
     auto put = [&](Person &p, int from, int to, Vec2 where)
     {
-        p.node = from;
-        p.next = to;
-        p.target = World::nodePoint(to) + Vec2{9.1, 9.1};
+        // Eastwards the walk ends across the street at the corner; westwards it is the block.
+        if (to > from)
+            cross(p, to, true, 1);
+        else
+            require(w.placeOnBlock(p, from, to, 1, .5), "the block has no northern pavement");
         p.body.p = centre + where;
         p.body.height = w.terrain.height(p.body.p) + .85;
         p.body.v = {};
@@ -760,9 +934,7 @@ void litter()
             p.body.p += Vec2{0, 8 * World::spacing};
     const size_t actor = walker(w, true);
     auto &p = w.people[actor];
-    p.node = corner - 1;
-    p.next = corner;
-    p.target = centre + Vec2{9.1, 9.1};
+    cross(p, corner, true, 1);
     p.body.p = centre + Vec2{-22, 9.1};
     p.body.height = w.terrain.height(p.body.p) + .85;
     p.body.v = {};
@@ -789,7 +961,7 @@ void litter()
     // walker by friction, and so did anything with a flat side across the way.
     auto meet = [&](Vec2 where, Vec2 obstacle, Vec2 half, const char *message)
     {
-        p.target = centre + Vec2{9.1, 9.1};
+        cross(p, corner, true, 1);
         p.body.p = centre + where;
         p.body.height = w.terrain.height(p.body.p) + .85;
         p.body.v = {1.3, 0};
@@ -863,6 +1035,7 @@ int main()
         habits();
         duties();
         streets();
+        corners();
         passing();
         litter();
         parking();

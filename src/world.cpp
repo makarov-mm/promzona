@@ -504,6 +504,10 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress,
             c.body.height = surface(c.body.p, c.body.roadLevel) + .8;
         }
     report(.7f);
+    // People walk either pavement of a street, as in the managed game. Which one comes
+    // from a sequence of its own: the draws the city is built from stay what they were.
+    buildWalkLegs();
+    Random pavements(seed ^ 0x57414c4bu);
     for (size_t i = 0; i < populationSize(density).people; i++)
     {
         Person p;
@@ -513,6 +517,9 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress,
         p.body.mass(75);
         p.body.invI = 0;
         p.body.verticalExtent = 1.7;
+        // People slide past what they brush against: a lamp post on the corner of a park
+        // stands a step from four pavements at once.
+        p.body.friction = 0;
         p.node = random.index(nodes * nodes);
         p.next = chooseWalkNext(p.node, -1);
         // A cut can remove the sidewalk at a node. Start on an actual walkable
@@ -524,9 +531,18 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress,
         }
         if (p.next == p.node)
             throw std::runtime_error("No connected sidewalk for pedestrian spawn");
-        p.body.p = nodePoint(p.node) + Vec2{9.1, 9.1};
-        p.target = nodePoint(p.next) + Vec2{9.1, 9.1};
-        p.body.p += (p.target - p.body.p) * random.next();
+        const double along = random.next();
+        const int side = pavements.index(2) * 2 - 1;
+        // The few streets with no pavement at all, such as a ramp between its walls, send
+        // their walkers to the next street that has one.
+        for (int attempt = 0; !placeOnBlock(p, p.node, p.next, side, along); ++attempt)
+        {
+            if (attempt == nodes * nodes)
+                throw std::runtime_error("No pavement for pedestrian spawn");
+            p.node = (p.node + 1) % (nodes * nodes);
+            const auto ways = layout.neighbours(p.node);
+            p.next = ways.empty() ? p.node : ways[size_t(attempt) % ways.size()];
+        }
         p.style = random.index(14);
         p.sidearm = Person::civilianWeapon(seed, p.body.id);
         p.phase = random.next() * 8;
@@ -944,13 +960,14 @@ void World::step(PlayerInput input, double dt)
             p.injuredUntil = 0;
             p.health = std::max(p.health, .75);
         }
-        if ((p.body.p - p.target).length() < 1)
+        if ((p.body.p - p.target).length() < 1 && time >= p.walkWait)
         {
             p.node = p.next;
-            p.next = chooseWalkNext(p.node, -1);
-            p.target = nodePoint(p.next) + Vec2{9.1, 9.1};
+            p.sx = p.nextSx;
+            p.sz = p.nextSz;
+            chooseWalk(p);
         }
-        auto dir = (p.target - p.body.p).unit();
+        auto dir = walkAim(p);
         p.fear = std::max(0., p.fear - dt * .5);
         if (local)
             for (const Car *nearby : carsNearWalkers)
@@ -990,6 +1007,9 @@ void World::step(PlayerInput input, double dt)
         if (p.dead || p.knockedUntil > time)
             continue;
         double speed = p.fear > 0 ? fleeingPace(p) : walkingPace(p);
+        // At a corner with no way on for the moment.
+        if (p.walkWait > time && p.fear <= 0)
+            speed = 0;
         roleIntent(p, dir, speed);
         riderIntent(p, dir, speed);
         socialIntent(p, dir, speed);
@@ -1023,8 +1043,22 @@ void World::step(PlayerInput input, double dt)
             dir = delta.unit();
             speed = delta.length2() < .16 ? 0. : std::min(1.4, delta.length() * 2);
         }
-        if (p.fear <= 0 && waitingForTaxi(int(&p - people.data())))
-            speed = 0;
+        if (const auto *hail = p.fear <= 0 ? hailOf(int(&p - people.data())) : nullptr)
+        {
+            // Over to the place at the bus stop, then facing the road.
+            const Vec2 delta = hail->spot - p.body.p;
+            if (hail->posted && delta.length2() > .09)
+            {
+                dir = delta.unit();
+                speed = std::min(speed, delta.length() * 2);
+            }
+            else
+            {
+                speed = 0;
+                if (hail->posted)
+                    p.heading = pi / 2;
+            }
+        }
         if (job.passenger() && !job.acquired && &p == &people[job.actor] && p.fear <= 0)
         {
             if (job.ride.car >= 0)

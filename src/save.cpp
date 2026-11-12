@@ -23,7 +23,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Flock, landing, flying, landedAt)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Rocket, p, direction, height, slope, travel, ownerCar)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ReconDrone, active, position, velocity, altitude, heading, pitch, battery,
                                    health, scanTime, readyAt, nextShot, targets, scanned)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(World::StreetHail, actor, until)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(World::StreetHail, actor, until, spot, posted)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(PeaceRoute, sites, completed, enabled, noise, soundAt, interactAt,
                                    previous)
 void to_json(json &j, const PassengerRide &ride)
@@ -372,6 +372,8 @@ std::function<void()> World::captureSave(const std::filesystem::path &path) cons
                                         {"watchUntil", p.watchUntil}, {"voiceAt", p.voiceAt}};
         if (p.uniform != Person::Uniform::none)
             j["people"][i]["uniform"] = int(p.uniform);
+        // The corners of the walk and the kind of leg walked last.
+        j["people"][i]["corner"] = {p.sx, p.sz, p.nextSx, p.nextSz, p.lastWalk};
         // A habit ends with its owner's life or freedom; stepRoles drops the rest.
         if (p.role != Person::Role::none && !p.dead && p.uniform == Person::Uniform::none)
             j["people"][i]["role"] = {double(int(p.role)), p.roleHome.x, p.roleHome.z};
@@ -637,6 +639,7 @@ void World::load(const std::filesystem::path &path)
     for (auto &p : next.people)
     {
         body(p.body);
+        p.body.friction = 0;
         if (p.node < 0 || p.node >= nodes * nodes || p.next < 0 || p.next >= nodes * nodes ||
             p.distance < 0 || p.health < 0 || p.health > 1 || p.burnUntil < 0 || (p.dead && p.health != 0))
             throw std::runtime_error("Invalid saved pedestrian");
@@ -652,6 +655,22 @@ void World::load(const std::filesystem::path &path)
         if (uniform < 0 || uniform > int(Person::Uniform::army))
             throw std::runtime_error("Invalid crew uniform");
         p.uniform = Person::Uniform(uniform);
+        if (entry.contains("corner"))
+        {
+            const auto walk = entry.at("corner").get<std::array<int, 5>>();
+            if (std::abs(walk[0]) != 1 || std::abs(walk[1]) != 1 || std::abs(walk[2]) != 1 ||
+                std::abs(walk[3]) != 1 || walk[4] < -1 || walk[4] > 3)
+                throw std::runtime_error("Invalid pedestrian corner");
+            p.sx = walk[0];
+            p.sz = walk[1];
+            p.nextSx = walk[2];
+            p.nextSz = walk[3];
+            p.lastWalk = walk[4];
+        }
+        else
+            // Saved when everybody walked the one pavement north and east of a street: the
+            // walk goes on from the nearest corner.
+            next.anchorWalk(p);
         if (entry.contains("role"))
         {
             const auto habit = entry.at("role").get<std::array<double, 3>>();

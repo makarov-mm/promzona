@@ -36,9 +36,7 @@ void World::formCompanies(bool loading)
             if (openCut(at, .4) || insideBuilding(at, terrain.height(at) + .8, .35))
                 continue;
             lead->inCompany = p.inCompany = true;
-            p.node = lead->node;
-            p.next = lead->next;
-            p.target = lead->target;
+            p.walkLike(*lead);
             p.body.p = at;
             p.body.v = {};
             p.body.height = terrain.height(at) + .85;
@@ -133,9 +131,7 @@ void World::socialIntent(Person &p, Vec2 &dir, double &speed)
             // stopped, in the road as often as not.
             if (dot(p.body.p - lead.body.p, along) > .3 && (p.body.p - lead.body.p).length2() < 12 * 12)
             {
-                p.next = lead.next;
-                p.node = lead.node;
-                p.target = lead.target;
+                p.walkLike(lead);
                 dir = -along;
                 speed = 0;
                 return;
@@ -144,9 +140,7 @@ void World::socialIntent(Person &p, Vec2 &dir, double &speed)
                           perpendicular(along) * ((index - n) % 2 ? .28 : -.28);
             auto delta = target - p.body.p;
             // Remember the current stretch of pavement so a survivor can take over immediately.
-            p.next = lead.next;
-            p.node = lead.node;
-            p.target = lead.target;
+            p.walkLike(lead);
             dir = delta.unit();
             speed = std::min(2.5, delta.length() * 2.);
             break;

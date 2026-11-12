@@ -366,6 +366,8 @@ Vec2 World::jobTarget() const
         return people[job.actor].body.p;
     if (job.kind == JobKind::taxi)
         return rideEnd(job.ride.line, job.destination);
+    if (job.kind == JobKind::leaflets || job.kind == JobKind::broadcast)
+        return job.destination < 0 ? position() : peacePoint(job.destination);
     return job.destination < 0 ? position() : sites[job.destination].entrance;
 }
 

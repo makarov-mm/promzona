@@ -1512,8 +1512,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 if (actor < 0)
                                     throw std::runtime_error("No pedestrian hailed a taxi");
                                 auto &c = world->cars.at(world->controlledCar);
-                                c.body.angle = 0;
-                                c.body.p = world->people[actor].body.p - Vec2{c.body.halfW + 1.25, 0};
+                                const Vec2 hailer = world->people[actor].body.p,
+                                           road = world->roadward(hailer), along = perpendicular(road);
+                                c.body.angle = -std::atan2(along.x, along.z);
+                                c.body.p = hailer + road * (c.body.halfW + 1.25);
                                 c.body.height = world->terrain.height(c.body.p) + .8;
                                 c.body.v = {};
                             }
@@ -1523,8 +1525,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                     throw std::runtime_error("Taxi unavailable");
                                 auto &c = world->cars[world->controlledCar];
                                 const auto &person = world->people[world->job.actor];
-                                // Park with the passenger on the kerb side of this street.
-                                c.body.p = person.body.p + rotate({c.body.halfW + .68, 0}, c.body.angle);
+                                // Park along the kerb beside the passenger, whichever pavement
+                                // of whichever street that is.
+                                const Vec2 road = world->roadward(person.body.p), along = perpendicular(road);
+                                c.body.angle = -std::atan2(along.x, along.z);
+                                c.body.p = person.body.p + road * (c.body.halfW + .68);
                                 c.body.height = world->terrain.height(c.body.p) + .8;
                                 c.body.v = {};
                                 world->interactJob();

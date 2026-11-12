@@ -178,6 +178,44 @@ void shopAndGarage(const std::filesystem::path &path)
     check(count == 3 && w.controlledCar == 0 && !car.personal,
           "fourth car refused without ejecting its driver");
 }
+// On foot at the place the job points to: a food kiosk or a bus stop.
+void reach(World &w)
+{
+    w.controlledCar = -1;
+    w.player.p = w.jobTarget();
+    w.player.height = w.terrain.height(w.player.p) + .85;
+    w.player.roadLevel = 0;
+}
+// Port of the managed choice of places for the peace jobs: bus stops count as well as kiosks.
+void peacePlaces(const std::filesystem::path &path)
+{
+    World w;
+    w.generate(20261105);
+    const int stop = int(w.busStops.size() / 2);
+    w.controlledCar = -1;
+    w.player.p = w.busStops[size_t(stop)] + Vec2{1.5, 0};
+    w.player.height = w.terrain.height(w.player.p) + .85;
+    check(w.startContract(JobKind::leaflets), "no leaflet route from a bus stop");
+    const auto &route = w.job.route.sites;
+    check(route[0] == int(w.sites.size()) + stop &&
+              (w.jobTarget() - w.busStops[size_t(stop)]).length() < 1e-9,
+          "the bus stop next to the player is not the first place of the route");
+    for (int a = 0; a < w.job.stopCount(); ++a)
+    {
+        check(w.peacePlace(route[size_t(a)]), "a place of the route is neither a kiosk nor a bus stop");
+        for (int b = 0; b < a; ++b)
+            check((w.peacePoint(route[size_t(a)]) - w.peacePoint(route[size_t(b)])).length() >= 100,
+                  "two places of the route are next to each other");
+    }
+    w.save(path);
+    World restored;
+    restored.load(path);
+    std::filesystem::remove(path);
+    check(restored.job.kind == JobKind::leaflets && restored.job.route.sites == route &&
+              (restored.jobTarget() - w.jobTarget()).length() < 1e-9,
+          "a route by way of a bus stop is lost in a save");
+}
+
 void peaceContracts(const std::filesystem::path &path)
 {
     World w;
@@ -190,7 +228,7 @@ void peaceContracts(const std::filesystem::path &path)
     check(w.startContract(JobKind::leaflets), "leaflet route available");
     w.interactJob();
     check(!w.job.route.enabled, "cannot distribute from car");
-    visit(w, w.job.destination);
+    reach(w);
     w.interactJob();
     tick(1.);
     w.player.v = {1, 0};
@@ -199,7 +237,7 @@ void peaceContracts(const std::filesystem::path &path)
     w.player.v = {};
     for (int i = 0; i < 4; ++i)
     {
-        visit(w, w.job.destination);
+        reach(w);
         w.interactJob();
         tick(1.);
         if (i == 1)
@@ -359,8 +397,10 @@ void passengerContracts(const std::filesystem::path &path)
         auto &car = w.cars[0];
         car.body.v = {};
         car.body.w = 0;
-        car.body.angle = 0;
-        car.body.p = p.body.p - Vec2{car.body.halfW + 1.25, 0};
+        // Along the kerb beside the passenger, whichever pavement that is.
+        const Vec2 road = w.roadward(p.body.p), along = perpendicular(road);
+        car.body.angle = -std::atan2(along.x, along.z);
+        car.body.p = p.body.p + road * (car.body.halfW + 1.25);
         car.body.height = p.body.height - .05;
         w.interactJob();
         check(!w.job.acquired && w.job.ride.car == 0, "passenger directed to a real car door");
@@ -463,6 +503,68 @@ void passengerContracts(const std::filesystem::path &path)
           "abandoned passenger returns to sidewalk");
 }
 } // namespace
+// Port of the managed MaintainHailers: whoever flags the taxi down does it at a bus stop,
+// at the kerb between the shelter and the road. Nobody is made for it: a passer-by on the
+// block of the stop goes over to it.
+void hailAtStop(const std::filesystem::path &path)
+{
+    World w;
+    w.generate(20261105);
+    w.dispatchAt = w.patrolScanAt = w.nextRescueDispatch = 1e9;
+    check(w.busStops.size() >= 2 && w.controlledCar >= 0, "no bus stops or no car to start in");
+    const Vec2 stop = w.busStops[w.busStops.size() / 2];
+    auto &car = w.cars[w.controlledCar];
+    // In the kerb lane of the street of the stop, sixty metres short of it.
+    car.body.p = stop + Vec2{3.85, -60};
+    car.body.angle = 0;
+    car.body.v = {};
+    car.body.height = w.surface(car.body.p, 0) + .8;
+    int actor = -1;
+    for (int i = 0; i < int(w.people.size()); ++i)
+        if ((w.people[i].body.p - stop).length() < 30)
+            w.people[i].body.p += Vec2{0, 12 * World::spacing};
+        else if (actor < 0 && w.canTakePassengerJob(i) && w.people[i].role == Person::Role::none)
+            actor = i;
+    check(actor >= 0, "nobody to walk past the stop");
+    auto &p = w.people[actor];
+    p.body.p = stop + Vec2{.2, -6};
+    p.body.height = w.terrain.height(p.body.p) + .85;
+    p.body.v = {};
+    w.anchorWalk(p);
+    w.hailers = {};
+    w.nextHail = 0;
+    w.updateHailers();
+    const auto *hail = w.hailOf(actor);
+    check(hail && hail->posted && std::abs(hail->spot.x - stop.x - 1.3) < 1e-9 &&
+              hail->spot.z - stop.z > .29 && hail->spot.z - stop.z < 1.21 &&
+              w.layout.roadDistance(hail->spot) > w.layout.roadHalf() + .3,
+          "nobody at the bus stop hails the taxi");
+    const Vec2 spot = hail->spot;
+    for (int i = 0; i < 60 * 12; ++i)
+        w.step({}, 1. / 60);
+    check(w.hailOf(actor) && (p.body.p - spot).length() < .4 && p.body.v.length() < .05 &&
+              std::abs(p.heading - pi / 2) < 1e-6,
+          "the hailer does not wait at the kerb of the stop, facing the road");
+    w.save(path);
+    World restored;
+    restored.load(path);
+    std::filesystem::remove(path);
+    check(restored.hailOf(actor) && restored.hailOf(actor)->posted &&
+              (restored.hailOf(actor)->spot - spot).length() < 1e-9,
+          "the place of a hailer is lost in a save");
+    // With the stops out of reach somebody at a kerb does it, as before.
+    w.hailers = {};
+    for (int i = 0; i < int(w.people.size()); ++i)
+        for (Vec2 other : w.busStops)
+            if (std::abs(w.people[i].body.p.x - other.x) < 1.5 &&
+                std::abs(w.people[i].body.p.z - other.z) < 9)
+                w.people[i].body.p += Vec2{4, 0};
+    w.nextHail = 0;
+    w.updateHailers();
+    check(w.hailers.front().actor >= 0 && !w.hailers.front().posted,
+          "nobody hails a taxi away from the bus stops");
+}
+
 int main()
 {
     auto path = std::filesystem::temp_directory_path() /
@@ -472,8 +574,10 @@ int main()
     {
         careerSeries(path);
         consoleAndHail(path);
+        hailAtStop(path);
         shopAndGarage(path);
         peaceContracts(path);
+        peacePlaces(path);
         passengerContracts(path);
         World w;
         for (auto seed : {20261105u, 42u, 987654u})

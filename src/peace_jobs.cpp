@@ -24,17 +24,19 @@ bool World::startPeaceJob(JobKind kind)
              -1,    kind == JobKind::broadcast ? 500 : 300,
              false, time + 720};
     auto origin = position();
+    // Port of the managed choice: the bus stops and the food kiosks within 700 m, nearest
+    // first, no two of them within a hundred metres of each other.
     std::vector<int> candidates;
-    for (int i = 0; i < int(sites.size()); ++i)
-        if (sites[i].food() && (sites[i].entrance - origin).length2() < 700 * 700)
+    for (int i = 0; i < int(sites.size() + busStops.size()); ++i)
+        if (peacePlace(i) && (peacePoint(i) - origin).length2() < 700 * 700)
             candidates.push_back(i);
-    std::ranges::sort(candidates, {}, [&](int i) { return (sites[i].entrance - origin).length2(); });
+    std::ranges::stable_sort(candidates, {}, [&](int i) { return (peacePoint(i) - origin).length2(); });
     int count = 0;
     for (int i : candidates)
     {
         bool nearby = false;
         for (int n = 0; n < count; ++n)
-            if ((sites[next.route.sites[n]].entrance - sites[i].entrance).length2() < 100 * 100)
+            if ((peacePoint(next.route.sites[n]) - peacePoint(i)).length2() < 100 * 100)
                 nearby = true;
         if (nearby)
             continue;
@@ -163,7 +165,7 @@ bool World::validPeaceJob() const
     for (int n = 0; n < job.stopCount(); ++n)
     {
         int i = r.sites[n];
-        if (i < 0 || i >= int(sites.size()) || !sites[i].food())
+        if (!peacePlace(i))
             return false;
         if (std::find(r.sites.begin(), r.sites.begin() + n, i) != r.sites.begin() + n)
             return false;
