@@ -72,12 +72,17 @@ void World::generateStreetLife()
         animals.push_back(a);
     };
     auto home = [&] { return habitat[streetRandom.index(int(habitat.size()))]; };
-    for (int i = 0; i < 72; ++i)
+    // The full population has the managed game's animals as well: about 960 pigeons and
+    // 160 cats, dogs and lone birds (ResetLife, AnimalPopulationRevision 2). The lower
+    // densities keep the animals their saves were made with.
+    const bool full = density == Density::full;
+    const int strays = full ? 106 : 72, pigeonFlocks = full ? 120 : 32, loneBirds = full ? 54 : 10;
+    for (int i = 0; i < strays; ++i)
         add(i % 2 ? Species::cat : Species::dog, home(), -1, {});
-    for (int i = 0; i < 42; ++i)
+    for (int i = 0; i < pigeonFlocks + loneBirds; ++i)
     {
         Vec2 centre = home();
-        bool solo = i >= 32;
+        bool solo = i >= pigeonFlocks;
         flocks.push_back({centre, false, time});
         int count = solo ? 1 : 6 + streetRandom.index(5);
         for (int n = 0; n < count; ++n)

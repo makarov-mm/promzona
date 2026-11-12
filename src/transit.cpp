@@ -624,18 +624,22 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
             // Metres of clear rail ahead of the nose, as far as the look along the rails goes.
             double clearRail = 1e9;
             c.claimed = -1;
+            // The rails from the nose on, two metres apart.
+            std::array<Vec2, 14> rails;
+            for (size_t k = 0; k < rails.size(); ++k)
+                rails[k] = line.pose(c.along + b.halfH + 2. * double(k)).first;
             {
                 // Far from the player too: a tram that ran through the queue in front of it
                 // came to rest inside a car at the lights, and neither could ever move again.
                 // What is ahead is what stands on the rails ahead, round the bend as well: the
                 // line of the bonnet in a curve points at cars the tram will never meet.
-                std::array<Vec2, 14> rails;
-                for (size_t k = 0; k < rails.size(); ++k)
-                    rails[k] = line.pose(c.along + b.halfH + 2. * double(k)).first;
                 for (const auto &other : cars)
                 {
                     const Vec2 gap = other.body.p - b.p;
-                    if (&c == &other || gap.length2() > 40 * 40 || std::abs(other.body.height - b.height) > 2)
+                    // On the same street, however steep: a tram that came down a hill at one
+                    // standing at the lights below saw it when the two were a few metres apart
+                    // and stopped inside it. Neither could move again.
+                    if (&c == &other || gap.length2() > 40 * 40 || !onSameSurface(b, other.body))
                         continue;
                     const Vec2 spine =
                         forward(other.heading()) * std::max(0., other.body.halfH - other.body.halfW);
@@ -675,13 +679,38 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
             }
             if (local)
             {
-                for (auto &p : people)
+                // Whoever is on the rails ahead, round the bend as well, and whoever will be
+                // in a moment. A tram that turned into a street looked along its bonnet and
+                // took the people on the crossing of that street with its corner. The player
+                // on foot counts like anybody else.
+                auto yield = [&](const Body &walker)
                 {
-                    auto d = p.body.p - b.p;
-                    if (p.riding < 0 && !p.dead && std::abs(p.body.height - b.height) < 2 && dot(d, f) > 0 &&
-                        dot(d, f) < 18 && std::abs(cross(d, f)) < b.halfW + .4)
+                    const Vec2 d = walker.p - b.p;
+                    if (d.length2() > 36 * 36 || !onSameSurface(b, walker))
+                        return;
+                    if (dot(d, f) > 0 && dot(d, f) < 18 && std::abs(cross(d, f)) < b.halfW + .4)
                         slow(dot(d, f) - b.halfH - 1.);
-                }
+                    const double reach = b.halfW + walker.radius + .4;
+                    for (const Vec2 at : {walker.p, walker.p + walker.v * 1.2})
+                    {
+                        // In the road, that is. Round a corner the rails of a trolleybus pass
+                        // a step from where people wait for the lights, and there is always
+                        // somebody waiting.
+                        if (layout.roadDistance(at) >= layout.roadHalf())
+                            continue;
+                        for (size_t k = 0; k < rails.size(); ++k)
+                            if ((rails[k] - at).length2() < reach * reach)
+                            {
+                                slow(2. * double(k) - reach - 1.);
+                                break;
+                            }
+                    }
+                };
+                for (const auto &p : people)
+                    if (p.riding < 0 && !p.dead)
+                        yield(p.body);
+                if (controlledCar < 0)
+                    yield(player);
             }
             int dir = std::abs(f.x) > std::abs(f.z) ? (f.x > 0 ? 1 : 3) : (f.z > 0 ? 0 : 2);
             // One-metre steps: the nose stops 3.4 to 4.4 m short of the junction box, before
@@ -701,14 +730,29 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
                     // it there must be room for the whole tram. Trams used to follow each
                     // other into the box and stand across it, the cross traffic behind them.
                     bool wait = !CityLayout::green(x, z, dir, time);
+                    // Trams and trolleybuses take a junction one at a time. A tram and a
+                    // trolleybus that came up abreast, one to turn right out of the middle lane
+                    // and the other left from the kerb, both asked for the junction and stood
+                    // in it nose to nose: each was on the way of the other, for good. One that
+                    // was left standing there is passed as before, if the rails allow.
+                    for (size_t k = 0; !wait && k < cars.size(); ++k)
+                    {
+                        const auto &other = cars[k];
+                        if (&other == &c || other.line < 0 || other.destroyed || other.driverless ||
+                            !onSameSurface(b, other.body))
+                            continue;
+                        const Vec2 there = other.body.p - junction;
+                        wait = other.claimed == node(x, z) || std::max(std::abs(there.x), std::abs(there.z)) <
+                                                                  layout.roadHalf() + other.body.halfH;
+                    }
                     if (!wait && local)
                     {
                         const double need = d + 2 * layout.roadHalf() + 2 * b.halfH + 2;
                         for (const auto &other : cars)
                         {
                             const auto gap = other.body.p - b.p;
-                            if (&c != &other && std::abs(other.body.height - b.height) <= 2 &&
-                                dot(gap, f) > d && dot(gap, f) - other.body.halfH < need &&
+                            if (&c != &other && onSameSurface(b, other.body) && dot(gap, f) > d &&
+                                dot(gap, f) - other.body.halfH < need &&
                                 std::abs(cross(gap, f)) <= b.halfW + other.body.halfW &&
                                 dot(other.body.v, f) < 1)
                             {

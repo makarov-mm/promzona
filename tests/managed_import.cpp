@@ -90,6 +90,8 @@ int main()
         require(w.layout.revision() == CityLayout::districtRevision,
                 "current save must use the district plan");
         require(w.money == 740, "money was not carried over");
+        require(w.density == Density::low && w.people.size() == populationSize(Density::low).people,
+                "an import that names no population must get the low one");
         require(std::abs(w.clock.hour - 21.5) < 1e-9, "time of day was not carried over");
         require(w.rain == 1 && w.rainTarget == 1, "weather was not carried over");
         require(std::abs(w.health - .6) < 1e-9, "health was not carried over");
@@ -191,6 +193,19 @@ int main()
         require(report.format == 1 && w.money == 15 && w.seed == std::uint32_t(-17) && w.health == 1 &&
                     !w.inventory.hasWeapons() && w.rain == 0,
                 "format 1 save was not imported");
+
+        // The city of an imported game is peopled as a new game would be.
+        report = w.importManaged(write(current.text()), Density::full);
+        require(w.density == Density::full && w.people.size() == populationSize(Density::full).people &&
+                    w.trafficPopulation == populationSize(Density::full).cars && w.money == 740,
+                "an imported game did not get the chosen population");
+        const auto dense = folder / "imported-full.json";
+        w.save(dense);
+        World again;
+        again.load(dense);
+        require(again.density == Density::full && again.money == 740 &&
+                    again.people.size() == w.people.size(),
+                "an imported full city does not load");
 
         // Everything the managed game refuses is refused here too.
         ManagedSave bad;

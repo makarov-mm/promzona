@@ -201,12 +201,15 @@ struct SoundEvent
     int speaker{-1};
 };
 // How many cars and passers-by a new city gets. `low` is the population of every save
-// made before the setting existed; `high` is what the managed game starts with.
+// made before the setting existed. `high` is the managed game's first fill; `full` is
+// what that game then keeps on the streets: half as many passenger cars again and a
+// tenth on top of every kind, and people up to its target (CityTraffic.Population.cs).
 enum class Density
 {
     low,
     medium,
-    high
+    high,
+    full
 };
 struct PopulationSize
 {
@@ -214,7 +217,8 @@ struct PopulationSize
 };
 constexpr PopulationSize populationSize(Density density)
 {
-    return density == Density::high     ? PopulationSize{1080, 3240}
+    return density == Density::full     ? PopulationSize{1485, 5265}
+           : density == Density::high   ? PopulationSize{1080, 3240}
            : density == Density::medium ? PopulationSize{540, 1800}
                                         : PopulationSize{260, 720};
 }
@@ -661,7 +665,7 @@ struct World
     std::function<void()> captureSave(const std::filesystem::path &path) const;
     void save(const std::filesystem::path &path) const;
     void load(const std::filesystem::path &path);
-    ManagedImport importManaged(const std::filesystem::path &file);
+    ManagedImport importManaged(const std::filesystem::path &file, Density population = Density::low);
     std::wstring command(const std::string &text);
     static int nearestNode(Vec2 p);
     static Vec2 nodePoint(int n)
@@ -675,6 +679,9 @@ struct World
     void planExit(Car &car);
     // A car is crossing this junction (the one reservation it has); `except` is not asked.
     bool junctionHeld(int node, const Car *except) const;
+    // Whether two bodies stand on one surface: the same street however steep, not the
+    // deck above it or the tunnel below.
+    bool onSameSurface(const Body &a, const Body &b) const;
     // Actors are binned by city block for nearby drivers' periodic perception.
     struct TrafficCell
     {

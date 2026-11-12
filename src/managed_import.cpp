@@ -74,8 +74,9 @@ WeaponId weaponId(const json &value)
 
 // Import of a managed (C#) save, formats 1-3. The native city generator does not
 // reproduce the managed actor population, so this carries over the player's progress:
-// the city seed, clock, weather, money, health and weapons. The source file is only read.
-ManagedImport World::importManaged(const std::filesystem::path &file)
+// the city seed, clock, weather, money, health and weapons. The city is peopled as a new
+// game would be. The source file is only read.
+ManagedImport World::importManaged(const std::filesystem::path &file, Density population)
 {
     const auto document = readProgress(file);
     ManagedImport report;
@@ -106,7 +107,7 @@ ManagedImport World::importManaged(const std::filesystem::path &file)
 
     World next;
     next.generate(std::bit_cast<std::uint32_t>(std::int32_t(seedValue)), {},
-                  report.samePlan ? 0 : CityLayout::districtRevision);
+                  report.samePlan ? 0 : CityLayout::districtRevision, population);
     next.money = int(cash);
     next.clock.setHour(hour);
     const bool raining = document.value("Raining", false);

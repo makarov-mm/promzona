@@ -429,7 +429,7 @@ void World::load(const std::filesystem::path &path)
     validateJson(j);
     // Saves made before the density setting hold the low population and no such field.
     const int population = j.value("density", 0);
-    if (population < 0 || population > int(Density::high))
+    if (population < 0 || population > int(Density::full))
         throw std::runtime_error("Invalid saved density");
     World next;
     next.generate(j.at("seed").get<std::uint32_t>(), {}, j.value("layoutRevision", 0), Density(population));

@@ -410,7 +410,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             scenario != L"contract-series" && scenario != L"console" && scenario != L"street-hail" &&
             scenario != L"estate" && scenario != L"courtyard" && scenario != L"cottages" &&
             scenario != L"centre" && scenario != L"garages" && scenario != L"rail-yard" &&
-            scenario != L"seafront" && scenario != L"canal-mouth")
+            scenario != L"seafront" && scenario != L"canal-mouth" && scenario != L"crowd")
             throw std::runtime_error("Unknown smoke scenario");
         if (content.empty())
             content = std::filesystem::is_directory(exeDirectory / L"Content")
@@ -498,12 +498,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                                      : systemLanguage == LANG_UKRAINIAN ? Language::ukrainian
                                                                                         : Language::english);
             renderer.language(menus.language);
-            // New games start as dense as the managed game. Automated runs keep the low
-            // population their scenarios were written for unless told otherwise.
+            // New games start with the managed game's first fill. Automated runs keep the
+            // low population their scenarios were written for unless told otherwise; `crowd`
+            // is the day scenario in the full city.
             const auto densityFile = app.saveFile.parent_path() / "density.txt";
-            menus.population = densityOverride ? *densityOverride
-                               : smoke         ? Density::low
-                                               : loadDensity(densityFile, Density::high);
+            menus.population = densityOverride        ? *densityOverride
+                               : scenario == L"crowd" ? Density::full
+                               : smoke                ? Density::low
+                                                      : loadDensity(densityFile, Density::high);
             SaveSlots slots(app.saveFile);
             auto refreshSlots = [&]
             {
@@ -523,7 +525,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     throw std::runtime_error(
                         "All three save slots are occupied. Free one, then import again.");
                 World imported;
-                const auto carried = imported.importManaged(importFile);
+                const auto carried = imported.importManaged(importFile, menus.population);
                 imported.save(slots.path(target));
                 refreshSlots();
                 menus.selected = target;
@@ -2605,6 +2607,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         (world->controlledCar < 0 || world->cars[world->controlledCar].kind != 11 ||
                          world->shotCooldown == 0))
                         throw std::runtime_error("Tank did not fire");
+                    if (scenario == L"crowd" &&
+                        (world->density != Density::full ||
+                         world->cars.size() < populationSize(Density::full).cars ||
+                         world->people.size() != populationSize(Density::full).people ||
+                         world->animals.size() < 1000 || std::ranges::any_of(world->people, &Person::dead)))
+                        throw std::runtime_error("The full city is not populated");
                     if (scenario == L"settings")
                     {
                         const auto disk = GraphicsPreferences::load(graphicsFile);

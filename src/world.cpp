@@ -698,7 +698,15 @@ void World::step(PlayerInput input, double dt)
                 car.doorOpen = clamp(car.doorOpen + (car.doorHold > 0 ? 3. : -2.4) * dt, 0., 1.);
         }
         car.impactCooldown = std::max(0., car.impactCooldown - dt);
-        bool local = (b.p - focus).length2() < 110 * 110 || int(i) == controlledCar;
+        const double range = (b.p - focus).length2();
+        bool local = range < 110 * 110 || int(i) == controlledCar;
+        // A turn begun on the rails of the distant model is finished on them. Handed over to
+        // its own steering in the middle of one, at the speed the distant model turns at, a
+        // truck came out wide, its nose at the van that waited at the opposite stop line.
+        if (local && car.distant && car.routePhase == 1 && car.line < 0 && !car.destroyed &&
+            range > 70 * 70 && int(i) != controlledCar)
+            local = false;
+        car.distant = !local;
         car.terrainActive = car.lift < .15;
         car.terrainGradient = {
             (surface(b.p + Vec2{.25, 0}, b.roadLevel) - surface(b.p - Vec2{.25, 0}, b.roadLevel)) * 2,
@@ -773,18 +781,23 @@ void World::step(PlayerInput input, double dt)
             const double setBack = std::max(0., b.halfH - 2.3);
             bool clear =
                 car.routeDistance + cruise * dt < car.route->length() - setBack || intersectionClear(car);
+            const double from = car.routeDistance;
             car.routeDistance =
                 std::min(car.route->length(),
                          car.routeDistance +
                              (clear ? cruise * dt
                                     : std::min(cruise * dt, std::max(0., car.route->length() - setBack -
                                                                              car.routeDistance))));
+            // The speed is what the car has just covered. A long vehicle that waited set
+            // back from the stop line used to keep its cruising speed on paper: whoever
+            // looked at it saw a truck on the move, not one standing in a queue.
+            const double speed = (car.routeDistance - from) / dt;
             if (car.routeDistance >= car.route->length() && clear)
                 newRoute(car);
             auto sample = car.route->sample(car.routeDistance);
             b.p = sample.first;
             b.angle = -sample.second;
-            b.v = forward(sample.second) * (car.routeDistance >= car.route->length() ? 0 : cruise);
+            b.v = forward(sample.second) * speed;
             b.roadLevel = car.routeLevel;
             b.height = surface(b.p, b.roadLevel) + .8;
             car.lift = car.verticalVelocity = 0;
@@ -853,6 +866,8 @@ void World::step(PlayerInput input, double dt)
                     target = 0;
             }
             auto dir = forward(car.heading());
+            // What the driver would do with nothing in the way.
+            const double wish = target;
             target = std::min(target, car.trafficLimit);
             double speed = dot(b.v, dir);
             double steerLimit = .68 / (1 + std::pow(std::abs(speed) / 22, 2));
@@ -860,8 +875,60 @@ void World::step(PlayerInput input, double dt)
                 2 * std::sin(wrap(desired - car.heading())) / std::max(1., (aim - b.p).length());
             double steering = std::atan(car.wheelbase * curvature) / steerLimit;
             target = std::min(target, std::sqrt(3.2 / std::max(.001, std::abs(curvature))));
+            // Port of the managed driver's way out (CityTraffic.Physics.cs): pushed off the
+            // route and facing away from it, or wedged, it backs up slowly and tries again;
+            // its pose is never reset. A driver here stops short of what is in front of the
+            // bumper, so wedged means off the route or across it, on a straight, and held
+            // by what is ahead: a truck that came out of a turn too wide stood nose to nose
+            // with the van at the opposite stop line, each in the way of the other.
+            std::optional<Input> backing;
+            if (!car.responding)
+            {
+                const auto [onRoute, routeHeading] = car.route->sample(car.routeDistance);
+                const double routeError = (onRoute - b.p).length();
+                const bool displaced = routeError > 1.5 || dot(dir, forward(routeHeading)) < .9;
+                if (car.routePhase != 1 && displaced && wish > 1 && car.trafficLimit < .2 &&
+                    std::abs(speed) < .25)
+                    car.wedgedFor += dt;
+                else
+                    car.wedgedFor = 0;
+                if (car.reverseFor <= 0 &&
+                    ((dot(aim - b.p, dir) < -.7 && routeError > 1.5) || car.wedgedFor > 3.5))
+                {
+                    car.reverseFor = 1.7;
+                    car.wedgedFor = 0;
+                }
+                if (car.reverseFor > 0)
+                {
+                    car.reverseFor -= dt;
+                    // Not into whoever is behind.
+                    bool blocked = false;
+                    for (const auto &other : cars)
+                    {
+                        const Vec2 gap = other.body.p - b.p;
+                        if (&other != &car && dot(gap, dir) < 0 &&
+                            gap.length() < b.halfH + other.body.halfH + 1 && onSameSurface(b, other.body))
+                        {
+                            blocked = true;
+                            break;
+                        }
+                    }
+                    for (size_t k = 0; !blocked && k < people.size(); ++k)
+                    {
+                        const Vec2 gap = people[k].body.p - b.p;
+                        blocked = people[k].riding < 0 && dot(gap, dir) < 0 && dot(gap, dir) > -b.halfH - 3 &&
+                                  std::abs(cross(gap, dir)) < b.halfW + .6 &&
+                                  onSameSurface(b, people[k].body);
+                    }
+                    backing = blocked ? Input{0, clamp(steering, -1., 1.), true, false}
+                                      : Input{clamp((-1.8 - speed) * .35, -.4, .4), steering > 0 ? -.8 : .8,
+                                              false, false};
+                }
+            }
             stepVehicle(car,
-                        {clamp((target - speed) * .4, -1., 1.), clamp(steering, -1., 1.), target < .2, false},
+                        backing ? *backing
+                                : Input{clamp((target - speed) * .4, -1., 1.), clamp(steering, -1., 1.),
+                                        target < .2, false},
                         dt, 1 - rain * .2);
         }
         if (local)

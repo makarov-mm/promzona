@@ -26,22 +26,30 @@ bool GraphicsPreferences::save(const std::filesystem::path &file) const
 }
 const wchar_t *densityTitle(Density density)
 {
-    return density == Density::high ? L"Высокая" : density == Density::medium ? L"Средняя" : L"Низкая";
+    return density == Density::full     ? L"Полная"
+           : density == Density::high   ? L"Высокая"
+           : density == Density::medium ? L"Средняя"
+                                        : L"Низкая";
 }
 const char *densityCode(Density density)
 {
-    return density == Density::high ? "high" : density == Density::medium ? "medium" : "low";
+    return density == Density::full     ? "full"
+           : density == Density::high   ? "high"
+           : density == Density::medium ? "medium"
+                                        : "low";
 }
 Density densityFromCode(std::string_view code, Density fallback)
 {
-    return code == "high"     ? Density::high
+    return code == "full"     ? Density::full
+           : code == "high"   ? Density::high
            : code == "medium" ? Density::medium
            : code == "low"    ? Density::low
                               : fallback;
 }
 Density cycleDensity(Density density, int step)
 {
-    return Density((int(density) + (step < 0 ? 2 : 1)) % 3);
+    constexpr int levels = int(Density::full) + 1;
+    return Density((int(density) + (step < 0 ? levels - 1 : 1)) % levels);
 }
 Density loadDensity(const std::filesystem::path &file, Density fallback)
 {

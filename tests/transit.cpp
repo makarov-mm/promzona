@@ -247,6 +247,206 @@ void test(std::uint32_t seed)
     check((tram.body.p - line.pose(tram.along).first).length() < .12, "player steered tram off track");
     passengerJourney(w, tram, save);
 }
+// In this city a tram line and a trolleybus line share a street as far as a junction where
+// the tram turns right out of the middle lane and the trolleybus left from the kerb.
+void crossing()
+{
+    World w;
+    w.generate(99u);
+    w.dispatchAt = w.patrolScanAt = w.nextRescueDispatch = 1e9;
+    const int node = 39 * World::nodes + 3;
+    const Vec2 centre = World::nodePoint(node);
+    check(w.lines.size() == 4 && w.lines[2].kind == 9 && w.lines[1].kind == 10,
+          "the lines of city 99 changed");
+    Car *tram = nullptr, *trolley = nullptr;
+    for (auto &c : w.cars)
+    {
+        if (c.line == 2 && !tram)
+            tram = &c;
+        else if (c.line == 1 && !trolley)
+            trolley = &c;
+        else if (&c != &w.cars[0] && (c.body.p - centre).length() < 160)
+        {
+            // Nobody else is near: the two meet on an empty street.
+            if (c.line >= 0)
+                c.along = w.lines[c.line].wrapDistance(c.along + 500);
+            else
+                c.destroy();
+            c.body.p = c.line >= 0 ? w.lines[c.line].pose(c.along).first
+                                   : Vec2{World::landEdge - 20, -300. + 6. * double(c.id % 90)};
+        }
+    }
+    check(tram && trolley, "city 99 has no tram or no trolleybus");
+    auto put = [&](Car &c, Vec2 at)
+    {
+        const auto &line = w.lines[c.line];
+        c.along = line.track.closestDistance(at);
+        const auto [p, heading] = line.pose(c.along);
+        check((p - at).length() < .4 && forward(heading).z > .99, "a line of city 99 left this street");
+        // Past the junction one has turned right and the other left.
+        check(forward(line.pose(c.along + (c.kind == 9 ? 24 : 36)).second).x * (c.kind == 9 ? -1 : 1) > .99,
+              "the lines of city 99 no longer cross here");
+        c.nextStop = line.nextStopAfter(c.along);
+        c.dwell = c.checkTrafficAt = 0;
+        c.claimed = -1;
+        c.body.p = p;
+        c.body.angle = -heading;
+        c.body.v = forward(heading);
+        c.body.height = w.terrain.height(p) + .8;
+        return c.along;
+    };
+    const double tramStart = put(*tram, centre + Vec2{-1.9, -15.5});
+    const double trolleyStart = put(*trolley, centre + Vec2{-5.2, -16.4});
+    for (int i = 0; i < 60 * 60; ++i)
+        w.step({}, 1. / 60);
+    check(w.lines[2].wrapDistance(tram->along - tramStart) > 45 &&
+              w.lines[1].wrapDistance(trolley->along - trolleyStart) > 45,
+          "a tram and a trolleybus that turn across each other stand at the junction");
+}
+// A tram turns into a street where somebody stands on the crossing.
+void zebra()
+{
+    World w;
+    w.generate(99u);
+    w.dispatchAt = w.patrolScanAt = w.nextRescueDispatch = 1e9;
+    const int node = 22 * World::nodes + 25;
+    const Vec2 centre = World::nodePoint(node);
+    check(w.lines.size() == 4 && w.lines[2].kind == 9, "the lines of city 99 changed");
+    const auto &line = w.lines[2];
+    // The player watches from the pavement: near the player a tram is driven, not moved.
+    auto &own = w.cars[0];
+    own.body.p = {World::landEdge - 30, 40};
+    own.body.height = w.terrain.height(own.body.p) + .8;
+    own.driverless = true;
+    w.controlledCar = -1;
+    w.player.p = centre + Vec2{9.3, 24};
+    w.player.height = w.terrain.height(w.player.p) + .85;
+    Car *tram = nullptr;
+    for (auto &c : w.cars)
+    {
+        if (c.line == 2 && !tram)
+            tram = &c;
+        else if (&c != &own && (c.body.p - centre).length() < 160)
+        {
+            if (c.line >= 0)
+                c.along = w.lines[c.line].wrapDistance(c.along + 500);
+            else
+                c.destroy();
+            c.body.p = c.line >= 0 ? w.lines[c.line].pose(c.along).first
+                                   : Vec2{World::landEdge - 20, -300. + 6. * double(c.id % 90)};
+        }
+    }
+    check(tram, "city 99 has no tram on its third line");
+    const double start = line.track.closestDistance(centre + Vec2{-1.9, -22});
+    check((line.pose(start).first - centre - Vec2{-1.9, -22}).length() < .4 &&
+              forward(line.pose(start).second).z > .99 && forward(line.pose(start + 34).second).x < -.99,
+          "the tram line of city 99 no longer turns here");
+    tram->along = start;
+    tram->nextStop = line.nextStopAfter(start);
+    tram->dwell = tram->checkTrafficAt = 0;
+    tram->claimed = -1;
+    tram->body.p = line.pose(start).first;
+    tram->body.angle = -line.pose(start).second;
+    tram->body.v = {0, 2};
+    tram->body.height = w.terrain.height(tram->body.p) + .8;
+    // Everybody else is sent away; one walker stands on the crossing, on the rails.
+    Person *walker = nullptr;
+    for (auto &p : w.people)
+        if (p.riding < 0 && (p.body.p - centre).length() < 70)
+            p.body.p += Vec2{0, 240};
+        else if (!walker && p.riding < 0 && !p.dead && p.role == Person::Role::none && p.ownedScooter < 0)
+            walker = &p;
+    check(walker, "nobody to stand on the crossing");
+    const Vec2 spot = line.pose(start + 24).first;
+    check(std::abs(spot.x - centre.x + 9.1) < 2.5,
+          "the crossing is not where the tram comes out of the turn");
+    walker->body.p = walker->target = spot;
+    walker->body.v = {};
+    walker->body.height = w.terrain.height(spot) + .85;
+    walker->walkWait = 1e9;
+    for (int i = 0; i < 60 * 24; ++i)
+        w.step({}, 1. / 60);
+    check(w.pedestrianImpacts == 0 && !walker->dead && (walker->body.p - spot).length() < .5,
+          "a tram that turns into a street runs over whoever stands on its crossing");
+    check(tram->body.v.length() < .2 && line.wrapDistance(tram->along - start) > 8 &&
+              (walker->body.p - tram->body.p).length() > tram->body.halfH + .5,
+          "a tram does not pull up before the walker on the crossing");
+    // The walker goes, and so does the tram.
+    walker->body.p += Vec2{0, 240};
+    walker->target = walker->body.p;
+    const double held = tram->along;
+    for (int i = 0; i < 60 * 12; ++i)
+        w.step({}, 1. / 60);
+    check(line.wrapDistance(tram->along - held) > 12, "the tram stays where the walker stood");
+}
+
+// A tram comes to the steepest stretch of its line, where another stands.
+void hill()
+{
+    World w;
+    w.generate(20261105u);
+    w.dispatchAt = w.patrolScanAt = w.nextRescueDispatch = 1e9;
+    size_t steepest = 0;
+    double drop = 0, at = 0;
+    for (size_t l = 0; l < w.lines.size(); ++l)
+        if (w.lines[l].kind == 9)
+            for (double a = 0; a < w.lines[l].track.length(); a += 1)
+            {
+                const double d = std::abs(w.terrain.height(w.lines[l].pose(a + 10).first) -
+                                          w.terrain.height(w.lines[l].pose(a).first));
+                if (d > drop)
+                {
+                    drop = d;
+                    at = a;
+                    steepest = l;
+                }
+            }
+    check(drop > 2.5, "the tram lines of the city have no steep street");
+    const auto &line = w.lines[steepest];
+    const Vec2 slope = line.pose(at).first;
+    Car *lead = nullptr, *follower = nullptr;
+    for (auto &c : w.cars)
+    {
+        if (c.line == int(steepest) && !lead)
+            lead = &c;
+        else if (c.line == int(steepest) && !follower)
+            follower = &c;
+        else if (&c != &w.cars[0] && (c.body.p - slope).length() < 160)
+        {
+            if (c.line >= 0)
+                c.along = w.lines[c.line].wrapDistance(c.along + 500);
+            else
+                c.destroy();
+            c.body.p = c.line >= 0 ? w.lines[c.line].pose(c.along).first
+                                   : Vec2{World::landEdge - 20, -300. + 6. * double(c.id % 90)};
+        }
+    }
+    check(lead && follower, "the line has fewer than two trams");
+    auto put = [&](Car &c, double along, double speed)
+    {
+        c.along = line.wrapDistance(along);
+        c.nextStop = line.nextStopAfter(c.along);
+        c.checkTrafficAt = 0;
+        c.claimed = -1;
+        const auto [p, heading] = line.pose(c.along);
+        c.body.p = p;
+        c.body.angle = -heading;
+        c.body.v = forward(heading) * speed;
+        c.body.height = w.terrain.height(p) + .8;
+    };
+    put(*lead, at + 12, 0);
+    lead->dwell = 60;
+    put(*follower, at - 26, 6.5);
+    follower->dwell = 0;
+    check(std::abs(lead->body.height - follower->body.height) > 2.5, "the two trams are on a level");
+    for (int i = 0; i < 60 * 15; ++i)
+        w.step({}, 1. / 60);
+    // Behind it, or before the junction the other stands on: never inside it.
+    const double gap = line.wrapDistance(lead->along - follower->along);
+    check(follower->body.v.length() < .1 && gap > 2 * lead->body.halfH + .5 &&
+              gap < 2 * lead->body.halfH + 16,
+          "a tram does not stop behind the one that stands on the hill ahead of it");
+}
 } // namespace
 int main()
 {
@@ -254,6 +454,9 @@ int main()
     {
         for (auto seed : {17u, 1839u, 20261105u})
             test(seed);
+        crossing();
+        zebra();
+        hill();
     }
     catch (const std::exception &e)
     {

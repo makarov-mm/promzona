@@ -127,6 +127,11 @@ template <class Visit> bool eachCarNear(const World &w, Vec2 centre, double radi
 }
 } // namespace
 
+bool World::onSameSurface(const Body &a, const Body &b) const
+{
+    return sameSurface(*this, a, b);
+}
+
 // One crossing reservation per junction; released when the crossing path ends. Whoever
 // crosses this junction is on its surface: the height test that stood here let a second
 // car in on steep streets, where the one in the middle may stand metres higher.
@@ -530,6 +535,22 @@ void World::senseTraffic(Car &c, bool local)
                        if (conflict >= 0)
                            limit(conflict, std::max(0., dot(other.body.v, dir)));
                        continue;
+                   }
+                   // The oncoming lane of a level road is 3.8 m away, but at either end the road
+                   // swings across the bonnet of whoever has just come onto it. A van took the
+                   // truck that queued in that lane for an obstacle and stopped, the car behind
+                   // the van stood in the junction, and the queue was waiting for the junction.
+                   // Whoever stands in the oncoming lane is passed; whoever comes down it is
+                   // still given the bend.
+                   if (routed && c.routePhase == 2 && other.routePhase == 2 && other.route &&
+                       other.routeLevel == c.routeLevel && other.routeFrom == c.routeTo &&
+                       other.routeTo == c.routeFrom && i != controlledCar && !other.destroyed &&
+                       !other.driverless && other.body.v.length2() < .25)
+                   {
+                       const auto [lane, heading] = other.route->sample(other.routeDistance);
+                       if ((other.body.p - lane).length2() < 1 &&
+                           dot(forward(other.heading()), forward(heading)) > .85)
+                           continue;
                    }
                    if (askew && delta.length2() < 14 * 14 && sameSurface(*this, b, other.body))
                    {

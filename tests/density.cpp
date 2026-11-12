@@ -8,6 +8,7 @@
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
+#include <utility>
 
 using namespace pz;
 namespace
@@ -52,6 +53,13 @@ void soundCity(const World &w, Density density, bool fresh = true)
     if (density != Density::low)
         require(w.scooters.size() <= w.people.size() / 25 && !w.scooters.empty(), "scooter fleet is off");
     require(w.lines.size() == 4, "transit lines are missing");
+    // Only the full population has the animals of the managed game: 120 flocks of six to
+    // ten pigeons and 160 cats, dogs and lone birds.
+    const auto pigeons = size_t(std::ranges::count(w.animals, Species::pigeon, &Animal::species));
+    if (density == Density::full)
+        require(pigeons >= 720 && pigeons <= 1200 && w.animals.size() - pigeons == 160 &&
+                    w.flocks.size() == 174,
+                "the full city does not have the managed game's animals");
 }
 } // namespace
 
@@ -59,19 +67,23 @@ int main()
 {
     try
     {
-        require(populationSize(Density::low).cars == 260 && populationSize(Density::low).people == 720 &&
-                    populationSize(Density::medium).cars == 540 &&
-                    populationSize(Density::medium).people == 1800 &&
-                    populationSize(Density::high).cars == 1080 &&
-                    populationSize(Density::high).people == 3240,
-                "population sizes changed");
+        require(
+            populationSize(Density::low).cars == 260 && populationSize(Density::low).people == 720 &&
+                populationSize(Density::medium).cars == 540 &&
+                populationSize(Density::medium).people == 1800 &&
+                populationSize(Density::high).cars == 1080 && populationSize(Density::high).people == 3240 &&
+                populationSize(Density::full).cars == 1485 && populationSize(Density::full).people == 5265,
+            "population sizes changed");
 
-        // The setting: three values, a stable file form and a tolerant reader.
+        // The setting: four values, a stable file form and a tolerant reader.
         require(cycleDensity(Density::low, 1) == Density::medium &&
-                    cycleDensity(Density::high, 1) == Density::low &&
-                    cycleDensity(Density::low, -1) == Density::high,
+                    cycleDensity(Density::high, 1) == Density::full &&
+                    cycleDensity(Density::full, 1) == Density::low &&
+                    cycleDensity(Density::low, -1) == Density::full &&
+                    cycleDensity(Density::full, -1) == Density::high,
                 "density does not cycle");
-        require(densityFromCode("high", Density::low) == Density::high &&
+        require(densityFromCode("full", Density::low) == Density::full &&
+                    densityFromCode("high", Density::low) == Density::high &&
                     densityFromCode("medium", Density::low) == Density::medium &&
                     densityFromCode("low", Density::high) == Density::low &&
                     densityFromCode("crowd", Density::medium) == Density::medium,
@@ -87,11 +99,15 @@ int main()
                 "density setting was not stored");
         FrontEnd menu;
         menu.page = MenuPage::settings;
-        menu.population = Density::high;
-        bool listed = false;
-        for (const auto &row : menu.rows(false, {}, SceneMode::enhanced, {}))
-            listed |= row.item == MenuItem::population && row.value == L"Высокая";
-        require(listed, "settings do not offer the population");
+        for (const auto &[level, title] :
+             {std::pair{Density::high, L"Высокая"}, std::pair{Density::full, L"Полная"}})
+        {
+            menu.population = level;
+            bool listed = false;
+            for (const auto &row : menu.rows(false, {}, SceneMode::enhanced, {}))
+                listed |= row.item == MenuItem::population && row.value == title;
+            require(listed, "settings do not offer the population");
+        }
 
         // A world made without naming a density is the city of every earlier save.
         World legacy;
@@ -109,7 +125,7 @@ int main()
         require(loaded.density == Density::low && loaded.people.size() == 720,
                 "low-density save did not load");
 
-        for (Density density : {Density::medium, Density::high})
+        for (Density density : {Density::medium, Density::high, Density::full})
         {
             World w;
             w.generate(20261105u, {}, CityLayout::districtRevision, density);
@@ -119,6 +135,9 @@ int main()
                         w.buildings.size() == legacy.buildings.size() &&
                         w.potholes.size() == legacy.potholes.size(),
                     "density changed the city itself");
+            require(density == Density::full || (w.animals.size() == legacy.animals.size() &&
+                                                 w.flocks.size() == legacy.flocks.size()),
+                    "density changed the animals of earlier saves");
             // A quiet minute: nobody dies, nothing burns and no one is wanted without the player.
             w.dispatchAt = w.patrolScanAt = 1e9;
             const int stolen = w.controlledCar;
@@ -184,7 +203,7 @@ int main()
             std::ifstream in(file, std::ios::binary);
             auto j = nlohmann::json::parse(in);
             in.close();
-            j["density"] = 3;
+            j["density"] = int(Density::full) + 1;
             std::ofstream(file, std::ios::binary | std::ios::trunc) << j.dump();
         }
         bool refused = false;

@@ -141,6 +141,11 @@ struct Car
     // minutes for nothing gives up out of sight (World::renewCity). Not saved.
     Vec2 stallAnchor{};
     double stallSince{};
+    // A driver pushed off the route who cannot go on backs up a little and tries again
+    // (the managed CityCar.Stuck and ReverseFor). Not saved.
+    double wedgedFor{}, reverseFor{};
+    // Moved by the distant model in the last step. Not saved.
+    bool distant{};
     double blockedSince{-1}, nextLaneDecision{}, senseAt{}, trafficLimit{100};
     int line{-1}, nextStop{};
     double along{}, dwell{}, serviceTarget{7}, checkTrafficAt{};
