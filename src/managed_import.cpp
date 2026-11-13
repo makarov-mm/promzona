@@ -436,9 +436,8 @@ ManagedImport World::importManaged(const std::filesystem::path &file, Density po
     next.seriesStage = int(clamp(capturedNumber(career, "ChainStage"), 0., 2.));
     next.seriesCompleted = int(clamp(capturedNumber(career, "ChainsCompleted"), 0., 1e6));
     // A native save holds a career only if its parts agree with each other.
+    next.seriesStage = std::min(next.seriesStage, next.jobsCompleted);
     next.seriesCompleted = std::min(next.seriesCompleted, (next.jobsCompleted - next.seriesStage) / 3);
-    if (next.seriesCompleted < 0)
-        next.seriesStage = next.seriesCompleted = 0;
     next.jobEarnings =
         std::int64_t(clamp(capturedNumber(career, "JobEarnings"), 0., double(next.jobsCompleted) * 100000));
     next.energySeconds = clamp(capturedNumber(career, "EnergySeconds"), 0., 25.);

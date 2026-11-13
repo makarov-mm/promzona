@@ -280,6 +280,13 @@ int main()
             std::filesystem::remove(native);
             w.save(native);
             loaded.load(native);
+            // A chain cannot be one stage in before any job has been completed.
+            driving.clock = "," + backing("JobsCompleted") + ":0," + backing("ChainStage") + ":1";
+            w.importManaged(write(driving.text()));
+            w.save(native);
+            loaded.load(native);
+            require(loaded.seriesStage == 0 && loaded.seriesCompleted == 0, "unearned stage after import");
+
             // On foot in a city with other streets: beside the car a new game starts in.
             driving.clock = "," + backing("OnFoot") + ":true";
             report = w.importManaged(write(driving.text()));

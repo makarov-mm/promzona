@@ -706,15 +706,53 @@ void trafficTest()
         w.standDown(car);
         w.standDown(other);
         check(car.rejoining && other.rejoining, "the units were not given a way back to the street");
+        const size_t patrol = car.id;
         const Vec2 first = car.body.p, second = other.body.p;
-        for (int tick = 0; tick < 60 * 45; ++tick)
+        auto checkReturn = [&](World &city)
+        {
+            for (int tick = 0; tick < 60 * 45; ++tick)
+            {
+                city.step({}, 1. / 60);
+                city.wanted = 0;
+            }
+            const auto &a = city.cars.at(patrol);
+            const auto &b = city.cars.at(slot);
+            check((a.body.p - first).length() > 15 && (b.body.p - second).length() > 15,
+                  "two units whose call was over stood nose to nose");
+            check(!a.rejoining && !b.rejoining && !a.destroyed && !b.destroyed,
+                  "a unit whose call was over did not return to traffic");
+        };
+
+        World resumed;
+        auto checkReload = [&]
+        {
+            auto path = std::filesystem::temp_directory_path() /
+                        ("promzona-rejoin-" +
+                         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+            w.save(path);
+            resumed.load(path);
+            std::filesystem::remove(path);
+            for (size_t id : {patrol, slot})
+            {
+                const auto &before = w.cars.at(id);
+                const auto &after = resumed.cars.at(id);
+                check(after.rejoining == before.rejoining && after.wedgedFor == before.wedgedFor &&
+                          after.reverseFor == std::max(0., before.reverseFor),
+                      "reload lost the patrol's return manoeuvre");
+            }
+            checkReturn(resumed);
+        };
+
+        checkReload(); // both units have just stood down
+        for (int tick = 0; tick < 60 * 15 && car.reverseFor <= 0 && other.reverseFor <= 0; ++tick)
         {
             w.step({}, 1. / 60);
             w.wanted = 0;
         }
-        check((car.body.p - first).length() > 15 && (other.body.p - second).length() > 15,
-              "two units whose call was over stood nose to nose");
-        check(!car.rejoining && !other.rejoining, "a unit whose call was over found no lane");
+        check((car.rejoining && car.reverseFor > 0) || (other.rejoining && other.reverseFor > 0),
+              "neither returning unit started backing up");
+        checkReload(); // one unit is already reversing
+        checkReturn(w);
     }
 }
 } // namespace

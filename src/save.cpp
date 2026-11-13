@@ -145,6 +145,12 @@ json carState(const Car &c)
     WRITE(routeTo);
     WRITE(previousNode);
     WRITE(routePhase);
+    if (c.rejoining)
+    {
+        WRITE(rejoining);
+        WRITE(wedgedFor);
+        j["reverseFor"] = std::max(0., c.reverseFor);
+    }
     WRITE(routeLevel);
     WRITE(laneIndex);
     WRITE(blockedSince);
@@ -215,6 +221,14 @@ void loadCar(const json &j, Car &c)
     READ(routeTo);
     READ(previousNode);
     READ(routePhase);
+    c.rejoining = j.value("rejoining", false);
+    if (c.rejoining)
+    {
+        READ(wedgedFor);
+        READ(reverseFor);
+        if (c.wedgedFor < 0 || c.reverseFor < 0 || c.reverseFor > 1.7)
+            throw std::runtime_error("Invalid patrol rejoin timer");
+    }
     READ(routeLevel);
     c.laneIndex = j.value("laneIndex", 0);
     c.blockedSince = j.value("blockedSince", -1.);

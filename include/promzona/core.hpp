@@ -142,7 +142,7 @@ struct Car
     Vec2 stallAnchor{};
     double stallSince{};
     // A driver pushed off the route who cannot go on backs up a little and tries again
-    // (the managed CityCar.Stuck and ReverseFor). Not saved.
+    // (the managed CityCar.Stuck and ReverseFor). Saved while rejoining traffic.
     double wedgedFor{}, reverseFor{};
     // A crew on a call goes round whoever is ahead: by this much steering when it makes
     // straight for the suspect (the managed PolicePursuit), and pulled out of its lane by
@@ -150,7 +150,6 @@ struct Car
     // OvertakeOffset). Not saved.
     double avoid{}, overtake{}, pullOut{};
     // On its way back to the street after a call, until it is in a lane (World::rejoinRoad).
-    // Not saved.
     bool rejoining{};
     // Moved by the distant model in the last step. Not saved.
     bool distant{};
