@@ -6,6 +6,22 @@ std::vector<TreePlant> planTrees(const World &w)
 {
     std::vector<TreePlant> trees;
     const auto &l = w.layout;
+    // Index padded footprints once. Candidate saplings can share a very small planting pocket.
+    const int cells = l.nodes() - 1;
+    auto indexSites = [&](const std::vector<Building> &sites, double margin)
+    {
+        std::vector<std::vector<const Building *>> bins(size_t(cells) * cells);
+        auto cell = [&](double x)
+        { return clamp(int(std::floor((x - l.coordinate(0)) / l.spacing)), 0, cells - 1); };
+        for (const auto &site : sites)
+            for (int z = cell(site.p.z - site.half.z - margin); z <= cell(site.p.z + site.half.z + margin);
+                 ++z)
+                for (int x = cell(site.p.x - site.half.x - margin);
+                     x <= cell(site.p.x + site.half.x + margin); ++x)
+                    bins[x + cells * z].push_back(&site);
+        return bins;
+    };
+    const auto buildings = indexSites(w.buildings, 4.5), furniture = indexSites(l.furniture, 1.8);
     for (int j = 0; j < l.nodes() - 1; ++j)
         for (int i = 0; i < l.nodes() - 1; ++i)
         {
@@ -13,20 +29,52 @@ std::vector<TreePlant> planTrees(const World &w)
             bool park = l.park(i, j);
             if (l.industrial(i, j) || CityLayout::clinic(i, j) || CityLayout::station(i, j))
                 continue;
-            for (int k = 0; k < (park ? 6 : 2); ++k)
+            const auto *yard = l.courtyard(i, j);
+            const size_t first = trees.size();
+            const int firstSpecies = int(r.state % 3);
+            constexpr int plantingGrid = 17, plantingCells = plantingGrid * plantingGrid;
+            const int permutation = r.state % plantingCells;
+            for (int k = 0; k < (yard ? plantingCells : park ? 6 : 2); ++k)
             {
                 // Leave the continuous sidewalk clear; use courtyards and park interiors.
                 Vec2 p{l.coordinate(i) + 12 + r.next() * 12, l.coordinate(j) + 12 + r.next() * 12};
                 float h = float(5.8 + r.next() * 4.5);
                 TreeKind kind = TreeKind(r.index(3));
+                if (yard)
+                {
+                    if (trees.size() >= first + 2)
+                        break;
+                    // Modest young trees at the inner edge, with room for a spreading crown.
+                    // A stratified search finds the small pockets left between the doorways.
+                    const int cell = (permutation + k * 109) % plantingCells;
+                    const double inset = l.roadHalf() + 3.8;
+                    const double step = (l.spacing - 2 * inset) / plantingGrid;
+                    p = {l.coordinate(i) + inset + (cell % plantingGrid + r.next()) * step,
+                         l.coordinate(j) + inset + (cell / plantingGrid + r.next()) * step};
+                    h = float(3.6 + r.next() * 3.1);
+                    kind = TreeKind((firstSpecies + int(trees.size() - first)) % 3);
+                    if (yard->edgeDistance(p) < .78)
+                        continue;
+                    double room = 10.;
+                    for (const auto *b : buildings[i + cells * j])
+                        room = std::min(room, std::max(std::abs(p.x - b->p.x) - b->half.x,
+                                                       std::abs(p.z - b->p.z) - b->half.z) -
+                                                  1.41);
+                    h = std::min(h, float(room) / (kind == TreeKind::linden  ? .28f
+                                                   : kind == TreeKind::birch ? .24f
+                                                                             : .22f));
+                    if (h < 3.05f)
+                        continue;
+                }
                 float crown = h * (kind == TreeKind::linden ? .28f : kind == TreeKind::birch ? .24f : .22f);
                 if (!l.urbanSite(p, crown) || l.roadDistance(p) < l.roadHalf() + 3.8 ||
                     w.terrain.height(p) < CityLayout::waterLevel + 2)
                     continue;
                 bool blocked = false;
-                for (const auto &b : w.buildings)
-                    if (std::abs(p.x - b.p.x) < b.half.x + crown + 1.4 &&
-                        std::abs(p.z - b.p.z) < b.half.z + crown + 1.4)
+
+                for (const auto *b : buildings[i + cells * j])
+                    if (std::abs(p.x - b->p.x) < b->half.x + crown + 1.4 &&
+                        std::abs(p.z - b->p.z) < b->half.z + crown + 1.4)
                     {
                         blocked = true;
                         break;
@@ -34,8 +82,8 @@ std::vector<TreePlant> planTrees(const World &w)
                 for (const auto &s : w.roadLevels)
                     if (s.reserved(p, crown + 2))
                         blocked = true;
-                for (const auto &b : l.furniture)
-                    if ((p - b.p).length() < 1.8)
+                for (const auto *b : furniture[i + cells * j])
+                    if ((p - b->p).length() < 1.8)
                     {
                         blocked = true;
                         break;
@@ -102,10 +150,11 @@ void appendTree(TreeMesh &out, const TreePlant &t, bool far)
         return t.foot +
                Vec3{h * .018f * std::sin(phase + u * 2) * u, h * u, h * .014f * std::cos(phase + u) * u};
     };
+    const bool birch = t.kind == TreeKind::birch;
     for (int k = 0; k < 4; ++k)
         stem(out[0], trunk(k * .25f), trunk((k + 1) * .25f), h * (.018f - k * .0038f),
              h * (.018f - (k + 1) * .0038f), far ? 5 : 8, {0, phase, 0, kind});
-    int branches = pine ? 18 : 14;
+    int branches = pine ? 18 : birch ? 16 : 14;
     for (int j = 0; j < branches; ++j)
     {
         Random random(t.seed ^ (std::uint32_t(j + 1) * 2654435761u));
@@ -114,21 +163,30 @@ void appendTree(TreeMesh &out, const TreePlant &t, bool far)
         Vec3 dir{std::cos(angle), 0, std::sin(angle)};
         float reach =
             t.radius * (pine ? (1.12f - u) : (.30f + .60f * std::sin(float(pi) * (j + 1) / (branches + 1))));
-        auto root = trunk(u), end = root + dir * reach + Vec3{0, pine ? -.25f : h * .05f, 0};
-        stem(out[0], root, end, h * .006f, .008f, far ? 3 : 5, {0, phase, 0, kind});
-        int leaves = far ? 7 : 26;
+        auto root = trunk(u);
+        const float rise = pine ? -.025f : birch ? .11f : .075f;
+        auto shoulder = root + dir * (reach * .62f) + Vec3{0, h * rise, 0};
+        auto end = root + dir * reach + Vec3{0, h * (pine ? -.052f : birch ? .045f : .12f), 0};
+        stem(out[0], root, shoulder, h * .007f, h * .0032f, far ? 3 : 5, {0, phase, 0, kind});
+        if (!far)
+            stem(out[0], shoulder, end, h * .0032f, .008f, 4, {0, phase, 0, kind});
+        int leaves = far ? 4 : 26;
         for (int k = 0; k < leaves; ++k)
         {
             float theta = float(random.next() * 2 * pi), y = float(random.next() * 2 - 1),
                   rr = std::sqrt(1 - y * y);
             Vec3 radial{rr * std::cos(theta), y, rr * std::sin(theta)};
             // Each card carries a twig with many small leaves, not one enormous leaf.
-            float size = h * (far ? .11f : .055f) * float(.75 + random.next() * .5);
-            auto p =
-                end + Vec3{radial.x * h * .095f, radial.y * h * (pine ? .045f : .11f), radial.z * h * .095f};
+            float size = h * (far ? .14f : .055f) * float(.75 + random.next() * .5);
+            auto p = end + Vec3{radial.x * h * (birch ? .064f : .10f),
+                                radial.y * h *
+                                    (pine    ? .038f
+                                     : birch ? .14f
+                                             : .087f),
+                                radial.z * h * (birch ? .064f : .10f)};
             auto n = (radial + Vec3{0, .45f, 0}).unit();
             auto right = cross(n, std::abs(n.y) > .95f ? Vec3{1, 0, 0} : Vec3{0, 1, 0}).unit() * size;
-            auto up = cross(n, right.unit()) * size * (pine ? .64f : 1.f);
+            auto up = cross(n, right.unit()) * size * (pine ? .55f : birch ? 1.32f : .93f);
             float weight = clamp((p.y - t.foot.y) / h, 0.f, 1.f);
             face(out[1], {p - right - up, p + right - up, p + right + up, p - right + up}, n,
                  {weight, phase, float(random.next()), kind});

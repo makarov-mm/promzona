@@ -117,6 +117,8 @@ void World::generateStreetFurniture()
                                 : Vec2{c * shape.halfWidth + s * shape.halfDepth,
                                        s * shape.halfWidth + c * shape.halfDepth};
         double radius = half.length();
+        if (const auto *yard = layout.courtyard(p); yard && yard->edgeDistance(p) < radius + .35)
+            return; // Keep the route between the door and the sidewalk walkable.
         if (!layout.urbanSite(p, radius + .2) || layout.roadDistance(p) < layout.roadHalf() + radius + .1 ||
             std::ranges::any_of(roadLevels,
                                 [&](const auto &level) { return level.reserved(p, radius + .3); }))

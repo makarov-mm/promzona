@@ -131,7 +131,7 @@ if(WIN32)
       VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
       VS_DEBUGGER_COMMAND_ARGUMENTS "\"${CMAKE_SOURCE_DIR}/Content\"")
   endif()
-  add_executable(Promzona WIN32 src/main.cpp src/renderer.cpp src/effect_batch.cpp src/effect_batch.hpp src/post_processing.cpp src/post_processing.hpp src/audio_device.cpp src/promzona.rc src/app.manifest)
+  add_executable(Promzona WIN32 src/main.cpp src/renderer.cpp src/effect_batch.cpp src/effect_batch.hpp src/frame_trace.hpp src/post_processing.cpp src/post_processing.hpp src/audio_device.cpp src/promzona.rc src/app.manifest)
   set(native_shaders
     Content/Shaders/Native/scene.vert Content/Shaders/Native/scene.frag
     Content/Shaders/Native/fullscreen.vert Content/Shaders/Native/resolve.frag Content/Shaders/Native/glow.frag

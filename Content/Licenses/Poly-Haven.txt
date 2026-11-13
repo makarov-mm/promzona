@@ -2,3 +2,7 @@ Powered by Poly Haven
 https://polyhaven.com/
 All downloaded textures are CC0. https://docs.polyhaven.com/en/license
 Original files and checksums: polyhaven.json
+
+Ground materials (1K diffuse and OpenGL normal maps, recompressed):
+Leafy Grass — Charlotte Baglioni — https://polyhaven.com/a/leafy_grass
+Asphalt 04 — Sergej Majboroda and Jenelle van Heerden — https://polyhaven.com/a/asphalt_04

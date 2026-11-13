@@ -59,6 +59,13 @@ void plans()
                 check(vertex.position.y < p.origin.y + 2.3f, "sign does not cover windows");
             }
         check(core[Windows].indices.size() == p.windows.size() * 6, "single opaque quad per window");
+        for (int finish = 0; finish < 3; ++finish)
+        {
+            const auto count = std::ranges::count(p.windows, finish, &FacadeWindow::balcony);
+            check(core[Balcony + finish].indices.size() == size_t(count) * 18,
+                  "three coarse balcony panels persist past the trim distance");
+            check(detail[Balcony + finish].indices.empty(), "near trim does not double the coarse panels");
+        }
         for (size_t i = 0; i < p.windows.size(); ++i)
         {
             auto &w = p.windows[i];

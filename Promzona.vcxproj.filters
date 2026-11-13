@@ -56,6 +56,7 @@
     <ClInclude Include="include/promzona\visibility.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\world.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="src\effect_batch.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="src\frame_trace.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="src\post_processing.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="third_party\json.hpp"><Filter>Заголовки</Filter></ClInclude>
   </ItemGroup>

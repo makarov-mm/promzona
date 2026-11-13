@@ -14,6 +14,7 @@ struct View
     float distance{20};
     double heading{};
     bool shadows{true};
+    bool weaponSight{};
 };
 struct StreamingStats
 {

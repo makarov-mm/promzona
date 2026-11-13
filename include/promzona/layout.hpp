@@ -38,6 +38,32 @@ struct Building
     BuildingKind kind{BuildingKind::apartment};
     int front{1}; // Z direction of the door
 };
+// Apartment canopies and courtyard trails use the same long facade and door centre.
+inline Vec2 entranceNormal(Vec2 half)
+{
+    return half.x >= half.z ? Vec2{0, 1} : Vec2{1, 0};
+}
+inline Vec2 apartmentDoor(const Building &b)
+{
+    auto n = entranceNormal(b.half);
+    return b.p + n * (dot(n, b.half) + .09);
+}
+struct Footpath
+{
+    std::array<Vec2, 4> points;
+    double halfWidth{};
+    double edgeDistance(Vec2 p) const;
+};
+struct YardCurb
+{
+    Vec2 a, b;
+};
+struct Courtyard
+{
+    std::vector<Footpath> paths;
+    std::vector<YardCurb> curbs;
+    double edgeDistance(Vec2 p) const;
+};
 // The seeded .NET Random stream used by CityLayout (not the game's runtime PRNG).
 class LayoutRandom
 {
@@ -57,6 +83,8 @@ class CityLayout
     int nodes_{49}, revision_{};
     std::int32_t seed_{};
     bool wide_{true};
+    std::vector<Courtyard> yards_;
+    void planCourtyards();
     std::vector<bool> roads_, parks_;
 
   public:
@@ -93,6 +121,8 @@ class CityLayout
     bool allowedEdge(int i, int j, int d) const;
     bool road(int i, int j, int d) const;
     bool park(int i, int j) const;
+    const Courtyard *courtyard(int i, int j) const;
+    const Courtyard *courtyard(Vec2 p) const;
     std::vector<int> neighbours(int node) const;
     int degree(int node) const;
     double roadDistance(Vec2 p) const;

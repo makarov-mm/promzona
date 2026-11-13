@@ -41,7 +41,29 @@ int main(int argc, char **argv)
                 }
                 else if (extension == ".png" || extension == ".jpg" || extension == ".jpeg")
                 {
-                    pz::loadImage(entry.path());
+                    const auto image = pz::loadImage(entry.path());
+                    if (entry.path().filename() == "far-color.png")
+                    {
+                        // The old top-down atlases painted the sides of distant objects white.
+                        const auto tile = image.width / 3;
+                        if (!tile || image.width != tile * 3 || image.height != tile * 2)
+                            throw std::runtime_error("Expected six directional views in the far atlas");
+                        for (unsigned face = 0; face < 6; ++face)
+                        {
+                            int low = 765, high = 0;
+                            for (unsigned y = tile / 4; y < tile * 3 / 4; ++y)
+                                for (unsigned x = tile / 4; x < tile * 3 / 4; ++x)
+                                {
+                                    const auto px = x + face % 3 * tile, py = y + face / 3 * tile;
+                                    const auto *rgb = &image.rgba[4 * (size_t(py) * image.width + px)];
+                                    int sum = rgb[0] + rgb[1] + rgb[2];
+                                    low = std::min(low, sum);
+                                    high = std::max(high, sum);
+                                }
+                            if (low == 765 && high == 765)
+                                throw std::runtime_error("Empty white view in far atlas");
+                        }
+                    }
                     ++images;
                 }
                 else if (extension == ".wav")

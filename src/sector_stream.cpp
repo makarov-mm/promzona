@@ -1,6 +1,7 @@
 #include "promzona/sector_stream.hpp"
-#include "promzona/detail_stream.hpp"
 #include <algorithm>
+#include <cstddef>
+#include <cstring>
 #include <stdexcept>
 
 namespace pz
@@ -46,13 +47,67 @@ SectorStream::~SectorStream()
     if (worker_.joinable())
         worker_.join();
 }
+SectorStream::Packet SectorStream::Packet::pack(size_t id, const CityChunk &geometry)
+{
+    static_assert(stride == 48 && offsetof(Vertex, joints) == 32);
+    Packet packet;
+    packet.id = id;
+    size_t vertexBytes{}, indexBytes{};
+    for (size_t i = 0; i < geometry.size(); ++i)
+    {
+        const auto &mesh = geometry[i];
+        if (mesh.indices.empty())
+            continue;
+        auto &surface = packet.surfaces[i];
+        surface.narrow = mesh.vertices.size() <= 65536;
+        const size_t width = surface.narrow ? 2 : 4;
+        indexBytes = (indexBytes + width - 1) & ~(width - 1);
+        surface.firstVertex = vertexBytes / stride;
+        surface.firstIndexByte = indexBytes;
+        surface.count = mesh.indices.size();
+        vertexBytes += mesh.vertices.size() * stride;
+        indexBytes += surface.count * width;
+    }
+    packet.vertices.resize(vertexBytes);
+    packet.indices.resize(indexBytes);
+    packet.bytes = vertexBytes + indexBytes;
+    for (size_t i = 0; i < geometry.size(); ++i)
+    {
+        auto &s = packet.surfaces[i];
+        if (!s.count)
+            continue;
+        const auto &mesh = geometry[i];
+        auto *dst = packet.vertices.data() + s.firstVertex * stride;
+        Vec3 lo = mesh.vertices.front().position, hi = lo;
+        for (const auto &v : mesh.vertices)
+        {
+            std::memcpy(dst, &v, stride);
+            dst += stride;
+            auto p = v.position;
+            lo = {std::min(lo.x, p.x), std::min(lo.y, p.y), std::min(lo.z, p.z)};
+            hi = {std::max(hi.x, p.x), std::max(hi.y, p.y), std::max(hi.z, p.z)};
+        }
+        s.centre = (lo + hi) * .5f;
+        s.radius = (hi - lo).length() * .5f;
+        auto *indices = packet.indices.data() + s.firstIndexByte;
+        if (s.narrow)
+            for (auto index : mesh.indices)
+            {
+                const auto narrow = static_cast<std::uint16_t>(index);
+                std::memcpy(indices, &narrow, sizeof(narrow));
+                indices += sizeof(narrow);
+            }
+        else
+            std::memcpy(indices, mesh.indices.data(), s.count * sizeof(std::uint32_t));
+    }
+    return packet;
+}
 SectorStream::Packet SectorStream::build(size_t id) const
 {
     const auto &sector = sectors_.at(id);
-    Packet packet;
-    packet.id = id;
-    packet.geometry = cityChunk(*world_, sector.x, sector.z, Sector::size);
-    packet.bytes = chunkBytes(packet.geometry);
+    std::vector<LawnTile> lawn;
+    auto packet = Packet::pack(id, cityChunk(*world_, sector.x, sector.z, Sector::size, &lawn));
+    packet.lawn = std::move(lawn);
     return packet;
 }
 void SectorStream::request(std::span<const SectorOrder> orders)

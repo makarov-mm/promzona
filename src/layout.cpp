@@ -507,6 +507,7 @@ void CityLayout::generate(std::int32_t seed, int n, bool wide, std::function<voi
             b.p = centre + (b.p - centre) * .73;
             b.half *= .73;
         }
+    planCourtyards();
     std::erase_if(furniture,
                   [&](auto &b)
                   {
@@ -520,5 +521,140 @@ void CityLayout::generate(std::int32_t seed, int n, bool wide, std::function<voi
                       }
                       return false;
                   });
+}
+double Footpath::edgeDistance(Vec2 p) const
+{
+    double best = 1e20;
+    for (size_t k = 1; k < points.size(); ++k)
+    {
+        const auto a = points[k - 1], d = points[k] - a;
+        const double t = clamp(dot(p - a, d) / std::max(1e-9, d.length2()), 0., 1.);
+        best = std::min(best, (p - a - d * t).length2());
+    }
+    return std::sqrt(best) - halfWidth;
+}
+double Courtyard::edgeDistance(Vec2 p) const
+{
+    double d = 1e10;
+    for (const auto &path : paths)
+        d = std::min(d, path.edgeDistance(p));
+    return d;
+}
+const Courtyard *CityLayout::courtyard(int i, int j) const
+{
+    if (i < 0 || j < 0 || i >= nodes_ - 1 || j >= nodes_ - 1 || yards_.empty())
+        return nullptr;
+    const auto &yard = yards_[i + j * nodes_];
+    return yard.paths.empty() ? nullptr : &yard;
+}
+const Courtyard *CityLayout::courtyard(Vec2 p) const
+{
+    return courtyard(int(std::floor((p.x - coordinate(0)) / spacing)),
+                     int(std::floor((p.z - coordinate(0)) / spacing)));
+}
+void CityLayout::planCourtyards()
+{
+    yards_.clear();
+    if (revision_ != districtRevision)
+        return;
+    yards_.resize(nodes_ * nodes_);
+    std::vector<std::vector<const Building *>> plots(yards_.size());
+    for (const auto &b : buildings)
+    {
+        int i = int(std::floor((b.p.x - coordinate(0)) / spacing));
+        int j = int(std::floor((b.p.z - coordinate(0)) / spacing));
+        if (i >= 0 && j >= 0 && i < nodes_ - 1 && j < nodes_ - 1)
+            plots[i + j * nodes_].push_back(&b);
+    }
+    // Distance from the block centre to the grass/sidewalk seam.
+    const double edge = spacing * .5 - roadHalf() - 2.8;
+    for (int j = 0; j < nodes_ - 1; ++j)
+        for (int i = 0; i < nodes_ - 1; ++i)
+        {
+            const auto &plot = plots[i + j * nodes_];
+            if (plot.empty() || plot.front()->kind != BuildingKind::apartment || park(i, j) ||
+                industrial(i, j) || clinic(i, j) || station(i, j))
+                continue;
+            const Vec2 centre{coordinate(i) + spacing * .5, coordinate(j) + spacing * .5};
+            auto &yard = yards_[i + j * nodes_];
+            const std::array<bool, 4> street{road(i, j + 1, 1), road(i + 1, j, 0), road(i, j, 1),
+                                             road(i, j, 0)};
+            auto clear = [&](Vec2 p, double radius, const Building *except = nullptr)
+            {
+                return std::ranges::none_of(plot,
+                                            [&](const Building *other)
+                                            {
+                                                return other != except &&
+                                                       std::abs(p.x - other->p.x) < other->half.x + radius &&
+                                                       std::abs(p.z - other->p.z) < other->half.z + radius;
+                                            });
+            };
+            for (const Building *b : plot)
+            {
+                if (b->kind != BuildingKind::apartment)
+                    continue;
+                const auto door = apartmentDoor(*b), n = entranceNormal(b->half);
+                if (roadDistance(door) < roadHalf() + 3.6)
+                    continue; // The doorstep is already on the pavement.
+                const double width = .48 + .055 * (b->style % 4);
+                Footpath best{};
+                double shortest = 1e10;
+                for (int side = 0; side < 4; ++side)
+                {
+                    if (!street[side])
+                        continue;
+                    const auto outward = direction(side), along = perpendicular(outward);
+                    for (double offset : {0., -2.4, 2.4, -4.8, 4.8})
+                    {
+                        // Entrances on one side tend to share a gate. A slight bend also leaves
+                        // the central lawn intact instead of cutting it into thin strips.
+                        const double gate = ((i + 3 * j + side) % 2 ? 1. : -1.) * 2.6;
+                        const double t = clamp(gate + offset, -edge + .85, edge - .85);
+                        const auto exit = centre + outward * (edge + .22) + along * t;
+                        const auto landing = door + n * 1.12;
+                        if (dot(exit - door, n) < -.15 || (exit - door).length() < 1.4)
+                            continue;
+                        const Vec2 approach = exit - outward * std::min(1.1, .24 * (exit - door).length());
+                        Footpath candidate{{door, landing, approach, exit}, width};
+                        double length = .85 * std::abs(offset);
+                        bool ok = true;
+                        for (size_t k = 1; k < candidate.points.size() && ok; ++k)
+                        {
+                            const auto a = candidate.points[k - 1], d = candidate.points[k] - a;
+                            length += d.length();
+                            const int steps = std::max(1, int(std::ceil(d.length() / .45)));
+                            for (int s = 0; s <= steps && ok; ++s)
+                                ok = clear(a + d * (double(s) / steps), width + .23, k == 1 ? b : nullptr);
+                        }
+                        if (ok && length < shortest && urbanSite(exit, 1))
+                        {
+                            shortest = length;
+                            best = candidate;
+                        }
+                    }
+                }
+                if (shortest < 1e10)
+                    yard.paths.push_back(best);
+            }
+            if (yard.paths.empty())
+                continue;
+            // Real one-metre kerbstones. Interrupt the run at doors, paths and crossing sidewalks.
+            for (int side = 0; side < 4; ++side)
+            {
+                if (!street[side])
+                    continue;
+                const auto normal = direction(side), along = perpendicular(normal);
+                const auto seam = centre + normal * (edge - .08);
+                const int stones = int(std::ceil(2 * edge));
+                for (int k = 0; k < stones; ++k)
+                {
+                    const auto a = seam + along * (-edge + 2 * edge * k / stones + .012);
+                    const auto b = seam + along * (-edge + 2 * edge * (k + 1) / stones - .012);
+                    const auto mid = (a + b) * .5;
+                    if (clear(mid, .58) && yard.edgeDistance(mid) > .76 && urbanSite(mid, .22))
+                        yard.curbs.push_back({a, b});
+                }
+            }
+        }
 }
 } // namespace pz

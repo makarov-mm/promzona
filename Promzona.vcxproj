@@ -113,6 +113,7 @@
     <ClInclude Include="include/promzona\visibility.hpp" />
     <ClInclude Include="include/promzona\world.hpp" />
     <ClInclude Include="src\effect_batch.hpp" />
+    <ClInclude Include="src\frame_trace.hpp" />
     <ClInclude Include="src\post_processing.hpp" />
     <ClInclude Include="third_party\json.hpp" />
   </ItemGroup>

@@ -42,5 +42,18 @@ inline void addCityTriangle(MeshData &mesh, Vec3 a, Vec3 b, Vec3 c)
     mesh.vertices.push_back({c, normal, {0.f, 0.f}});
     mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2});
 }
-CityChunk cityChunk(const World &world, double x0, double z0, double size = 144);
+// Heights of a rendered, unclipped lawn quad at (west,south), (east,south),
+// (west,north), (east,north). The triangle diagonal runs from NW to SE.
+struct LawnTile
+{
+    float x0, z0, x1, z1, sw, se, nw, ne;
+    float height(float x, float z) const
+    {
+        const float u = (x - x0) / (x1 - x0), v = (z - z0) / (z1 - z0);
+        return u + v <= 1 ? sw + u * (se - sw) + v * (nw - sw)
+                          : ne + (1 - u) * (nw - ne) + (1 - v) * (se - ne);
+    }
+};
+CityChunk cityChunk(const World &world, double x0, double z0, double size = 144,
+                    std::vector<LawnTile> *lawn = nullptr);
 } // namespace pz

@@ -1,6 +1,7 @@
 #include "promzona/detail_stream.hpp"
 #include "promzona/sector_stream.hpp"
 #include <chrono>
+#include <cstring>
 #include <cmath>
 #include <iostream>
 #include <memory>
@@ -195,27 +196,67 @@ void sectorWorker()
           "the sectors cover the island and its coast");
     // A sector in the middle of the city, and what a direct build of it gives.
     const size_t centre = (side / 2) * side + side / 2;
-    const auto reference = cityChunk(*world, sectors[centre].x, sectors[centre].z, Sector::size);
+    std::vector<LawnTile> lawn;
+    const auto reference = cityChunk(*world, sectors[centre].x, sectors[centre].z, Sector::size, &lawn);
+    check(!lawn.empty(), "central sector contains lawn");
+    // By construction every root lies on one of the two rendered triangles,
+    // even when their four corners do not share a plane.
+    const LawnTile incline{10, 20, 14, 24, 1, 3, 5, 9};
+    check(incline.height(11, 21) == 2.5f && incline.height(13, 23) == 6.5f &&
+              incline.height(12, 22) == 4, "lawn roots agree across the terrain diagonal");
     check(chunkBytes(reference) > 100000, "a sector of the centre has geometry");
-    auto same = [&](const CityChunk &a, const CityChunk &b)
+    auto same = [&](const SectorStream::Packet &packet, const CityChunk &source)
     {
-        for (size_t m = 0; m < a.size(); ++m)
+        if (packet.bytes != packet.vertices.size() + packet.indices.size())
+            return false;
+        for (size_t i = 0; i < source.size(); ++i)
         {
-            if (a[m].indices != b[m].indices || a[m].vertices.size() != b[m].vertices.size())
+            const auto &s = packet.surfaces[i];
+            const auto &m = source[i];
+            if (s.count != m.indices.size())
                 return false;
-            for (size_t v = 0; v < a[m].vertices.size(); ++v)
-                if ((a[m].vertices[v].position - b[m].vertices[v].position).length() > 1e-7f ||
-                    (a[m].vertices[v].normal - b[m].vertices[v].normal).length() > 1e-7f ||
-                    a[m].vertices[v].uv != b[m].vertices[v].uv ||
-                    a[m].vertices[v].joints != b[m].vertices[v].joints)
+            for (size_t v = 0; v < m.vertices.size(); ++v)
+            {
+                const size_t offset = (s.firstVertex + v) * packet.stride;
+                if (offset + packet.stride > packet.vertices.size() ||
+                    std::memcmp(&m.vertices[v], packet.vertices.data() + offset, packet.stride) ||
+                    (m.vertices[v].position - s.centre).length() > s.radius + .001f)
                     return false;
+            }
+            size_t width = s.narrow ? 2 : 4;
+            if (s.firstIndexByte % width || s.firstIndexByte + s.count * width > packet.indices.size())
+                return false;
+            for (size_t k = 0; k < s.count; ++k)
+            {
+                std::uint32_t index{};
+                const auto *bytes = packet.indices.data() + s.firstIndexByte + k * width;
+                if (s.narrow)
+                {
+                    std::uint16_t value{};
+                    std::memcpy(&value, bytes, sizeof(value));
+                    index = value;
+                }
+                else
+                    std::memcpy(&index, bytes, sizeof(index));
+                if (index != m.indices[k])
+                    return false;
+            }
         }
         return true;
     };
+    CityChunk mixed;
+    mixed[Road].vertices.resize(3);
+    mixed[Road].indices = {0, 1, 2};
+    mixed[Water].vertices.resize(65537);
+    mixed[Water].indices = {65536, 0, 1};
+    const auto packed = SectorStream::Packet::pack(0, mixed);
+    check(packed.surfaces[Road].narrow && !packed.surfaces[Water].narrow && same(packed, mixed),
+          "mixed index widths preserve material alignment and all vertex attributes");
     // The stream keeps its own world: the owner may start another city or leave.
     world.reset();
     const auto direct = stream.build(centre);
-    check(direct.id == centre && direct.bytes == chunkBytes(reference) && same(direct.geometry, reference),
+    check(direct.lawn.size() == lawn.size(), "resident sector carries the rendered lawn tiles");
+    check(direct.id == centre && same(direct, reference),
           "a sector built at once is the sector of the city");
     std::vector<SectorOrder> all;
     for (size_t id = 0; id < sectors.size(); ++id)
@@ -227,7 +268,7 @@ void sectorWorker()
     check(stats.queued <= SectorStream::maxQueued && stats.readyBytes > 0,
           "the worker waits for the renderer");
     auto first = stream.poll();
-    check(first && first->id == all.front().id && first->bytes == chunkBytes(first->geometry),
+    check(first && first->id == all.front().id && first->bytes == first->vertices.size() + first->indices.size(),
           "the nearest sector arrives first");
     stream.request({});
     until([&] { return !stream.stats().busy; });
@@ -242,7 +283,7 @@ void sectorWorker()
             streamed = stream.poll();
             return bool(streamed);
         });
-    check(streamed->id == centre && streamed->bytes == direct.bytes && same(streamed->geometry, reference),
+    check(streamed->id == centre && streamed->bytes == direct.bytes && same(*streamed, reference),
           "the worker delivers the same sector");
     bool refused = false;
     try

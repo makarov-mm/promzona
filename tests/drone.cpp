@@ -32,6 +32,27 @@ void run()
     check(w.drone.active && w.drone.altitude > launch + 9.9 && (w.player.p - pilot).length() < .2 &&
               !w.firing,
           "remote flight must not move or fire the operator");
+    const auto wallStart = w.drone.position;
+    const double wallHeight = w.drone.altitude;
+    Body wall;
+    wall.p = wallStart + Vec2{1., 0};
+    wall.height = wallHeight;
+    wall.verticalExtent = 20;
+    wall.halfW = .5;
+    wall.halfH = 5;
+    w.staticBodies.push_back(wall);
+    w.refreshDroneObstacles(wallStart);
+    w.drone.velocity = {8, 0};
+    PlayerInput alongWall;
+    alongWall.walking = {1, 0};
+    alongWall.collective = 1;
+    for (int i = 0; i < 120; ++i)
+        w.stepDrone(alongWall, 1. / 120);
+    check(w.drone.position.x < wallStart.x + .16 && w.drone.altitude > wallHeight + 4.9,
+          "drone must climb along a wall without crossing it");
+    check(w.drone.health < 1 && w.drone.health > .8, "only the initial hard contact should damage the drone");
+    w.staticBodies.pop_back();
+    w.drone.velocity = {};
     auto &b = w.buildings[w.drone.targets[0]];
     w.refreshDroneObstacles(b.p);
     check(!w.droneClear(b.p, w.terrain.height(b.p) + 2, .35), "collision with building");

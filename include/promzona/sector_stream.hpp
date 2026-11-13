@@ -54,7 +54,18 @@ class SectorStream
     struct Packet
     {
         size_t id{}, bytes{};
-        CityChunk geometry;
+        struct Surface
+        {
+            size_t firstVertex{}, firstIndexByte{}, count{};
+            Vec3 centre{};
+            float radius{};
+            bool narrow{};
+        };
+        std::array<Surface, SurfaceCount> surfaces{};
+        std::vector<unsigned char> vertices, indices;
+        std::vector<LawnTile> lawn;
+        static constexpr size_t stride = offsetof(Vertex, weights);
+        static Packet pack(size_t id, const CityChunk &geometry);
     };
     struct Stats
     {

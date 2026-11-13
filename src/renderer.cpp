@@ -1,4 +1,5 @@
 #include "promzona/renderer.hpp"
+#include "frame_trace.hpp"
 #include "promzona/atmosphere.hpp"
 #include "promzona/audio.hpp"
 #include "promzona/fleet.hpp"
@@ -174,13 +175,7 @@ struct Mesh
         }
         BindVertexArray(0);
     }
-    // What a mesh of the standing city takes on the GPU: no bone weights, and 16-bit
-    // indices where they reach.
-    static constexpr size_t staticVertex = 48;
-    static size_t staticBytes(const MeshData &d)
-    {
-        return d.vertices.size() * staticVertex + d.indices.size() * (d.vertices.size() <= 65536 ? 2 : 4);
-    }
+    static constexpr size_t staticVertex = SectorStream::Packet::stride;
     void uploadStatic(const MeshData &d)
     {
         static_assert(sizeof(Vertex) == 64 && offsetof(Vertex, joints) == 32 &&
@@ -205,7 +200,8 @@ struct Mesh
         if (d.vertices.size() <= 65536)
         {
             static std::vector<std::uint16_t> narrow;
-            narrow.assign(d.indices.begin(), d.indices.end());
+            narrow.resize(d.indices.size());
+            std::ranges::transform(d.indices, narrow.begin(), [](auto index) { return std::uint16_t(index); });
             BufferData(ELEMENT_ARRAY_BUFFER, std::ptrdiff_t(narrow.size() * 2), narrow.data(), STATIC_DRAW);
             indexType = GL_UNSIGNED_SHORT;
         }
@@ -230,7 +226,7 @@ struct Mesh
         BindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, count, indexType, nullptr);
     }
-    void drawInstances(const std::vector<std::array<float, 8>> &instances)
+    void drawInstances(const std::vector<std::array<float, 8>> &instances, bool upload = true)
     {
         BindVertexArray(vao);
         if (!instanceVbo)
@@ -247,8 +243,9 @@ struct Mesh
         }
         BindBuffer(ARRAY_BUFFER, instanceVbo);
         // Orphan the stream so a new camera/shadow pass need not wait for the previous draw.
-        BufferData(ARRAY_BUFFER, std::ptrdiff_t(instances.size() * sizeof(instances[0])), instances.data(),
-                   DYNAMIC_DRAW);
+        if (upload)
+            BufferData(ARRAY_BUFFER, std::ptrdiff_t(instances.size() * sizeof(instances[0])), instances.data(),
+                       DYNAMIC_DRAW);
         DrawElementsInstanced(GL_TRIANGLES, count, indexType, nullptr, GLsizei(instances.size()));
     }
 };
@@ -277,6 +274,31 @@ void box(MeshData &m, Vec3 p, Vec3 half, float uv = 1)
     quad(m, {a.x, a.y, a.z}, {a.x, a.y, b.z}, {a.x, b.y, b.z}, {a.x, b.y, a.z}, uv, uv);
     quad(m, {a.x, b.y, b.z}, {b.x, b.y, b.z}, {b.x, b.y, a.z}, {a.x, b.y, a.z}, uv, uv);
     quad(m, {a.x, a.y, a.z}, {b.x, a.y, a.z}, {b.x, a.y, b.z}, {a.x, a.y, b.z}, uv, uv);
+}
+// A shared patch of curved ribbons. Roots spread through the patch and the
+// wider second section twists into a narrow tip, so the profile works side-on.
+MeshData grassTuftMesh()
+{
+    Random rng(0x742ead3);
+    MeshData mesh;
+    for (int blade = 0; blade < 28; ++blade)
+    {
+        const float angle = float(rng.next() * 2 * pi), radius = .28f * std::sqrt(float(rng.next()));
+        const Vec3 root{radius * std::cos(angle), -.012f, radius * std::sin(angle)};
+        const float lean = float(rng.next() * 2 * pi), height = .055f + float(rng.next()) * .095f;
+        const Vec3 dir{std::cos(lean), 0, std::sin(lean)}, side{-dir.z, 0, dir.x};
+        const float width = .0028f + float(rng.next()) * .004f;
+        const Vec3 mid = root + Vec3{0, height * .63f, 0} + dir * (height * .12f);
+        const Vec3 tip = root + Vec3{0, height, 0} + dir * (height * .68f);
+        const auto first = std::uint32_t(mesh.vertices.size());
+        for (auto [point, t] : {std::pair{root - side * width, 0.f}, {root + side * width, 0.f},
+                                {mid - side * width * .68f, .63f}, {mid + side * width * .68f, .63f},
+                                {tip, 1.f}})
+            mesh.vertices.push_back({point, {0, 1, 0}, {0, t}});
+        for (auto i : {0u, 1u, 2u, 2u, 1u, 3u, 2u, 3u, 4u})
+            mesh.indices.push_back(first + i);
+    }
+    return mesh;
 }
 void cylinder(MeshData &mesh, Vec3 a, Vec3 b, float radius, int sides)
 {
@@ -334,10 +356,20 @@ GLuint bonePalette(const SkinData &s)
 struct Renderer::Impl
 {
     std::filesystem::path root;
-    GLuint scene{}, ui{}, white{}, uiTexture{}, bones[2]{}, rug{}, shadowTexture{}, shadowFbo{};
+    GLuint scene{}, ui{}, white{}, bones[2]{}, rug{}, shadowTexture{}, shadowFbo{};
     Mesh uiQuad, cube, marker, skin[2], patrolCap[2];
+    struct
+    {
+        GLint right{}, up{}, forward{}, sun{}, fog{}, zenith{}, air{}, day{}, rain{}, time{}, probePass{};
+    } skyUniforms;
+    struct
+    {
+        GLint eye{}, time{}, sun{}, fog{}, zenith{}, air{}, day{}, rain{}, probeReady{}, probeCentre{}, probeRoofed{};
+    } effectUniforms;
+    GLint uiSample{};
     GLuint effectShader{};
     EffectBatch effects;
+    bool weaponSight{};
     // The sky, and the local reflection probe: the cube in use and the one being taken.
     static constexpr int probeUnit = 7;
     GLuint sky{}, skyVao{}, probeFbo{}, probeDepth{};
@@ -354,18 +386,17 @@ struct Renderer::Impl
         const Vec3 ahead = forward.unit(), right = cross(ahead, up).unit(), top = cross(right, ahead);
         const Vec3 across = right * (tangent * aspect), rise = top * tangent;
         UseProgram(sky);
-        auto at = [&](const char *name) { return GetUniformLocation(sky, name); };
-        Uniform3f(at("uRight"), across.x, across.y, across.z);
-        Uniform3f(at("uUp"), rise.x, rise.y, rise.z);
-        Uniform3f(at("uForward"), ahead.x, ahead.y, ahead.z);
-        Uniform3f(at("uSun"), sun.x, sun.y, sun.z);
-        Uniform3f(at("uFog"), air.horizon.x, air.horizon.y, air.horizon.z);
-        Uniform3f(at("uZenith"), air.zenith.x, air.zenith.y, air.zenith.z);
-        Uniform4f(at("uAir"), air.density, air.heightScale, air.golden, 0);
-        Uniform1f(at("uDay"), air.daylight);
-        Uniform1f(at("uRain"), air.rain);
-        Uniform1f(at("uTime"), time);
-        Uniform1i(at("uProbePass"), probePass ? 1 : 0);
+        Uniform3f(skyUniforms.right, across.x, across.y, across.z);
+        Uniform3f(skyUniforms.up, rise.x, rise.y, rise.z);
+        Uniform3f(skyUniforms.forward, ahead.x, ahead.y, ahead.z);
+        Uniform3f(skyUniforms.sun, sun.x, sun.y, sun.z);
+        Uniform3f(skyUniforms.fog, air.horizon.x, air.horizon.y, air.horizon.z);
+        Uniform3f(skyUniforms.zenith, air.zenith.x, air.zenith.y, air.zenith.z);
+        Uniform4f(skyUniforms.air, air.density, air.heightScale, air.golden, 0);
+        Uniform1f(skyUniforms.day, air.daylight);
+        Uniform1f(skyUniforms.rain, air.rain);
+        Uniform1f(skyUniforms.time, time);
+        Uniform1i(skyUniforms.probePass, probePass ? 1 : 0);
         glDepthMask(GL_FALSE);
         BindVertexArray(skyVao);
         glDrawArrays(GL_TRIANGLES, 0, 3);
@@ -381,7 +412,48 @@ struct Renderer::Impl
     size_t serviceLetters{size_t(-1)};
     GLuint menuArt{};
     // Height of every street-lamp head, one texel per road node (see scene.frag).
-    GLuint lampMap{};
+    GLuint lampMap{}, yardMask{};
+    void buildYardMask(const CityLayout &layout)
+    {
+        // One 48 x 48 patch spans the inner 24 metres of each block, with a clear border.
+        // The road mesh stays coarse; trail distance and antialiasing live in a mipmapped R8 atlas.
+        constexpr int tile = 48;
+        const int blocks = layout.nodes() - 1, atlasWidth = blocks * tile;
+        std::vector<unsigned char> coverage(size_t(atlasWidth) * atlasWidth);
+        for (int j = 0; j < blocks; ++j)
+            for (int i = 0; i < blocks; ++i)
+                if (const auto *yard = layout.courtyard(i, j))
+                    for (const auto &path : yard->paths)
+                    {
+                        Vec2 origin{layout.coordinate(i) + 6, layout.coordinate(j) + 6};
+                        Vec2 lo = path.points.front(), hi = lo;
+                        for (auto p : path.points)
+                        {
+                            lo = {std::min(lo.x, p.x), std::min(lo.z, p.z)};
+                            hi = {std::max(hi.x, p.x), std::max(hi.z, p.z)};
+                        }
+                        double pad = path.halfWidth + .9;
+                        auto first = [&](double v) { return clamp(int(std::floor(v * 2)), 0, tile - 1); };
+                        for (int z = first(lo.z - origin.z - pad); z <= first(hi.z - origin.z + pad); ++z)
+                            for (int x = first(lo.x - origin.x - pad); x <= first(hi.x - origin.x + pad); ++x)
+                            {
+                                auto p = origin + Vec2{(x + .5) * .5, (z + .5) * .5};
+                                auto &byte = coverage[size_t(j * tile + z) * atlasWidth + i * tile + x];
+                                auto value = std::lround(255 * clamp(.40 - path.edgeDistance(p), 0., 1.));
+                                byte = std::max(byte, static_cast<unsigned char>(value));
+                            }
+                    }
+        if (!yardMask)
+            glGenTextures(1, &yardMask);
+        glBindTexture(GL_TEXTURE_2D, yardMask);
+        constexpr GLint r8 = 0x8229; // GL_R8, not defined by the Windows GL 1.1 header
+        glTexImage2D(GL_TEXTURE_2D, 0, r8, atlasWidth, atlasWidth, 0, GL_RED, GL_UNSIGNED_BYTE, coverage.data());
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, CLAMP_TO_EDGE);
+        GenerateMipmap(GL_TEXTURE_2D);
+    }
     int lampNodes{};
     float lampLow{}, lampSide{};
     void buildLampMap(const World &world)
@@ -427,6 +499,9 @@ struct Renderer::Impl
     struct Batch
     {
         Mesh mesh;
+        GLuint sectorVao{};
+        GLint baseVertex{};
+        size_t indexOffset{};
         GLuint color{}, normal{}, orm{};
         Vec3 tint{1, 1, 1};
         float emissive{};
@@ -465,6 +540,8 @@ struct Renderer::Impl
     // The standing city by sector. A sector that is not in memory has no batches.
     struct SectorMeshes
     {
+        Mesh storage;
+        std::vector<LawnTile> lawn;
         std::vector<Batch> batches;
         // Where each surface of the city is among the batches, or -1.
         std::array<std::int16_t, SurfaceCount> at;
@@ -485,14 +562,19 @@ struct Renderer::Impl
     float sectorRange{-1};
     bool sectorIdle{};
     std::unique_ptr<SectorStream::Packet> pendingSector;
-    std::vector<Batch> pendingSectorBatches;
-    int pendingSectorSurface{};
+
     size_t pendingSectorBytes{}, sectorBytes{}, peakSectorBytes{}, residentSectors{}, sectorUploads{},
         sectorEvictions{}, sectorBatches{};
     double maxSectorUploadMs{};
     std::array<GLuint, 10> walls{}, normals{}, orm{};
     std::array<GLuint, 3> signs{};
-    GLuint stationSign{};
+    GLuint stationSign{}, kerbConcrete{}, lawnColor{}, lawnNormal{}, asphaltColor{}, asphaltNormal{};
+    float anisotropy{1};
+    Mesh grassTuft;
+    std::vector<std::array<float, 8>> grassInstances;
+    std::optional<std::pair<int, int>> grassCell;
+    std::array<size_t, 4> grassSectors{};
+    bool grassBufferDirty{};
     GLuint potholeArt[3]{};
     std::unique_ptr<DetailStream> detailStream;
     std::unique_ptr<DetailResidency> detailResidency;
@@ -532,6 +614,16 @@ struct Renderer::Impl
     std::array<Image, 7> weaponArt;
     Minimap minimap;
     HudDamage hudDamage;
+    std::array<GLuint, HudDamage::textureCount> hudTextures{};
+    std::size_t hudTextureSlot{};
+    GLuint hudUploadBuffer{};
+    struct HudRegion
+    {
+        int x, y, width, height;
+        std::size_t offset;
+    };
+    std::vector<HudRegion> hudRegions;
+    std::vector<std::uint32_t> hudStaging;
     size_t hudPixelsUploaded{};
     std::array<uint32_t, Minimap::size * Minimap::size> mapPixels{};
     int width{}, height{};
@@ -554,6 +646,18 @@ struct Renderer::Impl
     explicit Impl(const std::filesystem::path &contentRoot) : root(contentRoot)
     {
         gl::load();
+        GLint extensions{};
+        glGetIntegerv(0x821D /* GL_NUM_EXTENSIONS */, &extensions);
+        for (GLint i = 0; i < extensions; ++i)
+        {
+            std::string_view ext(reinterpret_cast<const char *>(GetStringi(GL_EXTENSIONS, GLuint(i))));
+            if (ext == "GL_EXT_texture_filter_anisotropic" || ext == "GL_ARB_texture_filter_anisotropic")
+            {
+                glGetFloatv(0x84FF /* GL_MAX_TEXTURE_MAX_ANISOTROPY */, &anisotropy);
+                anisotropy = std::min(8.f, anisotropy);
+                break;
+            }
+        }
         scene = program(readText(root / "Shaders/Native/scene.vert"),
                         readShader(root / "Shaders/Native/scene.frag"));
         ui = program(readText(root / "Shaders/Native/ui.vert"), readText(root / "Shaders/Native/ui.frag"));
@@ -562,6 +666,33 @@ struct Renderer::Impl
         effects.initialize(effectShader);
         sky =
             program(readText(root / "Shaders/Native/sky.vert"), readShader(root / "Shaders/Native/sky.frag"));
+        skyUniforms = {
+            GetUniformLocation(sky, "uRight"),
+            GetUniformLocation(sky, "uUp"),
+            GetUniformLocation(sky, "uForward"),
+            GetUniformLocation(sky, "uSun"),
+            GetUniformLocation(sky, "uFog"),
+            GetUniformLocation(sky, "uZenith"),
+            GetUniformLocation(sky, "uAir"),
+            GetUniformLocation(sky, "uDay"),
+            GetUniformLocation(sky, "uRain"),
+            GetUniformLocation(sky, "uTime"),
+            GetUniformLocation(sky, "uProbePass")};
+        effectUniforms = {
+            GetUniformLocation(effectShader, "uEye"),
+            GetUniformLocation(effectShader, "uTime"),
+            GetUniformLocation(effectShader, "uSun"),
+            GetUniformLocation(effectShader, "uFog"),
+            GetUniformLocation(effectShader, "uZenith"),
+            GetUniformLocation(effectShader, "uAir"),
+            GetUniformLocation(effectShader, "uDay"),
+            GetUniformLocation(effectShader, "uRain"),
+            GetUniformLocation(effectShader, "uProbeReady"),
+            GetUniformLocation(effectShader, "uProbeCentre"),
+            GetUniformLocation(effectShader, "uProbeRoofed")};
+        UseProgram(ui);
+        Uniform1i(GetUniformLocation(ui, "uColor"), 0);
+        uiSample = GetUniformLocation(ui, "uSample");
         GenVertexArrays(1, &skyVao);
         // The probe sampler must never share the unit of a 2D sampler, not even before the
         // first frame sets the others.
@@ -638,7 +769,8 @@ struct Renderer::Impl
         const auto art = loadImage(menuPath);
         menuAspect = float(art.width) / art.height;
         menuArt = uploadTexture(menuPath, art);
-        glGenTextures(1, &uiTexture);
+        glGenTextures(GLsizei(hudTextures.size()), hudTextures.data());
+        GenBuffers(1, &hudUploadBuffer);
         MeshData q;
         quad(q, {-1, -1, 0}, {1, -1, 0}, {1, 1, 0}, {-1, 1, 0});
         uiQuad.upload(q);
@@ -942,6 +1074,11 @@ struct Renderer::Impl
                 int mat = part.at("material");
                 b.color =
                     data.embeddedColor.empty() ? white : uploadTexture(file, decodeImage(data.embeddedColor));
+                if (mat < 0 && j.value("farSurfaceAlpha", false))
+                {
+                    b.surface = 14;
+                    b.paintMask = j.value("kind", std::string{}) == "vehicle" ? 2 : 0;
+                }
                 if (mat >= 0)
                 {
                     auto &m = j.at("materials").at(mat);
@@ -978,6 +1115,7 @@ struct Renderer::Impl
             DeleteFramebuffers(1, &probeFbo);
         glDeleteTextures(2, probeCubes.data());
         glDeleteTextures(1, &probeDepth);
+        glDeleteTextures(1, &yardMask);
         if (skyVao)
             DeleteVertexArrays(1, &skyVao);
         if (sky)
@@ -989,13 +1127,13 @@ struct Renderer::Impl
         sectorStream.reset();
         sectors.clear();
         openSea.reset();
-        pendingSectorBatches.clear();
         for (auto &v : cars)
             v.lods.clear();
         for (auto &[path, t] : textures)
             glDeleteTextures(1, &t);
         glDeleteTextures(1, &white);
-        glDeleteTextures(1, &uiTexture);
+        glDeleteTextures(GLsizei(hudTextures.size()), hudTextures.data());
+        DeleteBuffers(1, &hudUploadBuffer);
         glDeleteTextures(2, bones);
         for (auto &rig : animalRigs)
             glDeleteTextures(1, &rig.palette);
@@ -1164,15 +1302,19 @@ struct Renderer::Impl
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        // Atlases with material IDs (including one-row car palettes) are data.
+        // Filter world-space materials along the long axis of a grazing footprint.
+        if (anisotropy > 1 && im.height > 1 &&
+            (key.parent_path().filename() == "Facades" || key.parent_path().filename() == "PBR" ||
+             key.parent_path().filename() == "Ground"))
+            glTexParameterf(GL_TEXTURE_2D, 0x84FE /* GL_TEXTURE_MAX_ANISOTROPY */, anisotropy);
         textures.emplace(key, t);
         return t;
     }
     Batch uploadSurface(const MeshData &data, int i, bool detail)
     {
-        Batch b;
+        auto b = surfaceMaterial(i, detail);
         b.mesh.uploadStatic(data);
-        b.detail = detail;
-        b.slot = i;
         Vec3 low{1e9f, 1e9f, 1e9f}, high{-1e9f, -1e9f, -1e9f};
         for (const auto &vertex : data.vertices)
         {
@@ -1182,6 +1324,13 @@ struct Renderer::Impl
         }
         b.centre = (low + high) * .5f;
         b.radius = (high - low).length() * .5f;
+        return b;
+    }
+    Batch surfaceMaterial(int i, bool detail)
+    {
+        Batch b;
+        b.detail = detail;
+        b.slot = i;
         if (i >= Facade && i < Paint)
         {
             b.color = walls[i - Facade];
@@ -1192,18 +1341,24 @@ struct Renderer::Impl
             b.color = white;
         if (i == Grass)
         {
-            b.tint = {.32f, .40f, .24f};
+            b.color = lawnColor;
+            b.normal = lawnNormal;
+            b.tint = {.72f, .92f, .67f};
+            b.roughness = .96f;
             b.surface = 1;
         }
         if (i == Road)
         {
-            b.tint = {.26f, .28f, .29f};
+            b.color = asphaltColor;
+            b.normal = asphaltNormal;
+            b.tint = {.57f, .60f, .62f};
             b.surface = 2;
             b.roughness = .86f;
         }
         if (i == Pavement)
         {
-            b.tint = {.55f, .55f, .49f};
+            b.color = walls[3];
+            b.tint = {.82f, .87f, .90f};
             b.surface = 3;
         }
         if (i == Paint)
@@ -1245,9 +1400,17 @@ struct Renderer::Impl
             b.metallic = .25f;
         }
         if (i == Roof)
-            b.tint = {.38f, .39f, .36f};
+        {
+            b.color = asphaltColor;
+            b.tint = {.67f, .68f, .64f};
+            b.surface = 15;
+        }
         if (i == Foundation)
-            b.tint = {.30f, .35f, .31f};
+        {
+            b.color = kerbConcrete;
+            b.tint = {1.20f, 1.23f, 1.20f};
+            b.surface = 15;
+        }
         if (i >= Balcony && i < Roof)
         {
             constexpr Vec3 paints[] = {{.27f, .39f, .33f}, {.48f, .39f, .28f}, {.51f, .54f, .49f}};
@@ -1283,15 +1446,81 @@ struct Renderer::Impl
         }
         return b;
     }
+    void drawGrass(const World &world, Vec3 eye)
+    {
+        // Cache a four-metre camera cell plus a margin for motion within it.
+        // A 52 m square intersects at most four of the 144 m terrain sectors.
+        constexpr int cellSize = 4;
+        constexpr float extent = 26, spacing = .49f;
+        const std::pair cell{int(std::floor(eye.x / cellSize)), int(std::floor(eye.z / cellSize))};
+        const float cx = float(cell.first * cellSize) + 2, cz = float(cell.second * cellSize) + 2;
+        std::array<size_t, 4> nearby{};
+        size_t count = 0;
+        auto all = sectorStream->sectors();
+        for (size_t id = 0; id < all.size(); ++id)
+            if (sectors[id].installed && all[id].x < cx + extent && all[id].x + Sector::size > cx - extent &&
+                all[id].z < cz + extent && all[id].z + Sector::size > cz - extent)
+                nearby[count++] = id + 1;
+        if (cell != grassCell || nearby != grassSectors)
+        {
+            grassCell = cell;
+            grassSectors = nearby;
+            grassBufferDirty = true;
+            grassInstances.clear();
+            for (size_t s = 0; s < count; ++s)
+                for (const auto &tile : sectors[nearby[s] - 1].lawn)
+                {
+                    const float x0 = std::max(tile.x0, cx - extent), x1 = std::min(tile.x1, cx + extent);
+                    const float z0 = std::max(tile.z0, cz - extent), z1 = std::min(tile.z1, cz + extent);
+                    if (x0 >= x1 || z0 >= z1)
+                        continue;
+                    const auto *yard =
+                        world.layout.courtyard(Vec2{(tile.x0 + tile.x1) * .5, (tile.z0 + tile.z1) * .5});
+                    for (int j = int(std::floor(z0 / spacing)); j * spacing < z1; ++j)
+                        for (int i = int(std::floor(x0 / spacing)); i * spacing < x1; ++i)
+                        {
+                            Random rng(world.seed ^ (std::uint32_t(i) * 0x85ebca6bu) ^
+                                       (std::uint32_t(j) * 0xc2b2ae35u));
+                            const float x = (i + float(rng.next())) * spacing;
+                            const float z = (j + float(rng.next())) * spacing;
+                            if (x < x0 || x >= x1 || z < z0 || z >= z1 ||
+                                (x - cx) * (x - cx) + (z - cz) * (z - cz) > extent * extent)
+                                continue;
+                            const auto y = tile.height(x, z);
+                            const Vec2 at{x, z};
+                            if (y < CityLayout::waterLevel + .12f || world.insideBuilding(at, y + .1, .25) ||
+                                (world.layout.revision() == CityLayout::districtRevision &&
+                                 x >= world.layout.railStart() && x <= world.layout.railEnd() &&
+                                 std::abs(z - world.layout.railZ()) < 1.95))
+                                continue;
+                            if (yard && yard->edgeDistance(at) < -.12 + .46 * rng.next())
+                                continue;
+                            const float yaw = float(rng.next() * 2 * pi);
+                            grassInstances.push_back({x, y, z, .62f + .54f * float(rng.next()),
+                                                      std::sin(yaw), std::cos(yaw), float(rng.next() * 6),
+                                                      float(rng.next())});
+                        }
+                }
+        }
+        if (grassInstances.empty() || std::abs(eye.y - world.terrain.height(eye.x, eye.z)) > extent + 12)
+            return;
+        setModel(Mat4::identity());
+        material(lawnColor, 0, {.72f, .92f, .67f});
+        setFlag(Constant::instanced, 1);
+        setFlag(Constant::surface, 12);
+        grassTuft.drawInstances(grassInstances, grassBufferDirty);
+        grassBufferDirty = false;
+        ++submittedBatches;
+        submittedTriangles += size_t(grassTuft.count) / 3 * grassInstances.size();
+    }
     void releaseSector(size_t id)
     {
+        auto &sector = sectors[id];
         if (pendingSector && pendingSector->id == id)
         {
             pendingSector.reset();
-            pendingSectorBatches.clear();
             pendingSectorBytes = 0;
         }
-        auto &sector = sectors[id];
         if (sector.installed)
         {
             sectorBytes -= sector.bytes;
@@ -1299,69 +1528,82 @@ struct Renderer::Impl
             --residentSectors;
             ++sectorEvictions;
         }
-        sector = {}; // GL buffers die on the render thread.
+        sector.batches.clear();
+        std::vector<LawnTile>().swap(sector.lawn);
+        sector.at.fill(-1);
+        sector.bytes = 0;
+        sector.installed = false;
+        // Drop the backing stores, but retain the VAO and buffer names for the next visit.
+        BindVertexArray(sector.storage.vao);
+        BindBuffer(ARRAY_BUFFER, sector.storage.vbo);
+        BufferData(ARRAY_BUFFER, 0, nullptr, STATIC_DRAW);
+        BufferData(ELEMENT_ARRAY_BUFFER, 0, nullptr, STATIC_DRAW);
         sectorResident[id] = false;
     }
-    // Uploads what is left of a sector, or all of it when there is no time to lose.
-    // One material is indivisible; between materials the frame's budget is checked.
-    bool uploadSector(SectorStream::Packet &packet, bool atOnce)
+    // The worker has packed all materials into two contiguous buffers. Keep transfers
+    // bounded even when a single terrain material is larger than the frame allowance.
+    bool uploadSector(SectorStream::Packet &packet, size_t &offset, bool atOnce)
     {
         const auto start = std::chrono::steady_clock::now();
-        size_t uploaded{};
-        while (pendingSectorSurface < SurfaceCount)
+        auto &sector = sectors[packet.id];
+        auto &storage = sector.storage;
+        BindVertexArray(storage.vao);
+        BindBuffer(ARRAY_BUFFER, storage.vbo);
+        if (!offset)
         {
-            auto &mesh = packet.geometry[pendingSectorSurface];
-            const size_t bytes = Mesh::staticBytes(mesh);
-            const double elapsed =
-                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-            if (!atOnce && uploaded && (uploaded + bytes > 2 * 1024 * 1024 || elapsed >= 1.5))
-                break;
-            if (!mesh.indices.empty())
+            BufferData(ARRAY_BUFFER, std::ptrdiff_t(packet.vertices.size()), nullptr, STATIC_DRAW);
+            BufferData(ELEMENT_ARRAY_BUFFER, std::ptrdiff_t(packet.indices.size()), nullptr, STATIC_DRAW);
+        }
+        size_t end = atOnce ? packet.bytes : std::min(packet.bytes, offset + 2 * 1024 * 1024);
+        auto transfer = [&](GLenum target, const auto &data, size_t base)
+        {
+            const auto first = std::max(offset, base), last = std::min(end, base + data.size());
+            if (first < last)
+                BufferSubData(target, std::ptrdiff_t(first - base), std::ptrdiff_t(last - first),
+                              data.data() + (first - base));
+        };
+        transfer(ARRAY_BUFFER, packet.vertices, 0);
+        transfer(ELEMENT_ARRAY_BUFFER, packet.indices, packet.vertices.size());
+        offset = end;
+        const size_t otherPartial = pendingSector && pendingSector.get() != &packet && pendingSectorBytes
+                                        ? pendingSector->bytes : 0;
+        peakSectorBytes = std::max(peakSectorBytes, sectorBytes + packet.bytes + otherPartial);
+        if (offset == packet.bytes)
+        {
+            for (int i = 0; i < SurfaceCount; ++i)
             {
-                pendingSectorBatches.push_back(uploadSurface(mesh, pendingSectorSurface, false));
-                uploaded += bytes;
-                pendingSectorBytes += bytes;
+                const auto &s = packet.surfaces[i];
+                if (!s.count)
+                    continue;
+                auto batch = surfaceMaterial(i, false);
+                batch.sectorVao = storage.vao;
+                batch.baseVertex = GLint(s.firstVertex);
+                batch.indexOffset = s.firstIndexByte;
+                batch.mesh.count = GLsizei(s.count);
+                batch.mesh.indexType = s.narrow ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
+                batch.centre = s.centre;
+                batch.radius = s.radius;
+                sector.at[i] = std::int16_t(sector.batches.size());
+                sector.batches.push_back(std::move(batch));
             }
-            mesh = {}; // Release CPU geometry as soon as this material is uploaded.
-            ++pendingSectorSurface;
+            sector.lawn = std::move(packet.lawn);
+            sector.bytes = packet.bytes;
+            sector.installed = true;
+            sectorBytes += sector.bytes;
+            sectorBatches += sector.batches.size();
+            ++residentSectors;
         }
         if (!atOnce)
-            maxSectorUploadMs = std::max(
-                maxSectorUploadMs,
+            maxSectorUploadMs = std::max(maxSectorUploadMs,
                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
-        peakSectorBytes = std::max(peakSectorBytes, sectorBytes + pendingSectorBytes);
-        if (pendingSectorSurface < SurfaceCount)
-            return false;
-        auto &sector = sectors[packet.id];
-        sector.batches = std::move(pendingSectorBatches);
-        for (size_t k = 0; k < sector.batches.size(); ++k)
-            sector.at[size_t(sector.batches[k].slot)] = std::int16_t(k);
-        sector.bytes = pendingSectorBytes;
-        sector.installed = true;
-        sectorBytes += sector.bytes;
-        sectorBatches += sector.batches.size();
-        ++residentSectors;
-        pendingSectorBatches.clear();
-        pendingSectorBytes = 0;
-        pendingSectorSurface = 0;
-        return true;
+        return offset == packet.bytes;
     }
-    // Builds and uploads a sector on the spot: for the loading screen and for a sector
-    // the eye has jumped into. An upload in progress is left as it is.
     void installSector(size_t id)
     {
         auto packet = sectorStream->build(id);
-        std::vector<Batch> interrupted = std::move(pendingSectorBatches);
-        const int surface = pendingSectorSurface;
-        const size_t bytes = pendingSectorBytes;
-        pendingSectorBatches.clear();
-        pendingSectorSurface = 0;
-        pendingSectorBytes = 0;
+        size_t offset{};
         sectorResident[id] = true;
-        uploadSector(packet, true);
-        pendingSectorBatches = std::move(interrupted);
-        pendingSectorSurface = surface;
-        pendingSectorBytes = bytes;
+        uploadSector(packet, offset, true);
     }
     // District streaming of the managed game: the standing city in memory follows the
     // eye and the draw distance. A worker builds the sectors that come into range, the
@@ -1382,6 +1624,15 @@ struct Renderer::Impl
             auto plan = planSectors(all, sectorResident, eye, range);
             for (const auto id : plan.evict)
                 releaseSector(id);
+            // A jump can make an already-partially-uploaded sector the new floor.
+            // It is reserved in the residency mask and therefore absent from plan.load.
+            if (pendingSector && all[pendingSector->id].distance(eye) < sectorUrgent)
+            {
+                uploadSector(*pendingSector, pendingSectorBytes, true);
+                pendingSector.reset();
+                pendingSectorBytes = 0;
+                ++sectorUploads;
+            }
             sectorOrders = std::move(plan.load);
             // A sector at the eye cannot wait for the worker: after a jump the ground
             // under the camera is built at once.
@@ -1406,9 +1657,7 @@ struct Renderer::Impl
                 else
                 {
                     sectorResident[pendingSector->id] = true;
-                    pendingSectorSurface = 0;
                     pendingSectorBytes = 0;
-                    pendingSectorBatches.clear();
                 }
             }
         }
@@ -1417,8 +1666,9 @@ struct Renderer::Impl
             sectorIdle = sectorOrders.empty();
             return;
         }
-        if (uploadSector(*pendingSector, false))
+        if (uploadSector(*pendingSector, pendingSectorBytes, false))
         {
+            pendingSectorBytes = 0;
             std::erase_if(sectorOrders,
                           [&](const SectorOrder &order) { return order.id == pendingSector->id; });
             pendingSector.reset();
@@ -1629,7 +1879,14 @@ struct Renderer::Impl
         setModel(model);
         apply(b.color, b.normal, b.orm, b.tint, beacon ? 1.f : b.emissive, b.surface, b.alpha, b.roughness,
               b.metallic, b.detail);
-        b.mesh.draw();
+        if (b.sectorVao)
+        {
+            BindVertexArray(b.sectorVao);
+            DrawElementsBaseVertex(GL_TRIANGLES, b.mesh.count, b.mesh.indexType,
+                                   reinterpret_cast<const void *>(b.indexOffset), b.baseVertex);
+        }
+        else
+            b.mesh.draw();
     }
     void solid(Vec3 centre, Vec3 size, Vec3 color, float emissive = 0)
     {
@@ -1710,12 +1967,48 @@ struct Renderer::Impl
         oldBitmap = static_cast<HBITMAP>(SelectObject(uiDC, bitmap));
         width = w;
         height = h;
-        glBindTexture(GL_TEXTURE_2D, uiTexture);
         hudDamage.resize(w, h);
+        hudTextureSlot = 0;
         std::memset(pixels, 0, size_t(w) * h * 4);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, 0x80e1, GL_UNSIGNED_BYTE, pixels);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        for (GLuint texture : hudTextures)
+        {
+            glBindTexture(GL_TEXTURE_2D, texture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, pixels);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        }
+    }
+
+    void uploadHud()
+    {
+        hudRegions.clear();
+        hudPixelsUploaded = 0;
+        hudDamage.uploadRegions(hudTextureSlot, [&](int x, int y, int w, int h) {
+            hudRegions.push_back({x, y, w, h, hudPixelsUploaded});
+            hudPixelsUploaded += size_t(w) * h;
+        });
+        glBindTexture(GL_TEXTURE_2D, hudTextures[hudTextureSlot]);
+        hudTextureSlot = (hudTextureSlot + 1) % hudTextures.size();
+        if (hudRegions.empty())
+            return;
+
+        hudStaging.resize(hudPixelsUploaded);
+        const auto *source = static_cast<const std::uint32_t *>(pixels);
+        for (const auto &area : hudRegions)
+        {
+            for (int row = 0; row < area.height; ++row)
+                std::memcpy(hudStaging.data() + area.offset + size_t(row) * area.width,
+                            source + size_t(area.y + row) * width + area.x,
+                            size_t(area.width) * sizeof(std::uint32_t));
+        }
+        // Replace the backing store in one submission; older transfers may still be in flight.
+        BindBuffer(PIXEL_UNPACK_BUFFER, hudUploadBuffer);
+        BufferData(PIXEL_UNPACK_BUFFER, std::ptrdiff_t(hudPixelsUploaded * sizeof(std::uint32_t)),
+                   hudStaging.data(), STREAM_DRAW);
+        for (const auto &area : hudRegions)
+            glTexSubImage2D(GL_TEXTURE_2D, 0, area.x, area.y, area.width, area.height, GL_BGRA_EXT, GL_UNSIGNED_BYTE,
+                            reinterpret_cast<const void *>(area.offset * sizeof(std::uint32_t)));
+        BindBuffer(PIXEL_UNPACK_BUFFER, 0);
     }
     // Game text is authored in Russian and translated at the moment it is drawn.
     void text(int x, int y, const std::wstring &s, COLORREF color = RGB(235, 231, 208), bool big = false)
@@ -1881,7 +2174,7 @@ StreamingStats Renderer::streamingStats() const
         const auto sectorWorker = r.sectorStream->stats();
         stats.residentSectors = r.residentSectors;
         stats.totalSectors = r.sectors.size();
-        stats.sectorBytes = r.sectorBytes + r.pendingSectorBytes;
+        stats.sectorBytes = r.sectorBytes + (r.pendingSector ? r.pendingSector->bytes : 0);
         stats.peakSectorBytes = r.peakSectorBytes;
         stats.sectorUploads = r.sectorUploads;
         stats.sectorEvictions = r.sectorEvictions;
@@ -1900,9 +2193,12 @@ void Renderer::prepare(const World &world)
 {
     auto &r = *impl_;
     r.effects.clearWeatherCache();
+    r.grassCell.reset();
+    r.grassInstances.clear();
     r.probe.reset();
     r.minimap.rebuild(world);
     r.buildLampMap(world);
+    r.buildYardMask(world.layout);
     r.detailStream.reset(); // Join old immutable jobs before starting a new city.
     r.detailAnchor.reset();
     r.detailMeshes.clear();
@@ -1916,8 +2212,6 @@ void Renderer::prepare(const World &world)
     r.sectorOrders.clear();
     r.sectorAnchor.reset();
     r.pendingSector.reset();
-    r.pendingSectorBatches.clear();
-    r.pendingSectorSurface = 0;
     r.pendingSectorBytes = r.sectorBytes = r.peakSectorBytes = r.residentSectors = r.sectorUploads =
         r.sectorEvictions = r.sectorBatches = 0;
     r.maxSectorUploadMs = 0;
@@ -1939,6 +2233,14 @@ void Renderer::prepare(const World &world)
     }
     for (int i = 0; i < 3; ++i)
         signs[i] = r.texture(r.root / "Textures" / manifest[4 + i].at("color").get<std::string>());
+    r.kerbConcrete = r.texture(r.root / "Textures/Facades/concrete_wall_006_diff.jpg");
+    const auto ground = r.root / "Textures/Ground";
+    r.lawnColor = r.texture(ground / "lawn-color.jpg");
+    r.lawnNormal = r.texture(ground / "lawn-normal.jpg");
+    r.asphaltColor = r.texture(ground / "asphalt-color.jpg");
+    r.asphaltNormal = r.texture(ground / "asphalt-normal.jpg");
+    if (!r.grassTuft.vao)
+        r.grassTuft.uploadStatic(grassTuftMesh());
     r.stationSign = r.texture(r.root / "Textures/Signs/station.png");
     for (int i = 0; i < 3; ++i)
     {
@@ -1957,6 +2259,26 @@ void Renderer::prepare(const World &world)
     // first frame; from then on the worker follows the eye (updateSectors).
     r.sectorStream = std::make_unique<SectorStream>(world);
     r.sectors.resize(r.sectorStream->sectors().size());
+    // Names and vertex formats live for the city. Only resident sectors have backing storage.
+    for (auto &sector : r.sectors)
+    {
+        auto &m = sector.storage;
+        GenVertexArrays(1, &m.vao);
+        GenBuffers(1, &m.vbo);
+        GenBuffers(1, &m.ibo);
+        BindVertexArray(m.vao);
+        BindBuffer(ARRAY_BUFFER, m.vbo);
+        BindBuffer(ELEMENT_ARRAY_BUFFER, m.ibo);
+        constexpr int sizes[] = {3, 3, 2, 4};
+        constexpr std::uintptr_t offsets[] = {0, 12, 24, 32};
+        for (GLuint i = 0; i < 4; ++i)
+        {
+            EnableVertexAttribArray(i);
+            VertexAttribPointer(i, sizes[i], GL_FLOAT, GL_FALSE, SectorStream::Packet::stride,
+                                reinterpret_cast<const void *>(offsets[i]));
+        }
+    }
+    BindVertexArray(0);
     r.sectorResident.assign(r.sectors.size(), false);
     {
         const auto at = world.position();
@@ -2006,13 +2328,17 @@ void Renderer::prepare(const World &world)
 void Renderer::render(const World &world, const View &view, int w, int h)
 {
     auto &r = *impl_;
+    r.weaponSight = view.weaponSight;
     const bool post = r.mode != SceneMode::original;
     const int sceneWidth = r.mode == SceneMode::scaled ? std::max(1, (w * 3 + 2) / 4) : w;
     const int sceneHeight = r.mode == SceneMode::scaled ? std::max(1, (h * 3 + 2) / 4) : h;
     if (post)
         r.post.resize(sceneWidth, sceneHeight);
+    frameTrace.enter(FrameTrace::sectors);
     r.updateSectors(view.eye);
+    frameTrace.enter(FrameTrace::details);
     r.updateDetails(view.eye);
+    frameTrace.enter(FrameTrace::prepare);
     r.timer.begin();
     float day = float(world.clock.daylight()), rain = float(world.rain);
     // The sky and the haze of the managed game for this hour and weather.
@@ -2032,7 +2358,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     const auto projection = Mat4::perspective(float(pi / 3), float(w) / h, nearPlane, farPlane);
     auto vp = projection * Mat4::lookAt(view.eye, view.target);
     Vec3 sun{float(std::cos((world.clock.hour - 6) * pi / 12)), float(world.clock.sunHeight()), .3f};
-    auto shadow = sunShadow(view.target, sun);
+    auto shadow = sunShadow(view.weaponSight ? view.eye : view.target, sun);
     if (!view.shadows || r.graphics.quality == 0)
         shadow.strength = 0;
     UniformMatrix4fv(r.uniform("uShadowMatrix"), 1, GL_FALSE, shadow.matrix.m.data());
@@ -2134,6 +2460,13 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             tunnelFloor[tunnels * 3 + 2] = float(lamps - std::floor(lamps / 9) * 9);
             ++tunnels;
         }
+    auto probeUnderRoof = [&](Vec3 centre)
+    {
+        const Vec2 p{centre.x, centre.z};
+        const auto *level = world.levelAt(p);
+        return level && level->roof(p.x) &&
+               centre.y < level->floor(world.terrain, p) + RoadLevel::clearance;
+    };
     // The reflection probe of the managed game follows the player, 1.8 m above the ground
     // under them. The lowest quality does without it.
     int probeFace = -1;
@@ -2166,6 +2499,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         const bool depthPass = pass == 0, probePass = pass == 1, viewPass = pass == 2;
         if ((depthPass && shadow.strength <= 0) || (probePass && probeFace < 0))
             continue;
+        frameTrace.enter(depthPass ? FrameTrace::shadow : probePass ? FrameTrace::probe : FrameTrace::scene);
         const Vec3 eye = probePass ? probeEye : view.eye;
         const Mat4 &passMatrix = depthPass ? shadow.matrix : probePass ? probeMatrix : vp;
         const float passRange = probePass ? ReflectionProbe::farPlane : range;
@@ -2213,6 +2547,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         Uniform1i(r.uniform("uProbeReady"), viewPass && r.probe.ready() && r.graphics.quality > 0 ? 1 : 0);
         const Vec3 probeCentre = r.probe.centre();
         Uniform3f(r.uniform("uProbeCentre"), probeCentre.x, probeCentre.y, probeCentre.z);
+        Uniform1i(r.uniform("uProbeRoofed"), probeUnderRoof(probeCentre));
         Uniform1i(r.uniform("uCoat"), 0);
         Uniform1i(r.uniform("uPaintMask"), 0);
         Uniform1f(r.uniform("uDay"), day);
@@ -2237,6 +2572,9 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         Uniform3fv(r.uniform("uTunnelFloors"), 8, tunnelFloor.data());
         ActiveTexture(TEXTURE0 + 6);
         glBindTexture(GL_TEXTURE_2D, r.lampMap);
+        ActiveTexture(TEXTURE0 + 8);
+        glBindTexture(GL_TEXTURE_2D, r.yardMask);
+        Uniform1i(r.uniform("uYardMask"),8);
         ActiveTexture(TEXTURE0);
         Uniform1f(r.uniform("uDetailStart"), buildingDetailStart * detailScale);
         Uniform1f(r.uniform("uDetailEnd"), buildingDetailEnd * detailScale);
@@ -2278,6 +2616,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 r.draw(b, Mat4::identity());
             }
         };
+        if (viewPass) frameTrace.enter(FrameTrace::buildings);
         // The standing city is drawn surface by surface, not sector by sector: all of
         // its road, then all of its pavement. The batches of one surface share their
         // textures and constants, so only the first of a run has to set them.
@@ -2293,6 +2632,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             for (const auto &[id, batches] : r.detailMeshes)
                 for (const auto &b : batches)
                     drawScenery(b);
+        if (viewPass) frameTrace.enter(FrameTrace::fixtures);
         for (auto &instances : r.fixtureInstances)
             instances.clear();
         for (auto id : r.visibleFixtures)
@@ -2367,6 +2707,9 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 }
             }
         }
+        if (viewPass) frameTrace.enter(FrameTrace::trees);
+        if (viewPass && r.graphics.quality > 0)
+            r.drawGrass(world, eye);
         for (auto &instances : r.treeInstances)
             instances.clear();
         for (const auto &t : world.trees)
@@ -2415,6 +2758,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 }
             }
         }
+        if (viewPass) frameTrace.enter(FrameTrace::actors);
         if (probePass)
         {
             // The probe holds the city that stands still and the sky, as in the managed
@@ -2460,9 +2804,13 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 r.draw(batch, transform);
         }
         if (viewPass)
+        {
+            frameTrace.enter(FrameTrace::sky);
             // Before anything translucent: glass does not write depth.
             r.drawSky(air, sunRay, view.target - view.eye, {0, 1, 0}, float(std::tan(pi / 6)), float(w) / h,
                       float(world.time), false);
+            frameTrace.enter(FrameTrace::actors);
+        }
         auto vehicleTransform = [](const Car &c)
         {
             Vec3 base{float(c.body.p.x), float(c.body.height - .8), float(c.body.p.z)};
@@ -2638,6 +2986,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                    &world.cars[world.controlledCar]);
         // Light road vehicles use the existing seated rig. Only nearby cabins
         // need a driver mesh; full-size opaque and public-service cabins have their own layout.
+        if (viewPass) frameTrace.enter(FrameTrace::vehicles);
         for (const auto &car : world.cars)
         {
             bool driving = int(car.id) == world.controlledCar && !world.transitPassenger();
@@ -2752,6 +3101,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 Uniform1i(r.uniform("uCoat"), 0);
             }
         }
+        if (viewPass) frameTrace.enter(FrameTrace::animals);
         for (const auto &s : world.scooters)
         {
             bool fallen = s.rider == Scooter::free;
@@ -2811,6 +3161,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         }
         Uniform1i(r.uniform("uSkin"), 0);
     } // sun/camera geometry passes
+    frameTrace.enter(FrameTrace::effects);
     Frustum effectFrustum(vp);
     auto visible = [&](Vec3 p, float radius, float objectRange)
     {
@@ -2915,20 +3266,21 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         // Puddles mirror the city, and the haze takes distant smoke: the effects share
         // the sky, the haze and the probe of the scene.
         UseProgram(r.effectShader);
-        auto at = [&](const char *name) { return GetUniformLocation(r.effectShader, name); };
         const Vec3 probeCentre = r.probe.centre();
-        Uniform3f(at("uEye"), view.eye.x, view.eye.y, view.eye.z);
-        Uniform1f(at("uTime"), float(world.time));
-        Uniform3f(at("uSun"), sunRay.x, sunRay.y, sunRay.z);
-        Uniform3f(at("uFog"), fog.x, fog.y, fog.z);
-        Uniform3f(at("uZenith"), air.zenith.x, air.zenith.y, air.zenith.z);
-        Uniform4f(at("uAir"), air.density, air.heightScale, air.golden, float(world.wetness));
-        Uniform1f(at("uDay"), day);
-        Uniform1f(at("uRain"), rain);
-        Uniform1i(at("uProbeReady"), r.probe.ready() && r.graphics.quality > 0 ? 1 : 0);
-        Uniform3f(at("uProbeCentre"), probeCentre.x, probeCentre.y, probeCentre.z);
+        Uniform3f(r.effectUniforms.eye, view.eye.x, view.eye.y, view.eye.z);
+        Uniform1f(r.effectUniforms.time, float(world.time));
+        Uniform3f(r.effectUniforms.sun, sunRay.x, sunRay.y, sunRay.z);
+        Uniform3f(r.effectUniforms.fog, fog.x, fog.y, fog.z);
+        Uniform3f(r.effectUniforms.zenith, air.zenith.x, air.zenith.y, air.zenith.z);
+        Uniform4f(r.effectUniforms.air, air.density, air.heightScale, air.golden, float(world.wetness));
+        Uniform1f(r.effectUniforms.day, day);
+        Uniform1f(r.effectUniforms.rain, rain);
+        Uniform1i(r.effectUniforms.probeReady, r.probe.ready() && r.graphics.quality > 0 ? 1 : 0);
+        Uniform3f(r.effectUniforms.probeCentre, probeCentre.x, probeCentre.y, probeCentre.z);
+        Uniform1i(r.effectUniforms.probeRoofed, probeUnderRoof(probeCentre));
     }
     r.effects.draw(r.effectShader, world, view, vp, r.graphics.effects);
+    frameTrace.enter(FrameTrace::post);
     if (post)
         // Contact shading follows the quality setting, as in the managed game: none at
         // the lowest, eight samples at the middle one and twelve at the highest.
@@ -3217,7 +3569,15 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             r.text(left + 12, 26, title, RGB(133, 225, 208));
             r.text(left + 12, 53, status);
         }
-        int hintTop = r.hintBar(controlHints(*world), w, h);
+        if (r.weaponSight && !console && !jobsOpen && world->openMarket < 0)
+        {
+            r.rect(w / 2 - 2, h / 2 - 2, 5, 5, RGB(28, 32, 29));
+            r.rect(w / 2 - 1, h / 2 - 1, 3, 3, RGB(243, 235, 209));
+        }
+        const auto hints = jobsOpen
+            ? std::vector<ControlHint>{{L"1–8", L"Выбрать заказ"}, {L"J / Esc", L"Закрыть"}}
+            : controlHints(*world);
+        int hintTop = r.hintBar(hints, w, h);
         if (world->energySeconds > 0)
             r.text(35, energyTop,
                    L"Энергия  " + std::to_wstring(int(std::ceil(world->energySeconds))) + L" с",
@@ -3328,12 +3688,13 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
     else if (!message.empty())
         r.text(25, menu ? h - 30 : 196, message, RGB(224, 172, 91));
     GdiFlush(); // Finish drawing into the DIB before OpenGL reads its memory.
+    frameTrace.enter(FrameTrace::hudUpload);
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     UseProgram(r.ui);
     ActiveTexture(TEXTURE0);
-    const auto transform = GetUniformLocation(r.ui, "uSample");
+    const auto transform = r.uiSample;
     if (menu && progress < 0)
     {
         const float aspect = float(w) / h;
@@ -3342,18 +3703,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         r.uiQuad.draw();
     }
     Uniform3f(transform, 1, 1, 1);
-    glBindTexture(GL_TEXTURE_2D, r.uiTexture);
-    r.hudPixelsUploaded = 0;
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, w);
-    r.hudDamage.regions(true,
-                        [&](int x, int y, int width, int height)
-                        {
-                            glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, width, height, 0x80e1, GL_UNSIGNED_BYTE,
-                                            surface + size_t(y) * w + x);
-                            r.hudPixelsUploaded += size_t(width) * height;
-                        });
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-    Uniform1i(GetUniformLocation(r.ui, "uColor"), 0);
+    r.uploadHud();
     r.uiQuad.draw();
     UseProgram(0);
     glDisable(GL_BLEND);

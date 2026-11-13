@@ -140,7 +140,7 @@
       }
     ]
   ],
-  "farUvTopDown": true,
+  "farUvTopDown": false,
   "sourceArchiveSha256": "8bc36832295f3289554baebbd62a28bf9dae129d9d44b80b6159b408c8b6b9da",
   "adaptations": "Normalized metres and axes; bounded LODs; material texture resampling; rigid wheel and front-door segmentation."
 }

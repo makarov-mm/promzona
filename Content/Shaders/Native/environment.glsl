@@ -8,6 +8,7 @@ uniform vec4 uAir;          // haze per metre, its height scale, golden light, w
 uniform float uDay, uRain;
 uniform samplerCube uProbe;
 uniform int uProbeReady;
+uniform int uProbeRoofed;
 uniform vec3 uProbeCentre;
 
 vec3 toDisplay(vec3 light) {
@@ -41,7 +42,7 @@ vec3 cityEnvironment(vec3 ray, float roughness, bool roofed) {
 // parallax correction, fading into the analytic environment away from its centre.
 vec3 cityReflection(vec3 position, vec3 direction, float roughness, bool roofed) {
     vec3 beyond = cityEnvironment(direction, roughness, roofed);
-    if (uProbeReady == 0) return beyond;
+    if (uProbeReady == 0 || roofed != (uProbeRoofed != 0)) return beyond;
     vec3 relative = position - uProbeCentre;
     float b = dot(relative, direction);
     float t = -b + sqrt(max(0., b*b + 70.*70. - dot(relative, relative)));

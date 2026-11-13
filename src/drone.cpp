@@ -134,8 +134,25 @@ void World::stepDrone(const PlayerInput &input, double dt)
     }
     else
     {
-        drone.velocity = {};
-        drone.health -= dt * .35;
+        // Keep tangential movement when a floor, ceiling or facade blocks just one axis.
+        if (droneClear(drone.position, altitude, .35))
+            drone.altitude = altitude;
+        double impact = 0;
+        if (droneClear({next.x, drone.position.z}, drone.altitude, .35))
+            drone.position.x = next.x;
+        else
+        {
+            impact = std::abs(drone.velocity.x);
+            drone.velocity.x = 0;
+        }
+        if (droneClear({drone.position.x, next.z}, drone.altitude, .35))
+            drone.position.z = next.z;
+        else
+        {
+            impact = std::hypot(impact, drone.velocity.z);
+            drone.velocity.z = 0;
+        }
+        drone.health -= std::max(0., impact - 2.) * .025;
     }
     // Police act at their physical location even when the operator's camera is elsewhere.
     if (wantedLevel() && time >= drone.nextShot)

@@ -508,6 +508,23 @@ void hudAndMap()
     dirty.touch(0, 0, 100, 80);
     check(regions(true) == std::vector<Rect>{{0, 0, 100, 80}}, "full menu merges adjacent upload bands");
 
+    auto upload = [&](size_t slot)
+    {
+        std::vector<Rect> result;
+        dirty.uploadRegions(slot, [&](int x, int y, int w, int h) { result.push_back({x, y, w, h}); });
+        return result;
+    };
+    check(upload(0) == std::vector<Rect>{{0, 0, 100, 80}}, "first texture receives full menu");
+    dirty.begin();
+    dirty.touch(2, 35, 8, 2);
+    check(upload(1) == std::vector<Rect>{{2, 32, 8, 32}}, "new texture receives only visible HUD");
+    dirty.begin();
+    check(upload(2).empty(), "unused texture stays clear");
+    dirty.begin();
+    check(upload(0) == std::vector<Rect>{{0, 0, 100, 80}}, "reused texture clears its own old menu");
+    dirty.resize(40, 20);
+    check(upload(1).empty(), "resizing discards all old texture footprints");
+
     World world;
     world.generate(42);
     auto offers = [&](const wchar_t *key, const wchar_t *label)

@@ -8,6 +8,7 @@ namespace pz::gl
 {
 // clang-format off
 #define PZ_GL_FUNCTIONS(X) \
+    X(GetStringi, const GLubyte *, GLenum, GLuint) \
     X(CreateShader, GLuint, GLenum) \
     X(ShaderSource, void, GLuint, GLsizei, const char *const *, const GLint *) \
     X(CompileShader, void, GLuint) \
@@ -32,6 +33,8 @@ namespace pz::gl
     X(GenBuffers, void, GLsizei, GLuint *) \
     X(BindBuffer, void, GLenum, GLuint) \
     X(BufferData, void, GLenum, std::ptrdiff_t, const void *, GLenum) \
+    X(BufferSubData, void, GLenum, std::ptrdiff_t, std::ptrdiff_t, const void *) \
+    X(DrawElementsBaseVertex, void, GLenum, GLsizei, GLenum, const void *, GLint) \
     X(DeleteBuffers, void, GLsizei, const GLuint *) \
     X(GenVertexArrays, void, GLsizei, GLuint *) \
     X(BindVertexArray, void, GLuint) \
@@ -67,7 +70,7 @@ inline void load()
 #undef PZ_GL_LOAD
 }
 constexpr GLenum ARRAY_BUFFER = 0x8892, ELEMENT_ARRAY_BUFFER = 0x8893, STATIC_DRAW = 0x88e4,
-                 DYNAMIC_DRAW = 0x88e8, VERTEX_SHADER = 0x8b31, FRAGMENT_SHADER = 0x8b30,
+                 PIXEL_UNPACK_BUFFER = 0x88ec, STREAM_DRAW = 0x88e0, DYNAMIC_DRAW = 0x88e8, VERTEX_SHADER = 0x8b31, FRAGMENT_SHADER = 0x8b30,
                  COMPILE_STATUS = 0x8b81, LINK_STATUS = 0x8b82, TEXTURE0 = 0x84c0, RGBA32F = 0x8814,
                  CLAMP_TO_EDGE = 0x812f, FRAMEBUFFER = 0x8d40, DEPTH_ATTACHMENT = 0x8d00,
                  FRAMEBUFFER_COMPLETE = 0x8cd5, DEPTH_COMPONENT24 = 0x81a6, COLOR_ATTACHMENT0 = 0x8ce0,

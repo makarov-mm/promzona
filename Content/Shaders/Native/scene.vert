@@ -12,6 +12,7 @@ uniform int uSkin;
 uniform int uSurface;
 uniform int uInstanced;
 uniform float uTime;
+uniform vec3 uEye;
 uniform float uPose, uPreviousPose, uPoseBlend;
 out vec3 vWorld, vNormal, vLocal;
 out vec2 vUv;
@@ -53,6 +54,7 @@ void main()
         n = mat3(skin) * n;
     }
     vLocal = p.xyz;
+    if (uSkin == 0 && aJoints.w == -1.) vLocal.y = aJoints.y;
     vec4 world = uModel * p;
     vec4 detail = aJoints;
     if (uInstanced != 0) {
@@ -71,9 +73,22 @@ void main()
         world.x += weight * (.12*sway + .025*sin(uTime*2.1+world.z));
         world.z += weight * .065*cos(uTime*.73+detail.y+world.y*.2);
     }
+    if (uSurface == 12) {
+        float scale = 1. - smoothstep(12., 22., distance(aInstance.xyz,uEye));
+        float wind = sin(uTime*1.45 + aInstance.x*.70 + aInstance.z*.46 + detail.y*.22);
+        world.xz += vec2(.024,.012)*wind*aUv.y*aUv.y;
+        world.y = aInstance.y + (world.y-aInstance.y) * scale;
+        world.xz = mix(aInstance.xz, world.xz, scale);
+    }
     vWorld = world.xyz;
     vNormal = normalize(transpose(inverse(mat3(uModel))) * n);
     vUv = aUv;
+    if (uSurface == 1 || uSurface == 2 || uSurface == 3 || uSurface == 15) {
+        vec3 face = abs(vNormal);
+        vec2 plane = face.y >= max(face.x,face.z) ? vec2(world.x,-world.z) :
+                     face.x > face.z ? vec2(-world.z,world.y) : world.xy;
+        vUv = plane * (uSurface == 1 ? .5 : uSurface == 2 ? .25 : .40);
+    }
     vDetail = detail;
     gl_Position = uViewProjection * world;
 }

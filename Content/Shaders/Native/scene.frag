@@ -23,7 +23,7 @@ uniform float uShadowStrength;
 // flags (1 trouser legs, 2 sleeves); hair colour, or a negative red for the palette's.
 uniform vec3 uOutfit, uHair;
 uniform int uLocalLights, uGridNodes;
-uniform sampler2D uLampMap;
+uniform sampler2D uLampMap, uYardMask;
 uniform float uGridLow, uLampSide;
 uniform vec3 uLampPosition[12], uLampColor[12], uLampDirection[12];
 const float PI = 3.14159265;
@@ -52,6 +52,7 @@ float foliage(vec2 uv, float species) {
         float x = abs(q.x)/max(.2,taper);
         float y = fract(q.y*4.)-.5;
         vec2 leaf = vec2((x-.19)/.155,(y-x*.8)/.42);
+        if (species < .5) leaf = vec2((x-.17)/.123,(y-x*.95)/.37);
         if (species > 1.5) leaf = vec2((x-.18)/.18,(y-x*.8)/.15);
         float blade = 1.-smoothstep(.85,1.,dot(leaf,leaf));
         mask = max(mask,max(stem,blade*step(0.,row)*step(row,5.)));
@@ -102,7 +103,7 @@ int tunnelAt(vec3 p) {
 vec3 localLights(vec3 n, vec3 albedo, bool underground) {
     vec3 sum = vec3(0.);
     float dark = underground ? 0. : 1. - uDay;
-    float wet = uAir.w * max(n.y, 0.);
+    float wet = underground ? 0. : uAir.w * max(n.y, 0.);
     if (dark > .001 && uGridNodes > 0) {
         // Each node owns the posts beside its northern and eastern streets; the lamp
         // map holds the height of every lamp head, or a large negative value for none.
@@ -252,7 +253,11 @@ void main() {
         float noise = fract(52.9829189*fract(dot(floor(gl_FragCoord.xy),vec2(.06711056,.00583715))));
         if (coverage <= noise) discard;
     }
-    vec4 tex = texture(uColor,vUv);
+    vec4 tex = texture(uColor, uSurface == 12 ? vec2(vWorld.x,-vWorld.z)*.5 : vUv);
+    // In a baked vehicle atlas alpha describes glass and metallic surfaces.
+    // Preserve the glass silhouette even when the atlas encodes zero there.
+    float bakedFinish = tex.a;
+    if (uSurface == 14) tex.a = 1.;
     int vehicleMaterial = -1;
     if (uSurface == 10) {
         // The single-row articulated palette stores a material ID in alpha, including 1 for body paint.
@@ -283,10 +288,11 @@ void main() {
     float fade = 1.0-smoothstep(1.0,PI,phaseWidth);
     float grain = sin(vWorld.x*51.7)*sin(vWorld.z*43.1);
     if (uSurface == 8) {
-        float stripes = sin(vWorld.y*28.+sin(vWorld.x*43.+vWorld.z*37.)*2.);
+        float bark = patches(vec3(vWorld.xz*8.,vWorld.y*2.7));
         if (vDetail.w < .5) {
-            float mark = smoothstep(.68,.9,stripes)*smoothstep(.2,.65,sin(vWorld.x*13.+vWorld.z*16.));
-            tex.rgb = mix(vec3(.69,.70,.62),vec3(.16,.16,.14),mark);
+            float flecks = patches(vec3(vWorld.xz*12.,vWorld.y*39.+bark));
+            float mark = smoothstep(.64,.83,flecks)*(.35+.65*bark)*fade;
+            tex.rgb = mix(vec3(.69,.70,.63)*(.88+.19*bark),vec3(.19,.18,.15),mark);
         } else {
             float cracks = sin((vWorld.x+vWorld.z)*54.+sin(vWorld.y*6.));
             tex.rgb = vec3(.24,.19,.13)*(.85+.15*cracks);
@@ -298,10 +304,37 @@ void main() {
         float vein = exp(-abs(vUv.x-.5)*90.);
         tex.rgb *= 1.+.14*vein;
     }
-    if (uSurface == 1) tex.rgb *= .90+.10*sin(vWorld.x*.12)*sin(vWorld.z*.09)+.04*grain*fade;
+    if (uSurface == 1) {
+        float growth = patches(vec3(vWorld.xz*.16,.37));
+        tex.rgb *= mix(vec3(.89,.93,.79),vec3(1.09,1.12,.97),growth);
+    }
+    if (uSurface == 1 && vDetail.x > .5) {
+        vec2 block = (vWorld.xz-vec2(uGridLow))/36.;
+        vec2 within = clamp((fract(block)*36.-6.)/24.,vec2(.011),vec2(.989));
+        float pathMask = texture(uYardMask,(floor(block)+within)/float(uGridNodes-1)).r;
+        float speck = patches(vec3(vWorld.xz*8.,.61));
+        float clods = patches(vec3(vWorld.xz*1.8,.14));
+        float wear = smoothstep(.08,.63,pathMask * (.70+.38*clods+.24*speck));
+        float luma = dot(tex.rgb,vec3(.30,.53,.17));
+        // Preserve the photographed ground's granular texture across the worn centre.
+        float grit = dot(texture(uColor,vUv*1.8).rgb,vec3(.27,.56,.17));
+        vec3 earth = mix(vec3(.37,.30,.215),vec3(.43,.355,.25),clods);
+        tex.rgb = mix(tex.rgb,earth*(.58+.94*luma+.53*grit+.15*speck)/uTint,wear);
+    }
+    if (vDetail.w == -1. && abs(vNormal.y) < .5 && vLocal.y < 1.6) {
+        float mottling = patches(vec3(vWorld.xz*1.6,vWorld.y*.7));
+        float foot = 1.-smoothstep(.04,.62+.72*mottling,vLocal.y);
+        tex.rgb *= mix(vec3(1.),vec3(.64,.67,.63),foot*(.72+.28*mottling));
+    }
+    if (uSurface == 12) {
+        // Pick up the soil/leaf colour at the root. Sunlit tips are newer growth.
+        vec3 leaf = mix(vec3(.42,.48,.20),vec3(.66,.66,.31),vDetail.z);
+        tex.rgb = mix(tex.rgb,leaf,.57) * mix(.85,1.22,vUv.y);
+        n = vec3(0,1,0);
+    }
     if (uSurface == 2) tex.rgb *= .90+.08*grain*fade;
     if (uSurface == 3) {
-        vec2 grid = abs(fract(vWorld.xz*.5)-.5), width = max(fwidth(vWorld.xz*.5),vec2(.008));
+        vec2 grid = abs(fract(vUv*1.25)-.5), width = max(fwidth(vUv*1.25),vec2(.008));
         float seam = max(smoothstep(.48-width.x,.5,grid.x),smoothstep(.48-width.y,.5,grid.y));
         tex.rgb *= 1.0-.2*seam;
     }
@@ -333,7 +366,9 @@ void main() {
         vec3 p2 = cross(q2,n), p1 = cross(n,q1);
         vec3 t = p2*st1.x+p1*st2.x, b = p2*st1.y+p1*st2.y;
         float scale = inversesqrt(max(max(dot(t,t),dot(b,b)),1e-12));
-        n = normalize(mat3(t*scale,b*scale,n)*(texture(uNormal,vUv).xyz*2.0-1.0));
+        vec3 map = texture(uNormal,vUv).xyz*2.-1.;
+        if (uSurface == 1 || uSurface == 2) map.xy *= uSurface == 1 ? .55 : .42;
+        n = normalize(mat3(t*scale,b*scale,n)*map);
     }
     vec3 baseColor = tex.rgb*uTint;
     // How much of the pixel is body paint: all of a dedicated paint material, the
@@ -347,6 +382,7 @@ void main() {
         float lightness = dot(baseColor,vec3(.2126,.7152,.0722));
         float chroma = max(max(baseColor.r,baseColor.g),baseColor.b)-min(min(baseColor.r,baseColor.g),baseColor.b);
         paint = uPaintMask == 2 ? smoothstep(.025,.14,chroma)*smoothstep(.055,.19,lightness) : 1.;
+        if (uSurface == 14) paint *= smoothstep(.57,.79,bakedFinish);
         if (uPaintIndex > 0) baseColor = mix(baseColor,colors[uPaintIndex-1]*(.50+.75*lightness),paint);
     }
     int tunnel = uTunnelCount > 0 ? tunnelAt(vWorld) : -1;
@@ -361,11 +397,17 @@ void main() {
     vec3 albedo = pow(max(baseColor,vec3(.001)),vec3(2.2));
     vec3 orm = uHasOrm != 0 ? texture(uOrm,vUv).rgb : vec3(1,uRoughness,uMetallic);
     float ao = clamp(orm.r,.15,1), metal = clamp(orm.b,0,1);
-    float rough = mix(clamp(orm.g,.08,1),.24,uAir.w*max(n.y,0));
+    float rainExposure = tunnel < 0 ? uAir.w : 0.;
+    float rough = mix(clamp(orm.g,.08,1),.24,rainExposure*max(n.y,0));
     rough = mix(rough,.14,damp);
+    if (uSurface == 1 || uSurface == 12) rough = mix(.96,.77,rainExposure);
+    if (uSurface == 14) {
+        metal = bakedFinish < .1 ? 0. : clamp((1.-bakedFinish)*2.55,0.,1.);
+        rough = bakedFinish < .1 ? .18 : mix(.7,.38,metal);
+    }
     if (vehicleMaterial == 22) rough = .12;
     else if (vehicleMaterial == 34) { rough = .25; metal = .82; }
-    else if (vehicleMaterial == 1) rough = mix(.43, .25, uAir.w);
+    else if (vehicleMaterial == 1) rough = mix(.43, .25, rainExposure);
     vec3 v = normalize(uEye-vWorld), l = normalize(uSun), h = normalize(v+l);
     float nl = max(dot(n,l),0), nv = max(dot(n,v),.001), nh = max(dot(n,h),0);
     float a = rough*rough, a2 = a*a, denom = nh*nh*(a2-1.0)+1.0;
@@ -388,7 +430,7 @@ void main() {
     if (tunnel >= 0) {
         // Under the roof: no sky and no sun, a dim fill and a ceiling lamp row every nine metres.
         vec3 t = uTunnels[tunnel], f = uTunnelFloors[tunnel];
-        color = color*.16 + albedo*vec3(.13,.135,.12)*ao;
+        color = albedo*vec3(.13,.135,.12)*ao;
         float first = floor((vWorld.x - f.z)/9.)*9. + f.z;
         for (int k = 0; k < 2; ++k) {
             float x = first + float(k)*9.;
@@ -399,13 +441,18 @@ void main() {
     if (vehicleMaterial < 0) color += albedo*uEmissive;
     // Reflections of the managed game: glass, chrome and the clear coat of vehicles.
     float graze = pow(1.-abs(dot(n,v)),5.), coat = 0.;
-    if (vehicleMaterial == 22) coat = .38+.50*graze;
+    if (uSurface == 14 && bakedFinish < .1) coat = .45+.45*graze;
+    else if (vehicleMaterial == 22) coat = .38+.50*graze;
     else if (vehicleMaterial == 34) coat = .55;
     else if (vehicleMaterial == 1) coat = .055+.28*graze;
     else if (uCoat == 2) coat = .45+.45*graze;
     else if (uCoat == 1) coat = metal*.4+paint*(.04+.2*graze);
     if (coat > 0. && uCoat >= 0) color = mix(color,cityReflection(vWorld,reflect(-v,n),rough,tunnel >= 0),min(coat,.9));
-    if (damp > 0.) color = mix(color,cityReflection(vWorld,reflect(-v,n),.12,tunnel >= 0),damp*(.12+.40*pow(1.-max(dot(n,v),0.),4.)));
+    if (damp > 0.) {
+        // A thin water film reflects most strongly at grazing angles.
+        float film = .021 + .46*graze;
+        color = mix(color,cityReflection(vWorld,reflect(-v,n),.12,false),damp*film);
+    }
     if (vehicleMaterial == 8) {
         bool blue = tex.b > tex.r * 1.4;
         if (blue && uEmissive > 0.) {
@@ -414,7 +461,7 @@ void main() {
         } else color += albedo * (1.-uDay) * .75;
     }
     if (uSurface == 6) color = apartment(n,v);
-    if (uSurface == 4) color = mix(color,cityReflection(vWorld,reflect(-v,n),.12,false),.12+.75*pow(1.0-max(dot(n,v),0),4.0));
+    if (uSurface == 4) color = mix(color,cityReflection(vWorld,reflect(-v,n),.12,tunnel >= 0),.12+.75*pow(1.0-max(dot(n,v),0),4.0));
     // The haze of the managed game takes a distant surface to the colour of the horizon.
     float air = airTransmission(uEye,vWorld);
     if (uProbePass != 0) {

@@ -31,7 +31,7 @@ void box(MeshData &m, Vec3 p, Vec3 half, float uv = 1)
     quad(m, {a.x, b.y, b.z}, {b.x, b.y, b.z}, {b.x, b.y, a.z}, {a.x, b.y, a.z}, uv);
 }
 } // namespace
-CityChunk cityChunk(const World &w, double x0, double z0, double size)
+CityChunk cityChunk(const World &w, double x0, double z0, double size, std::vector<LawnTile> *lawn)
 {
     CityChunk data;
     auto &l = w.layout;
@@ -115,7 +115,7 @@ CityChunk cityChunk(const World &w, double x0, double z0, double size)
     }
     // Clip real holes in the terrain, not transparent rectangles above it.
     // The cutting edges are linear inside each metre-wide strip, just like centreZ().
-    auto tile = [&](int material, double a, double b, double c, double d, double add = 0, bool bed = false)
+    auto clippedTile = [&](int material, double a, double b, double c, double d, double add = 0, bool bed = false)
     {
         std::vector<std::vector<Vec2>> polygons{{{a, d}, {c, d}, {c, b}, {a, b}}};
         auto clip = [](const std::vector<Vec2> &in, auto distance)
@@ -217,6 +217,27 @@ CityChunk cityChunk(const World &w, double x0, double z0, double size)
         return v;
     };
     auto xs = cuts(x0, true), zs = cuts(z0, false);
+    struct CutBounds { double low{1e20}, high{-1e20}; };
+    std::vector<CutBounds> cutsByColumn(xs.size());
+    for (size_t i = 1; i < xs.size(); ++i)
+    {
+        const double mid = (xs[i - 1] + xs[i]) * .5;
+        for (const auto &level : w.roadLevels)
+        {
+            if (!level.tunnel || std::abs(mid - level.x) >= RoadLevel::length || level.roof(mid))
+                continue;
+            const auto left = level.centreZ(xs[i - 1]), right = level.centreZ(xs[i]);
+            auto &cut = cutsByColumn[i];
+            cut.low = std::min(cut.low, std::min(left, right) - RoadLevel::halfWidth);
+            cut.high = std::max(cut.high, std::max(left, right) + RoadLevel::halfWidth);
+        }
+    }
+    // Adjacent tiles share their bed samples. Most tiles need no polygon clipping.
+    std::vector<Vec3> bedGrid;
+    bedGrid.reserve(xs.size() * zs.size());
+    for (auto z : zs)
+        for (auto x : xs)
+            bedGrid.push_back(ground(x, z, 0, true));
     for (size_t j = 1; j < zs.size(); ++j)
         for (size_t i = 1; i < xs.size(); ++i)
         {
@@ -237,10 +258,89 @@ CityChunk cityChunk(const World &w, double x0, double z0, double size)
                     material = Ballast;
             }
             // River bed is always drawn independently; deck never stretches down the bank.
-            tile(material, a, b, c, d, 0, true);
+            const bool clip = d >= cutsByColumn[i].low && b <= cutsByColumn[i].high;
+            if (clip)
+                clippedTile(material, a, b, c, d, 0, true);
+            else
+            {
+                const size_t k = j * xs.size() + i;
+                if (lawn && material == Grass)
+                    lawn->push_back({float(a), float(b), float(c), float(d), bedGrid[k - xs.size() - 1].y,
+                                     bedGrid[k - xs.size()].y, bedGrid[k - 1].y, bedGrid[k].y});
+                quad(data[material], bedGrid[k - 1], bedGrid[k], bedGrid[k - xs.size()],
+                     bedGrid[k - xs.size() - 1]);
+                if (material == Grass && l.courtyard(p))
+                    for (auto &v : std::span(data[Grass].vertices).last(4))
+                        v.joints[0] = 1;
+            }
             if (l.bridge(p))
-                tile(distance < l.roadHalf() ? Road : Pavement, a, b, c, d);
+            {
+                const int deck = distance < l.roadHalf() ? Road : Pavement;
+                if (clip)
+                    clippedTile(deck, a, b, c, d);
+                else
+                    quad(data[deck], ground(a, d), ground(c, d), ground(c, b), ground(a, b));
+            }
         }
+    // Each stone belongs to the chunk containing its midpoint. Its bevel follows the terrain slope.
+    const int firstX = int(std::floor((x0 - l.coordinate(0)) / l.spacing));
+    const int firstZ = int(std::floor((z0 - l.coordinate(0)) / l.spacing));
+    for (int j = firstZ; l.coordinate(j) < z0 + size; ++j)
+        for (int i = firstX; l.coordinate(i) < x0 + size; ++i)
+            if (const auto *yard = l.courtyard(i, j))
+                for (const auto &stone : yard->curbs)
+                {
+                    if (!owns((stone.a + stone.b) * .5))
+                        continue;
+                    const auto side = perpendicular((stone.b - stone.a).unit());
+                    auto point = [&](Vec2 end, double width, double h)
+                    {
+                        auto p = end + side * width;
+                        return ground(p.x, p.z, h, true);
+                    };
+                    // A slightly battered shoulder catches grazing sunlight.
+                    constexpr std::array<Vec2, 6> profile{{{-.092, -.06},
+                                                           {-.092, .10},
+                                                           {-.068, .133},
+                                                           {.068, .133},
+                                                           {.092, .10},
+                                                           {.092, -.06}}};
+                    auto &mesh = data[Foundation];
+                    const auto base = std::uint32_t(mesh.vertices.size());
+                    const std::array<Vec2, 6> normals{
+                        {{-1, 0}, {-1, .2}, {-.3, 1}, {.3, 1}, {1, .2}, {1, 0}}};
+                    for (auto end : {stone.a, stone.b})
+                        for (size_t k = 0; k < profile.size(); ++k)
+                        {
+                            Vertex v;
+                            v.position = point(end, profile[k].x, profile[k].z);
+                            v.normal = Vec3{float(side.x * normals[k].x), float(normals[k].z),
+                                            float(side.z * normals[k].x)}
+                                           .unit();
+                            mesh.vertices.push_back(v);
+                        }
+                    for (unsigned k = 0; k < 5; ++k)
+                        mesh.indices.insert(mesh.indices.end(), {base + k, base + k + 1, base + k + 7,
+                                                                 base + k, base + k + 7, base + k + 6});
+                    // The ends have independent flat normals on the narrow expansion joints.
+                    for (int end = 0; end < 2; ++end)
+                    {
+                        const auto cap = std::uint32_t(mesh.vertices.size());
+                        const auto direction = (stone.b - stone.a).unit() * (end ? 1. : -1.);
+                        for (unsigned k = 0; k < 6; ++k)
+                        {
+                            Vertex v;
+                            v.position = mesh.vertices[base + end * 6 + k].position;
+                            v.normal = {float(direction.x), 0, float(direction.z)};
+                            mesh.vertices.push_back(v);
+                        }
+                        for (unsigned k = 1; k < 5; ++k)
+                            if (end)
+                                mesh.indices.insert(mesh.indices.end(), {cap, cap + k, cap + k + 1});
+                            else
+                                mesh.indices.insert(mesh.indices.end(), {cap, cap + k + 1, cap + k});
+                    }
+                }
     // One water plane per chunk is depth-tested against the real bed/coast/decks.
     // No overlapping alpha planes and no invisible collision on top of a canal.
     const float y = float(CityLayout::waterLevel);

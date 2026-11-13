@@ -233,7 +233,7 @@ BuildingPlan planBuilding(const Building &b, double ground)
     p.halfWidth = float(b.half.x);
     p.halfDepth = float(b.half.z);
     p.height = float(b.height);
-    p.windowsOnZ = b.half.x >= b.half.z;
+    p.windowsOnZ = entranceNormal(b.half).z > 0;
     p.seed = hash(std::uint32_t(std::llround(b.p.x * 10)) ^ hash(std::uint32_t(std::llround(b.p.z * 10))) ^
                   std::uint32_t(b.style));
     p.kind = b.kind;
@@ -276,12 +276,36 @@ void buildingCore(CityChunk &data, const BuildingPlan &p, int facade)
         return;
     }
     auto centre = p.origin + Vec3{0, p.height * .5f, 0};
-    box(data[Facade + clamp(facade, 0, 7)], centre, {p.halfWidth, p.height * .5f, p.halfDepth}, 3.2f);
+    auto weatheredBox = [&](MeshData &mesh, Vec3 position, Vec3 half, float tile)
+    {
+        const size_t first = mesh.vertices.size();
+        box(mesh, position, half, tile);
+        for (size_t i = first; i < mesh.vertices.size(); ++i)
+        {
+            auto &v = mesh.vertices[i];
+            v.joints[1] = v.position.y - p.origin.y;
+            v.joints[3] = -1; // Only apartment walls and their plinths receive the damp band.
+        }
+    };
+    weatheredBox(data[Facade + clamp(facade, 0, 7)], centre, {p.halfWidth, p.height * .5f, p.halfDepth},
+                 3.2f);
     box(data[Roof], p.origin + Vec3{0, p.height + .12f, 0}, {p.halfWidth + .12f, .12f, p.halfDepth + .12f});
-    box(data[Foundation], p.origin + Vec3{0, .30f, 0}, {p.halfWidth + .035f, .3f, p.halfDepth + .035f});
+    weatheredBox(data[Foundation], p.origin + Vec3{0, .30f, 0},
+                 {p.halfWidth + .035f, .3f, p.halfDepth + .035f}, 2);
     for (const auto &w : p.windows)
+    {
         panel(data[Windows], w.centre, w.right, w.normal, windowHalfWidth + .055f, windowHalfHeight + .055f,
               {float(w.seed % 65521), float(w.curtain), float((w.seed >> 16) % 4), 0});
+        if (w.balcony < 0)
+            continue;
+        const int material = Balcony + w.balcony;
+        auto at = [&](float x, float y, float z)
+        { return w.centre + w.right * x + Vec3{0, y, 0} + w.normal * z; };
+        panel(data[material], at(0, -.22f, 1), w.right, w.normal, .84f, .40f);
+        for (int side : {-1, 1})
+            face(data[material], at(side * .84f, -.62f, .05f), at(side * .84f, -.62f, 1),
+                 at(side * .84f, .18f, 1), at(side * .84f, .18f, .05f));
+    }
 }
 void buildingDetails(CityChunk &data, const BuildingPlan &p)
 {
@@ -331,14 +355,8 @@ void buildingDetails(CityChunk &data, const BuildingPlan &p)
         // Low cost slabs/panels, with railings only in the near batch. They are all above pedestrian head
         // height.
         box(data[Roof], at(0, -.68f, .45f), extents(w.right, w.normal, {.88f, .065f, .54f}));
-        int mat = Balcony + w.balcony;
-        panel(data[mat], at(0, -.22f, 1.0f), w.right, w.normal, .84f, .40f);
         for (int side : {-1, 1})
-        {
-            face(data[mat], at(side * .84f, -.62f, .05f), at(side * .84f, -.62f, 1.0f),
-                 at(side * .84f, .18f, 1.0f), at(side * .84f, .18f, .05f));
             rail(data[Metal], at(side * .84f, .21f, .01f), at(side * .84f, .21f, 1.03f), .025f);
-        }
         rail(data[Metal], at(-.87f, .21f, 1.0f), at(.87f, .21f, 1.0f), .025f);
         if (w.balcony == 2)
         {

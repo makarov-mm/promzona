@@ -1,5 +1,7 @@
 #pragma once
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <vector>
 
 namespace pz
@@ -7,6 +9,10 @@ namespace pz
 // Track horizontal strips so the previous footprint is also erased when a panel disappears.
 class HudDamage
 {
+  public:
+    static constexpr std::size_t textureCount = 3;
+
+  private:
     struct Span
     {
         int left, right;
@@ -14,6 +20,7 @@ class HudDamage
     static constexpr int band = 32;
     int width_{}, height_{};
     std::vector<Span> painted_, previous_;
+    std::array<std::vector<Span>, textureCount> uploaded_;
 
   public:
     void resize(int width, int height)
@@ -22,6 +29,8 @@ class HudDamage
         height_ = height;
         painted_.assign((height + band - 1) / band, {width, 0});
         previous_ = painted_;
+        for (auto &footprint : uploaded_)
+            footprint = painted_;
     }
     void begin()
     {
@@ -42,15 +51,29 @@ class HudDamage
     }
     template <class F> void regions(bool includeCurrent, F consume) const
     {
+        emit(previous_, includeCurrent, consume);
+    }
+
+    // A reused texture still contains the HUD from its own last frame.
+    template <class F> void uploadRegions(std::size_t slot, F consume)
+    {
+        auto &footprint = uploaded_.at(slot);
+        emit(footprint, true, consume);
+        footprint = painted_;
+    }
+
+  private:
+    template <class F> void emit(const std::vector<Span> &footprint, bool includeCurrent, F &consume) const
+    {
         int top = 0;
         Span active{width_, 0};
-        for (size_t i = 0; i <= previous_.size(); ++i)
+        for (size_t i = 0; i <= footprint.size(); ++i)
         {
             const int y = std::min(int(i) * band, height_);
             Span next{width_, 0};
-            if (i < previous_.size())
+            if (i < footprint.size())
             {
-                next = previous_[i];
+                next = footprint[i];
                 if (includeCurrent)
                 {
                     next.left = std::min(next.left, painted_[i].left);

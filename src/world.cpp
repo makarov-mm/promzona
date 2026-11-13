@@ -921,7 +921,17 @@ void World::step(PlayerInput input, double dt)
             {
                 // Whoever is ahead of a crew on a call is steered round and paid for in speed
                 // (World::sensePursuit).
-                steering = clamp(steering, -1., 1.) + car.avoid;
+                // At the edge of a street a straight-line evasive turn can point into a
+                // landscaped yard. Keep steering toward the suspect when that detour leaves the road.
+                double avoidance = car.avoid;
+                if (avoidance != 0 && car.seesSuspect && !b.roadLevel)
+                {
+                    const Vec2 along = forward(car.heading() + std::copysign(.65, avoidance));
+                    if (layout.roadDistance(b.p + along * (b.halfH + 4.0)) > layout.roadHalf() - b.halfW &&
+                        layout.roadDistance(b.p) < layout.roadHalf())
+                        avoidance = 0;
+                }
+                steering = clamp(steering, -1., 1.) + avoidance;
                 target *= clamp(1 - std::abs(car.avoid) * .45, .5, 1.);
             }
             // Port of the managed driver's way out (CityTraffic.Physics.cs): pushed off the

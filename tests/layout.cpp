@@ -11,6 +11,38 @@ static void check(bool b, const char *what)
     if (!b)
         throw std::runtime_error(what);
 }
+void checkYards(const CityLayout &city)
+{
+    int count = 0;
+    for (int j = 0; j < city.nodes() - 1; ++j)
+        for (int i = 0; i < city.nodes() - 1; ++i)
+        {
+            const auto *yard = city.courtyard(i, j);
+            if (!yard)
+                continue;
+            ++count;
+            check(!city.park(i, j) && !city.industrial(i, j) && !city.canalColumn(i),
+                  "residential court placement");
+            for (const auto &path : yard->paths)
+            {
+                const auto exit = path.points.back();
+                check(city.courtyard(exit) == yard, "path stays on its plot");
+                const double distance = city.roadDistance(exit);
+                check(distance > city.roadHalf() && distance <= city.roadHalf() + 2.8,
+                      "path reaches an actual sidewalk");
+                check(std::ranges::any_of(city.buildings,
+                                          [&](const Building &b)
+                                          {
+                                              return b.kind == BuildingKind::apartment &&
+                                                     (apartmentDoor(b) - path.points.front()).length() < .001;
+                                          }),
+                      "path starts at an apartment door");
+                for (const auto &curb : yard->curbs)
+                    check(path.edgeDistance((curb.a + curb.b) * .5) > .75, "curbs leave the entrance open");
+            }
+        }
+    check(count > 20, "courts generated across the city");
+}
 int main(int argc, char **argv)
 {
     try
@@ -106,6 +138,7 @@ int main(int argc, char **argv)
         {
             CityLayout city;
             city.generate(seed, 49, true, {}, CityLayout::districtRevision);
+            checkYards(city);
             check(city.district(12, 12) == District::cottages && city.district(22, 25) == District::centre &&
                       city.district(36, 11) == District::courtyard &&
                       city.district(9, 34) == District::garages &&
