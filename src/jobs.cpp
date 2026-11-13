@@ -11,7 +11,7 @@ void World::generateServices()
     jobEarnings = 0;
     hailers = {};
     nextHail = 0;
-    energySeconds = clinicCredit = purchaseAt = noticeUntil = 0;
+    energySeconds = clinicCredit = purchaseAt = noticeUntil = clinicPoorAt = 0;
     notice.clear();
     for (int j = 1; j < nodes - 2; ++j)
         for (int i = 1; i < nodes - 2; ++i)
@@ -327,6 +327,10 @@ bool World::startContract(JobKind kind)
         }
         if (actor >= 0 && destination >= 0)
         {
+            // A parked car with nobody in it, as in the managed game: taking it is neither
+            // a carjacking nor a crime.
+            cars[actor].driverless = true;
+            cars[actor].responding = false;
             cars[actor].body.v = {};
             cars[actor].body.w = 0;
         }
@@ -339,7 +343,7 @@ bool World::startContract(JobKind kind)
             double score =
                 std::abs((p.body.p - position()).length() - 150) + (p.sidearm == WeaponId::none ? 100 : 0);
             if (i != patrol.officer && !paramedicCall(i) && !p.dead && !p.courier && p.ownedScooter < 0 &&
-                p.riding < 0 && !p.body.roadLevel && score < best)
+                p.riding < 0 && !waitingForTaxi(i) && !p.body.roadLevel && score < best)
             {
                 actor = i;
                 best = score;
@@ -354,6 +358,12 @@ bool World::startContract(JobKind kind)
         return false;
     }
     job = {kind, actor, destination, kind == JobKind::vehicle ? 250 : 350, false, time + 600};
+    if (kind == JobKind::elimination)
+    {
+        // The target stays in the streets: no tram takes it away for the length of the contract.
+        people[actor].waitingLine = people[actor].waitingStop = -1;
+        people[actor].boardAfter = std::max(people[actor].boardAfter, time + 600);
+    }
     notify(kind == JobKind::vehicle ? L"Найдите отмеченную машину" : L"Цель отмечена на карте");
     return true;
 }
@@ -367,7 +377,8 @@ Vec2 World::jobTarget() const
     if (job.kind == JobKind::taxi)
         return rideEnd(job.ride.line, job.destination);
     if (job.kind == JobKind::leaflets || job.kind == JobKind::broadcast)
-        return job.destination < 0 ? position() : peacePoint(job.destination);
+        return job.destination < 0 ? position()
+                                   : peaceSpot(job.destination, job.route.spots[size_t(job.route.completed)]);
     return job.destination < 0 ? position() : sites[job.destination].entrance;
 }
 
@@ -380,7 +391,7 @@ Vec2 World::rideEnd(int line, int destination) const
                                : lines[line].curb(destination);
 }
 
-void World::finishJob(bool success)
+void World::finishJob(bool success, const wchar_t *failure)
 {
     if (job.kind == JobKind::none)
         return;
@@ -402,7 +413,7 @@ void World::finishJob(bool success)
     else
     {
         ++jobsFailed;
-        notify(L"Заказ закрыт без оплаты");
+        notify(failure ? failure : L"Заказ закрыт без оплаты");
     }
     job = {};
     if (finished.passenger())
@@ -426,6 +437,11 @@ void World::servicesStep(double dt)
             {
                 double heal = std::min(1 - health, (money ? .075 : .025) * dt);
                 health += heal;
+                if (!money && time >= clinicPoorAt)
+                {
+                    clinicPoorAt = time + 6;
+                    notify(L"Лечение платное — без денег лечат медленно");
+                }
                 if (money)
                 {
                     clinicCredit += heal * 40;
@@ -438,6 +454,10 @@ void World::servicesStep(double dt)
             }
         }
     }
+    // The moment a delivery or a ride becomes late is said once.
+    if ((job.kind == JobKind::courier || (job.passenger() && job.acquired)) && time > job.deadline &&
+        time - dt <= job.deadline)
+        notify(L"Опаздываем — заплатят половину");
     if (job.kind == JobKind::none || job.kind == JobKind::courier)
         return;
     if (job.passenger())
@@ -447,7 +467,7 @@ void World::servicesStep(double dt)
     }
     if (time > job.deadline)
     {
-        finishJob(false);
+        finishJob(false, L"Заказ сорван");
         return;
     }
     if (job.peace())
@@ -458,13 +478,13 @@ void World::servicesStep(double dt)
     if (job.kind == JobKind::elimination)
     {
         if (people[job.actor].dead)
-            finishJob(false);
+            finishJob(false, L"Заказ сорван");
         return;
     }
     const auto &c = cars[job.actor];
     if (c.destroyed || c.falling)
     {
-        finishJob(false);
+        finishJob(false, L"Заказ сорван");
         return;
     }
     if (controlledCar == job.actor)

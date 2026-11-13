@@ -2,25 +2,35 @@
 
 namespace pz
 {
-Vec2 World::landingSite(Vec2 near, Vec2 away)
+World::Perch World::landingSite(Vec2 near, Vec2 away)
 {
-    Vec2 best = near;
+    Perch best{near, false};
     double score = -1e9;
+    // A flock of the managed game settles in a park nearly four times out of five and
+    // on a pavement otherwise; a startled one keeps to that.
+    const bool street = streetRandom.next() >= .78;
     for (int i = 0; i < 32; ++i)
     {
-        Vec2 p = habitat[streetRandom.index(int(habitat.size()))];
-        auto delta = p - near;
+        Perch perch{habitat[streetRandom.index(int(habitat.size()))], false};
+        if (street)
+        {
+            const auto pavement = animalPerch(streetRandom, false);
+            if (!pavement || !pavement->pavement)
+                continue;
+            perch = *pavement;
+        }
+        auto delta = perch.at - near;
         if (delta.length2() < 20 * 20)
             continue;
         double merit = 55 * dot(delta.unit(), away) - std::abs(delta.length() - 110);
         if (merit > score)
         {
             score = merit;
-            best = p;
+            best = perch;
         }
     }
     if (score == -1e9 && !habitat.empty())
-        return *std::ranges::max_element(habitat, {}, [&](Vec2 p) { return (p - near).length2(); });
+        return {*std::ranges::max_element(habitat, {}, [&](Vec2 p) { return (p - near).length2(); }), false};
     return best;
 }
 
@@ -29,8 +39,15 @@ void World::takeFlight(int index, Vec2 from, Vec2 away)
     auto &f = flocks[index];
     if (f.flying)
         return;
-    f.landing = landingSite(from, away);
+    const Perch perch = landingSite(from, away);
+    f.landing = perch.at;
     f.flying = true;
+    // The flock forms up for where it is going: a spiral on a lawn, two files along a
+    // pavement, so that no bird comes down on the roadway.
+    int member = 0;
+    for (auto &a : animals)
+        if (a.flock == index)
+            a.offset = flockOffset(member++, perch.pavement);
     if ((from - position()).length2() < 45 * 45)
         sounds.push_back({"wings", from, .36});
 }
@@ -85,18 +102,40 @@ void World::stepWildlife(double dt)
     for (auto &a : animals)
     {
         bool local = (focus - a.p).length2() < 100 * 100;
-        if (a.deadUntil > 0)
+        if (a.deadUntil > 0 || a.knockedUntil > time)
         {
-            a.altitude = std::max(terrain.height(a.p), a.altitude - 7 * tick);
-            if (a.deadUntil > time || local)
+            // Port of the knocked branch of LifeBeforeContacts: whatever a car threw aside
+            // flies, comes down and slides to rest.
+            // The clock of the animals is coarse: the arc of each step is taken exactly.
+            const double ground = terrain.height(a.p);
+            a.altitude = std::max(ground, a.altitude + a.rise * tick - .5 * 9.81 * tick * tick);
+            a.rise -= 9.81 * tick;
+            const bool landed = a.altitude <= ground;
+            if (landed)
+                a.rise = 0;
+            a.velocity *= std::exp(-tick * (landed ? 4 : .25));
+            const Vec2 next = a.p + a.velocity * tick;
+            if (a.velocity.length2() < .0004 || !layout.urbanSite(next, .2) ||
+                insideBuilding(next, a.altitude + .3, .28))
+                a.velocity = {};
+            else
+            {
+                a.p = next;
+                a.altitude = std::max(a.altitude, terrain.height(next));
+            }
+            if (a.deadUntil == 0 || a.deadUntil > time || local)
                 continue;
-            auto respawn = a.flock >= 0 ? flocks[a.flock].landing + a.offset
+            Vec2 respawn = a.flock >= 0 ? flocks[a.flock].landing + a.offset
                                         : habitat[streetRandom.index(int(habitat.size()))];
+            if (a.flock < 0)
+                if (const auto perch = animalPerch(streetRandom, false))
+                    respawn = perch->at;
             if ((respawn - focus).length2() < 105 * 105)
                 continue;
             a.p = a.goal = respawn;
             a.altitude = terrain.height(a.p);
-            a.deadUntil = a.fear = 0;
+            a.velocity = {};
+            a.deadUntil = a.fear = a.knockedUntil = a.rise = 0;
         }
         Vec2 danger{};
         double urgency = 0;
@@ -128,18 +167,26 @@ void World::stepWildlife(double dt)
                 if (delta.length2() > 16 * 16 || std::abs(b->height - a.altitude) > 2.)
                     continue;
                 auto at = rotate(delta, -b->angle);
-                if (b->v.length2() > 25 && std::abs(at.x) < b->halfW + .12 &&
-                    std::abs(at.z) < b->halfH + .15 && a.altitude < b->height + .5)
+                // Port of the managed rule: a car that closes at more than 1.1 m/s throws
+                // the animal aside and stuns it for three seconds; above 4 m/s it kills.
+                const double approach = dot(b->v - a.velocity, delta) / std::max(.25, delta.length());
+                if (approach >= 1.1 && std::abs(at.x) < b->halfW + .12 && std::abs(at.z) < b->halfH + .15 &&
+                    a.altitude < b->height + .5)
                 {
-                    a.deadUntil = time + 14;
-                    a.velocity = {};
+                    a.knockedUntil = time + 3;
+                    a.rise = std::min(4., approach * .21);
+                    a.velocity = b->v * .5;
+                    a.fear = 0;
+                    if (approach > 4)
+                        a.deadUntil = time + 14;
+                    sounds.push_back({"impact", a.p, .3});
                     break;
                 }
                 if (b->v.length2() > 6)
                     senseThreat(b->p, 13);
             }
         }
-        if (a.deadUntil > 0)
+        if (a.deadUntil > 0 || a.knockedUntil > time)
             continue;
         double speed = 0;
         a.fear = std::max(0., a.fear - tick);
@@ -170,20 +217,40 @@ void World::stepWildlife(double dt)
         }
         else if (a.fear > 0)
             speed = a.species == Species::dog ? 5.3 : 4.5;
-        else
+        else if (a.flock >= 0)
         {
             if (time >= a.thinkAt)
             {
-                Vec2 centre = a.flock >= 0 ? flocks[a.flock].landing + a.offset : a.p;
-                Vec2 candidate = centre + forward(streetRandom.next() * 2 * pi) *
-                                              (a.flock >= 0 ? .9 : 2. + streetRandom.next() * 7.);
+                Vec2 centre = flocks[a.flock].landing + a.offset;
+                Vec2 candidate = centre + forward(streetRandom.next() * 2 * pi) * .9;
                 if (layout.urbanSite(candidate, .3) && !openCut(candidate, .4) &&
                     !insideBuilding(candidate, terrain.height(candidate) + .4, .35))
                     a.goal = candidate;
                 a.thinkAt = time + 2. + streetRandom.next() * 6.;
             }
             target = a.goal;
-            speed = a.flock >= 0 ? .31 : .86;
+            speed = .31;
+        }
+        else
+        {
+            // A stray of the managed game walks the pavements from corner to corner, the
+            // graph the people use, and sets off again on arrival or after 12 to 32
+            // seconds, wherever that finds it.
+            if (time >= a.thinkAt || (a.goal - a.p).length2() < .7 * .7)
+            {
+                const int last = layout.nodes() - 1;
+                const Vec2 step = CityLayout::direction(streetRandom.index(4));
+                const int i = clamp(int(std::lround((a.p.x - layout.coordinate(0)) / spacing)) +
+                                        int(std::lround(step.x)),
+                                    0, last),
+                          j = clamp(int(std::lround((a.p.z - layout.coordinate(0)) / spacing)) +
+                                        int(std::lround(step.z)),
+                                    0, last);
+                a.goal = {layout.coordinate(i) + layout.sidewalk(), layout.coordinate(j) + layout.sidewalk()};
+                a.thinkAt = time + 12. + streetRandom.next() * 20.;
+            }
+            target = a.goal;
+            speed = a.species == Species::dog ? 1.35 : .85;
         }
         Vec2 delta = target - a.p;
         Vec2 next = a.p + delta.unit() * std::min(delta.length(), speed * tick);

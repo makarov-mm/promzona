@@ -1,10 +1,13 @@
 #include "promzona/renderer.hpp"
+#include "promzona/atmosphere.hpp"
 #include "promzona/audio.hpp"
 #include "promzona/fleet.hpp"
 #include "json.hpp"
 #include "effect_batch.hpp"
 #include "post_processing.hpp"
 #include "promzona/minimap.hpp"
+#include "promzona/reflection_probe.hpp"
+#include "promzona/sector_stream.hpp"
 #include "promzona/names.hpp"
 #include "promzona/control_hints.hpp"
 #include "promzona/hud_damage.hpp"
@@ -22,6 +25,7 @@
 #include <iomanip>
 #include <map>
 #include <sstream>
+#include <unordered_map>
 namespace pz
 {
 using namespace gl;
@@ -76,10 +80,35 @@ GLuint program(const std::string &vertex, const std::string &fragment)
         throw;
     }
 }
+// GLSL has no include. A line that begins with #include "name" is replaced by that
+// file from the folder of the shader, so that the scene, the effects and the sky share
+// one description of the haze and the reflections.
+std::string readShader(const std::filesystem::path &file, int depth = 0)
+{
+    static constexpr std::string_view directive = "#include \"";
+    std::istringstream source(readText(file));
+    std::string text, line;
+    while (std::getline(source, line))
+    {
+        if (line.starts_with(directive))
+        {
+            const auto end = line.find('"', directive.size());
+            if (end == std::string::npos || depth > 3)
+                throw std::runtime_error("GLSL include: " + file.string());
+            text += readShader(file.parent_path() / line.substr(directive.size(), end - directive.size()),
+                               depth + 1);
+        }
+        else
+            text += line;
+        text += '\n';
+    }
+    return text;
+}
 struct Mesh
 {
     GLuint vao{}, vbo{}, ibo{}, instanceVbo{};
     GLsizei count{};
+    GLenum indexType{GL_UNSIGNED_INT};
     Mesh() = default;
     Mesh(const Mesh &) = delete;
     Mesh &operator=(const Mesh &) = delete;
@@ -90,6 +119,7 @@ struct Mesh
         std::swap(ibo, o.ibo);
         std::swap(instanceVbo, o.instanceVbo);
         std::swap(count, o.count);
+        std::swap(indexType, o.indexType);
     }
     Mesh &operator=(Mesh &&o) noexcept
     {
@@ -101,6 +131,7 @@ struct Mesh
             std::swap(ibo, o.ibo);
             std::swap(instanceVbo, o.instanceVbo);
             std::swap(count, o.count);
+            std::swap(indexType, o.indexType);
         }
         return *this;
     }
@@ -126,6 +157,7 @@ struct Mesh
             GenBuffers(1, &ibo);
         }
         count = static_cast<GLsizei>(d.indices.size());
+        indexType = GL_UNSIGNED_INT;
         BindVertexArray(vao);
         BindBuffer(ARRAY_BUFFER, vbo);
         BufferData(ARRAY_BUFFER, std::ptrdiff_t(d.vertices.size() * sizeof(Vertex)), d.vertices.data(),
@@ -142,10 +174,61 @@ struct Mesh
         }
         BindVertexArray(0);
     }
+    // What a mesh of the standing city takes on the GPU: no bone weights, and 16-bit
+    // indices where they reach.
+    static constexpr size_t staticVertex = 48;
+    static size_t staticBytes(const MeshData &d)
+    {
+        return d.vertices.size() * staticVertex + d.indices.size() * (d.vertices.size() <= 65536 ? 2 : 4);
+    }
+    void uploadStatic(const MeshData &d)
+    {
+        static_assert(sizeof(Vertex) == 64 && offsetof(Vertex, joints) == 32 &&
+                      offsetof(Vertex, weights) == staticVertex);
+        if (!vao)
+        {
+            GenVertexArrays(1, &vao);
+            GenBuffers(1, &vbo);
+            GenBuffers(1, &ibo);
+        }
+        count = static_cast<GLsizei>(d.indices.size());
+        // The shader reads the fourth attribute of scenery as its detail values (the seed
+        // and the curtains of a window); the weights after it are never read without a rig.
+        static std::vector<unsigned char> packed;
+        packed.resize(d.vertices.size() * staticVertex);
+        for (size_t i = 0; i < d.vertices.size(); ++i)
+            std::memcpy(packed.data() + i * staticVertex, &d.vertices[i], staticVertex);
+        BindVertexArray(vao);
+        BindBuffer(ARRAY_BUFFER, vbo);
+        BufferData(ARRAY_BUFFER, std::ptrdiff_t(packed.size()), packed.data(), STATIC_DRAW);
+        BindBuffer(ELEMENT_ARRAY_BUFFER, ibo);
+        if (d.vertices.size() <= 65536)
+        {
+            static std::vector<std::uint16_t> narrow;
+            narrow.assign(d.indices.begin(), d.indices.end());
+            BufferData(ELEMENT_ARRAY_BUFFER, std::ptrdiff_t(narrow.size() * 2), narrow.data(), STATIC_DRAW);
+            indexType = GL_UNSIGNED_SHORT;
+        }
+        else
+        {
+            BufferData(ELEMENT_ARRAY_BUFFER, std::ptrdiff_t(d.indices.size() * 4), d.indices.data(),
+                       STATIC_DRAW);
+            indexType = GL_UNSIGNED_INT;
+        }
+        int sizes[] = {3, 3, 2, 4};
+        std::uintptr_t offsets[] = {0, 12, 24, 32};
+        for (GLuint i = 0; i < 4; i++)
+        {
+            EnableVertexAttribArray(i);
+            VertexAttribPointer(i, sizes[i], GL_FLOAT, GL_FALSE, GLsizei(staticVertex),
+                                reinterpret_cast<const void *>(offsets[i]));
+        }
+        BindVertexArray(0);
+    }
     void draw() const
     {
         BindVertexArray(vao);
-        glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_INT, nullptr);
+        glDrawElements(GL_TRIANGLES, count, indexType, nullptr);
     }
     void drawInstances(const std::vector<std::array<float, 8>> &instances)
     {
@@ -166,7 +249,7 @@ struct Mesh
         // Orphan the stream so a new camera/shadow pass need not wait for the previous draw.
         BufferData(ARRAY_BUFFER, std::ptrdiff_t(instances.size() * sizeof(instances[0])), instances.data(),
                    DYNAMIC_DRAW);
-        DrawElementsInstanced(GL_TRIANGLES, count, GL_UNSIGNED_INT, nullptr, GLsizei(instances.size()));
+        DrawElementsInstanced(GL_TRIANGLES, count, indexType, nullptr, GLsizei(instances.size()));
     }
 };
 void quad(MeshData &m, Vec3 a, Vec3 b, Vec3 c, Vec3 d, float u = 1, float v = 1)
@@ -255,6 +338,41 @@ struct Renderer::Impl
     Mesh uiQuad, cube, marker, skin[2], patrolCap[2];
     GLuint effectShader{};
     EffectBatch effects;
+    // The sky, and the local reflection probe: the cube in use and the one being taken.
+    static constexpr int probeUnit = 7;
+    GLuint sky{}, skyVao{}, probeFbo{}, probeDepth{};
+    std::array<GLuint, 2> probeCubes{};
+    int probeFront{};
+    ReflectionProbe probe;
+    // Batches and triangles of the last face rendered for the probe.
+    size_t probeBatches{}, probeTriangles{};
+    // The sky fills what the scenery left open: one triangle at the far plane. `forward`
+    // and `up` are those of the view, `tangent` that of half its vertical angle.
+    void drawSky(const Atmosphere &air, Vec3 sun, Vec3 forward, Vec3 up, float tangent, float aspect,
+                 float time, bool probePass)
+    {
+        const Vec3 ahead = forward.unit(), right = cross(ahead, up).unit(), top = cross(right, ahead);
+        const Vec3 across = right * (tangent * aspect), rise = top * tangent;
+        UseProgram(sky);
+        auto at = [&](const char *name) { return GetUniformLocation(sky, name); };
+        Uniform3f(at("uRight"), across.x, across.y, across.z);
+        Uniform3f(at("uUp"), rise.x, rise.y, rise.z);
+        Uniform3f(at("uForward"), ahead.x, ahead.y, ahead.z);
+        Uniform3f(at("uSun"), sun.x, sun.y, sun.z);
+        Uniform3f(at("uFog"), air.horizon.x, air.horizon.y, air.horizon.z);
+        Uniform3f(at("uZenith"), air.zenith.x, air.zenith.y, air.zenith.z);
+        Uniform4f(at("uAir"), air.density, air.heightScale, air.golden, 0);
+        Uniform1f(at("uDay"), air.daylight);
+        Uniform1f(at("uRain"), air.rain);
+        Uniform1f(at("uTime"), time);
+        Uniform1i(at("uProbePass"), probePass ? 1 : 0);
+        glDepthMask(GL_FALSE);
+        BindVertexArray(skyVao);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        BindVertexArray(0);
+        glDepthMask(GL_TRUE);
+        UseProgram(scene);
+    }
     SceneMode mode{SceneMode::enhanced};
     GraphicsPreferences graphics;
     Language language{Language::russian};
@@ -319,6 +437,8 @@ struct Renderer::Impl
         int paintMask{};
         float alpha{1}, roughness{.7f}, metallic{};
         bool detail{};
+        // The surface of the city this batch holds (CitySurface), or -1.
+        int slot{-1};
     };
     struct Model
     {
@@ -342,7 +462,34 @@ struct Renderer::Impl
             }
         }
     };
-    std::vector<Batch> city;
+    // The standing city by sector. A sector that is not in memory has no batches.
+    struct SectorMeshes
+    {
+        std::vector<Batch> batches;
+        // Where each surface of the city is among the batches, or -1.
+        std::array<std::int16_t, SurfaceCount> at;
+        size_t bytes{};
+        bool installed{};
+        SectorMeshes() { at.fill(-1); }
+    };
+    std::vector<SectorMeshes> sectors;
+    // The sea beyond the island reaches the horizon whatever the draw distance. The
+    // outer sectors carry it; this plane stands in for those that are not in memory.
+    std::optional<Batch> openSea;
+    std::unique_ptr<SectorStream> sectorStream;
+    // In memory or being uploaded, and the orders the worker still has to deliver.
+    std::vector<bool> sectorResident;
+    std::vector<SectorOrder> sectorOrders;
+    std::optional<Vec3> sectorAnchor;
+    Vec3 sectorEye{};
+    float sectorRange{-1};
+    bool sectorIdle{};
+    std::unique_ptr<SectorStream::Packet> pendingSector;
+    std::vector<Batch> pendingSectorBatches;
+    int pendingSectorSurface{};
+    size_t pendingSectorBytes{}, sectorBytes{}, peakSectorBytes{}, residentSectors{}, sectorUploads{},
+        sectorEvictions{}, sectorBatches{};
+    double maxSectorUploadMs{};
     std::array<GLuint, 10> walls{}, normals{}, orm{};
     std::array<GLuint, 3> signs{};
     GLuint stationSign{};
@@ -392,7 +539,9 @@ struct Renderer::Impl
     HBITMAP bitmap{}, oldBitmap{};
     void *pixels{};
     HFONT font{}, large{};
-    std::map<std::string, GLint> locations;
+    // Every caller names its uniform with a string literal, so the address of the name
+    // finds its location without comparing text.
+    std::unordered_map<const char *, GLint> locations;
     GLint uniform(const char *n)
     {
         auto it = locations.find(n);
@@ -406,14 +555,63 @@ struct Renderer::Impl
     {
         gl::load();
         scene = program(readText(root / "Shaders/Native/scene.vert"),
-                        readText(root / "Shaders/Native/scene.frag"));
+                        readShader(root / "Shaders/Native/scene.frag"));
         ui = program(readText(root / "Shaders/Native/ui.vert"), readText(root / "Shaders/Native/ui.frag"));
         effectShader = program(readText(root / "Shaders/Native/effects.vert"),
-                               readText(root / "Shaders/Native/effects.frag"));
+                               readShader(root / "Shaders/Native/effects.frag"));
         effects.initialize(effectShader);
+        sky =
+            program(readText(root / "Shaders/Native/sky.vert"), readShader(root / "Shaders/Native/sky.frag"));
+        GenVertexArrays(1, &skyVao);
+        // The probe sampler must never share the unit of a 2D sampler, not even before the
+        // first frame sets the others.
+        for (const GLuint mirrored : {scene, effectShader})
+        {
+            UseProgram(mirrored);
+            Uniform1i(GetUniformLocation(mirrored, "uProbe"), probeUnit);
+        }
+        UseProgram(0);
+        static constexpr const char *constantNames[] = {"uHasNormal", "uHasOrm",   "uDetail",   "uTreeLod",
+                                                        "uInstanced", "uSurface",  "uEmissive", "uAlpha",
+                                                        "uRoughness", "uMetallic", "uTint"};
+        static_assert(std::size(constantNames) == size_t(Constant::count));
+        for (size_t i = 0; i < constants.size(); ++i)
+            constants[i].location = GetUniformLocation(scene, constantNames[i]);
+        modelLocation = GetUniformLocation(scene, "uModel");
+        glGenTextures(2, probeCubes.data());
+        for (const GLuint faces : probeCubes)
+        {
+            glBindTexture(TEXTURE_CUBE_MAP, faces);
+            for (int face = 0; face < 6; ++face)
+                glTexImage2D(TEXTURE_CUBE_MAP_POSITIVE_X + face, 0, RGBA16F, ReflectionProbe::size,
+                             ReflectionProbe::size, 0, GL_RGBA, GL_FLOAT, nullptr);
+            glTexParameteri(TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+            glTexParameteri(TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, CLAMP_TO_EDGE);
+            glTexParameteri(TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, CLAMP_TO_EDGE);
+            glTexParameteri(TEXTURE_CUBE_MAP, TEXTURE_WRAP_R, CLAMP_TO_EDGE);
+            GenerateMipmap(TEXTURE_CUBE_MAP);
+        }
+        glBindTexture(TEXTURE_CUBE_MAP, 0);
+        // A blurred reflection reads the small mip levels, where the edges of a cube show.
+        glEnable(TEXTURE_CUBE_MAP_SEAMLESS);
+        glGenTextures(1, &probeDepth);
+        glBindTexture(GL_TEXTURE_2D, probeDepth);
+        glTexImage2D(GL_TEXTURE_2D, 0, DEPTH_COMPONENT24, ReflectionProbe::size, ReflectionProbe::size, 0,
+                     GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        GenFramebuffers(1, &probeFbo);
+        BindFramebuffer(FRAMEBUFFER, probeFbo);
+        FramebufferTexture2D(FRAMEBUFFER, DEPTH_ATTACHMENT, GL_TEXTURE_2D, probeDepth, 0);
+        FramebufferTexture2D(FRAMEBUFFER, COLOR_ATTACHMENT0, TEXTURE_CUBE_MAP_POSITIVE_X, probeCubes[1], 0);
+        if (CheckFramebufferStatus(FRAMEBUFFER) != FRAMEBUFFER_COMPLETE)
+            throw std::runtime_error("Reflection probe framebuffer incomplete");
+        BindFramebuffer(FRAMEBUFFER, 0);
         const auto fullscreen = readText(root / "Shaders/Native/fullscreen.vert");
         post.initialize(program(fullscreen, readText(root / "Shaders/Native/glow.frag")),
-                        program(fullscreen, readText(root / "Shaders/Native/resolve.frag")));
+                        program(fullscreen, readText(root / "Shaders/Native/resolve.frag")),
+                        program(fullscreen, readText(root / "Shaders/Native/occlusion.frag")));
         glGenTextures(1, &shadowTexture);
         glBindTexture(GL_TEXTURE_2D, shadowTexture);
         glTexImage2D(GL_TEXTURE_2D, 0, DEPTH_COMPONENT24, SunShadow::resolution, SunShadow::resolution, 0,
@@ -776,11 +974,22 @@ struct Renderer::Impl
     }
     ~Impl()
     {
+        if (probeFbo)
+            DeleteFramebuffers(1, &probeFbo);
+        glDeleteTextures(2, probeCubes.data());
+        glDeleteTextures(1, &probeDepth);
+        if (skyVao)
+            DeleteVertexArrays(1, &skyVao);
+        if (sky)
+            DeleteProgram(sky);
         if (shadowFbo)
             DeleteFramebuffers(1, &shadowFbo);
         if (shadowTexture)
             glDeleteTextures(1, &shadowTexture);
-        city.clear();
+        sectorStream.reset();
+        sectors.clear();
+        openSea.reset();
+        pendingSectorBatches.clear();
         for (auto &v : cars)
             v.lods.clear();
         for (auto &[path, t] : textures)
@@ -961,8 +1170,9 @@ struct Renderer::Impl
     Batch uploadSurface(const MeshData &data, int i, bool detail)
     {
         Batch b;
-        b.mesh.upload(data);
+        b.mesh.uploadStatic(data);
         b.detail = detail;
+        b.slot = i;
         Vec3 low{1e9f, 1e9f, 1e9f}, high{-1e9f, -1e9f, -1e9f};
         for (const auto &vertex : data.vertices)
         {
@@ -1073,6 +1283,150 @@ struct Renderer::Impl
         }
         return b;
     }
+    void releaseSector(size_t id)
+    {
+        if (pendingSector && pendingSector->id == id)
+        {
+            pendingSector.reset();
+            pendingSectorBatches.clear();
+            pendingSectorBytes = 0;
+        }
+        auto &sector = sectors[id];
+        if (sector.installed)
+        {
+            sectorBytes -= sector.bytes;
+            sectorBatches -= sector.batches.size();
+            --residentSectors;
+            ++sectorEvictions;
+        }
+        sector = {}; // GL buffers die on the render thread.
+        sectorResident[id] = false;
+    }
+    // Uploads what is left of a sector, or all of it when there is no time to lose.
+    // One material is indivisible; between materials the frame's budget is checked.
+    bool uploadSector(SectorStream::Packet &packet, bool atOnce)
+    {
+        const auto start = std::chrono::steady_clock::now();
+        size_t uploaded{};
+        while (pendingSectorSurface < SurfaceCount)
+        {
+            auto &mesh = packet.geometry[pendingSectorSurface];
+            const size_t bytes = Mesh::staticBytes(mesh);
+            const double elapsed =
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+            if (!atOnce && uploaded && (uploaded + bytes > 2 * 1024 * 1024 || elapsed >= 1.5))
+                break;
+            if (!mesh.indices.empty())
+            {
+                pendingSectorBatches.push_back(uploadSurface(mesh, pendingSectorSurface, false));
+                uploaded += bytes;
+                pendingSectorBytes += bytes;
+            }
+            mesh = {}; // Release CPU geometry as soon as this material is uploaded.
+            ++pendingSectorSurface;
+        }
+        if (!atOnce)
+            maxSectorUploadMs = std::max(
+                maxSectorUploadMs,
+                std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+        peakSectorBytes = std::max(peakSectorBytes, sectorBytes + pendingSectorBytes);
+        if (pendingSectorSurface < SurfaceCount)
+            return false;
+        auto &sector = sectors[packet.id];
+        sector.batches = std::move(pendingSectorBatches);
+        for (size_t k = 0; k < sector.batches.size(); ++k)
+            sector.at[size_t(sector.batches[k].slot)] = std::int16_t(k);
+        sector.bytes = pendingSectorBytes;
+        sector.installed = true;
+        sectorBytes += sector.bytes;
+        sectorBatches += sector.batches.size();
+        ++residentSectors;
+        pendingSectorBatches.clear();
+        pendingSectorBytes = 0;
+        pendingSectorSurface = 0;
+        return true;
+    }
+    // Builds and uploads a sector on the spot: for the loading screen and for a sector
+    // the eye has jumped into. An upload in progress is left as it is.
+    void installSector(size_t id)
+    {
+        auto packet = sectorStream->build(id);
+        std::vector<Batch> interrupted = std::move(pendingSectorBatches);
+        const int surface = pendingSectorSurface;
+        const size_t bytes = pendingSectorBytes;
+        pendingSectorBatches.clear();
+        pendingSectorSurface = 0;
+        pendingSectorBytes = 0;
+        sectorResident[id] = true;
+        uploadSector(packet, true);
+        pendingSectorBatches = std::move(interrupted);
+        pendingSectorSurface = surface;
+        pendingSectorBytes = bytes;
+    }
+    // District streaming of the managed game: the standing city in memory follows the
+    // eye and the draw distance. A worker builds the sectors that come into range, the
+    // nearest first; one is uploaded at a time within a budget; those left behind go.
+    void updateSectors(Vec3 eye)
+    {
+        if (!sectorStream)
+            return;
+        const auto all = sectorStream->sectors();
+        const float range = float(graphics.distance);
+        sectorEye = eye;
+        // Turning the head does not change the neighbourhood: plan again only after four
+        // metres or a new draw distance.
+        if (!sectorAnchor || (*sectorAnchor - eye).length() >= 4 || sectorRange != range)
+        {
+            sectorAnchor = eye;
+            sectorRange = range;
+            auto plan = planSectors(all, sectorResident, eye, range);
+            for (const auto id : plan.evict)
+                releaseSector(id);
+            sectorOrders = std::move(plan.load);
+            // A sector at the eye cannot wait for the worker: after a jump the ground
+            // under the camera is built at once.
+            while (!sectorOrders.empty() && sectorOrders.front().distance < sectorUrgent)
+            {
+                installSector(sectorOrders.front().id);
+                ++sectorUploads;
+                sectorOrders.erase(sectorOrders.begin());
+            }
+            sectorStream->request(sectorOrders);
+            sectorIdle = false;
+        }
+        else if (sectorIdle)
+            return;
+        if (!pendingSector)
+        {
+            pendingSector = sectorStream->poll();
+            if (pendingSector)
+            {
+                if (sectorResident[pendingSector->id])
+                    pendingSector.reset(); // built on the spot in the meantime
+                else
+                {
+                    sectorResident[pendingSector->id] = true;
+                    pendingSectorSurface = 0;
+                    pendingSectorBytes = 0;
+                    pendingSectorBatches.clear();
+                }
+            }
+        }
+        if (!pendingSector)
+        {
+            sectorIdle = sectorOrders.empty();
+            return;
+        }
+        if (uploadSector(*pendingSector, false))
+        {
+            std::erase_if(sectorOrders,
+                          [&](const SectorOrder &order) { return order.id == pendingSector->id; });
+            pendingSector.reset();
+            ++sectorUploads;
+            // The queue of the worker is short; let it take the next ones.
+            sectorStream->request(sectorOrders);
+        }
+    }
     void updateDetails(Vec3 eye)
     {
         if (!detailStream)
@@ -1163,42 +1517,118 @@ struct Renderer::Impl
             ++detailUploads;
         }
     }
-    void setModel(const Mat4 &model) { UniformMatrix4fv(uniform("uModel"), 1, GL_FALSE, model.m.data()); }
+    // The constants of the scene program that change from one draw to the next, the
+    // textures of a material and the model matrix. A wall follows a wall and a wheel a
+    // wheel: a value already in place costs no call into the driver. Everything that
+    // sets them goes through here, and the memory is dropped at the start of every pass,
+    // when other code has had the program and the texture units.
+    enum class Constant
+    {
+        hasNormal,
+        hasOrm,
+        detail,
+        treeLod,
+        instanced,
+        surface,
+        emissive,
+        alpha,
+        roughness,
+        metallic,
+        tint,
+        count
+    };
+    struct ConstantSlot
+    {
+        GLint location{-1};
+        std::array<float, 3> value{};
+        bool known{};
+    };
+    std::array<ConstantSlot, size_t(Constant::count)> constants;
+    std::array<GLuint, 4> unitTexture{};
+    std::array<bool, 4> unitKnown{};
+    GLint modelLocation{-1};
+    Mat4 modelMatrix;
+    bool modelKnown{};
+    void forgetConstants()
+    {
+        for (auto &slot : constants)
+            slot.known = false;
+        unitKnown.fill(false);
+        modelKnown = false;
+    }
+    void setFlag(Constant which, int value)
+    {
+        auto &slot = constants[size_t(which)];
+        if (slot.known && slot.value[0] == float(value))
+            return;
+        Uniform1i(slot.location, value);
+        slot.value[0] = float(value);
+        slot.known = true;
+    }
+    void setScalar(Constant which, float value)
+    {
+        auto &slot = constants[size_t(which)];
+        if (slot.known && slot.value[0] == value)
+            return;
+        Uniform1f(slot.location, value);
+        slot.value[0] = value;
+        slot.known = true;
+    }
+    void setColour(Constant which, Vec3 value)
+    {
+        auto &slot = constants[size_t(which)];
+        if (slot.known && slot.value[0] == value.x && slot.value[1] == value.y && slot.value[2] == value.z)
+            return;
+        Uniform3f(slot.location, value.x, value.y, value.z);
+        slot.value = {value.x, value.y, value.z};
+        slot.known = true;
+    }
+    void bindUnit(unsigned unit, GLuint id)
+    {
+        if (unitKnown[unit] && unitTexture[unit] == id)
+            return;
+        ActiveTexture(TEXTURE0 + unit);
+        glBindTexture(GL_TEXTURE_2D, id);
+        ActiveTexture(TEXTURE0);
+        unitTexture[unit] = id;
+        unitKnown[unit] = true;
+    }
+    void setModel(const Mat4 &model)
+    {
+        if (modelKnown && model.m == modelMatrix.m)
+            return;
+        UniformMatrix4fv(modelLocation, 1, GL_FALSE, model.m.data());
+        modelMatrix = model;
+        modelKnown = true;
+    }
+    void apply(GLuint color, GLuint normal, GLuint ormMap, Vec3 tint, float emissive, int surface,
+               float alpha, float roughness, float metallic, bool detail)
+    {
+        bindUnit(0, color ? color : white);
+        bindUnit(1, normal ? normal : white);
+        if (ormMap)
+            bindUnit(3, ormMap);
+        setFlag(Constant::hasNormal, normal ? 1 : 0);
+        setFlag(Constant::hasOrm, ormMap ? 1 : 0);
+        setFlag(Constant::detail, detail ? 1 : 0);
+        setFlag(Constant::treeLod, -1);
+        setFlag(Constant::instanced, 0);
+        setFlag(Constant::surface, surface);
+        setColour(Constant::tint, tint);
+        setScalar(Constant::emissive, emissive);
+        setScalar(Constant::alpha, alpha);
+        setScalar(Constant::roughness, roughness);
+        setScalar(Constant::metallic, metallic);
+    }
     void material(GLuint color, GLuint normal, Vec3 tint, float emissive = 0)
     {
-        ActiveTexture(TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, color ? color : white);
-        ActiveTexture(TEXTURE0 + 1);
-        glBindTexture(GL_TEXTURE_2D, normal ? normal : white);
-        ActiveTexture(TEXTURE0);
-        Uniform1i(uniform("uHasNormal"), normal ? 1 : 0);
-        Uniform1i(uniform("uHasOrm"), 0);
-        Uniform1i(uniform("uDetail"), 0);
-        Uniform1i(uniform("uTreeLod"), -1);
-        Uniform1i(uniform("uInstanced"), 0);
-        Uniform1i(uniform("uSurface"), 0);
-        Uniform3f(uniform("uTint"), tint.x, tint.y, tint.z);
-        Uniform1f(uniform("uEmissive"), emissive);
-        Uniform1f(uniform("uAlpha"), 1);
-        Uniform1f(uniform("uRoughness"), .7f);
-        Uniform1f(uniform("uMetallic"), 0);
+        apply(color, normal, 0, tint, emissive, 0, 1, .7f, 0, false);
     }
     void draw(const Batch &b, const Mat4 &model, bool beacon = false)
     {
         setModel(model);
-        material(b.color, b.normal, b.tint, beacon ? 1.f : b.emissive);
-        Uniform1i(uniform("uSurface"), b.surface);
-        Uniform1f(uniform("uAlpha"), b.alpha);
-        Uniform1f(uniform("uRoughness"), b.roughness);
-        Uniform1f(uniform("uMetallic"), b.metallic);
-        Uniform1i(uniform("uDetail"), b.detail ? 1 : 0);
-        Uniform1i(uniform("uHasOrm"), b.orm ? 1 : 0);
-        if (b.orm)
-        {
-            ActiveTexture(TEXTURE0 + 3);
-            glBindTexture(GL_TEXTURE_2D, b.orm);
-            ActiveTexture(TEXTURE0);
-        }
+        apply(b.color, b.normal, b.orm, b.tint, beacon ? 1.f : b.emissive, b.surface, b.alpha, b.roughness,
+              b.metallic, b.detail);
         b.mesh.draw();
     }
     void solid(Vec3 centre, Vec3 size, Vec3 color, float emissive = 0)
@@ -1406,12 +1836,13 @@ std::string Renderer::sceneryStats() const
 {
     auto &r = *impl_;
     auto stream = streamingStats();
-    return "Scenery batches=" + std::to_string(r.submittedBatches) + "/" + std::to_string(r.city.size()) +
+    return "Scenery batches=" + std::to_string(r.submittedBatches) + "/" + std::to_string(r.sectorBatches) +
            " near=" + std::to_string(r.submittedDetails) +
            " submitted_triangles=" + std::to_string(r.submittedTriangles) +
            " trees=" + std::to_string(r.treeCount) + " shadow_batches=" + std::to_string(r.shadowBatches) +
-           " resident_mesh_MiB=" + std::to_string((r.sceneryBytes + stream.gpuBytes) / (1024 * 1024)) +
-           " base_MiB=" + std::to_string(r.sceneryBytes / (1024 * 1024)) +
+           " resident_mesh_MiB=" +
+           std::to_string((r.sceneryBytes + r.sectorBytes + stream.gpuBytes) / (1024 * 1024)) +
+           " base_MiB=" + std::to_string((r.sceneryBytes + r.sectorBytes) / (1024 * 1024)) +
            " detail_MiB=" + std::to_string(stream.gpuBytes / (1024 * 1024)) +
            " detail_cells=" + std::to_string(stream.residentCells) + "/" + std::to_string(stream.totalCells) +
            " hud_upload_pixels=" + std::to_string(r.hudPixelsUploaded) + "/" +
@@ -1420,7 +1851,15 @@ std::string Renderer::sceneryStats() const
            " detail_uploads=" + std::to_string(stream.uploads) +
            " evictions=" + std::to_string(stream.evictions) +
            " peak_detail_MiB=" + std::to_string(stream.peakGpuBytes / (1024 * 1024)) +
-           " max_detail_upload_ms=" + std::to_string(stream.maxUploadMs);
+           " max_detail_upload_ms=" + std::to_string(stream.maxUploadMs) +
+           " sectors=" + std::to_string(stream.residentSectors) + "/" + std::to_string(stream.totalSectors) +
+           " sector_uploads=" + std::to_string(stream.sectorUploads) +
+           " sector_evictions=" + std::to_string(stream.sectorEvictions) +
+           " peak_base_MiB=" + std::to_string((r.sceneryBytes + stream.peakSectorBytes) / (1024 * 1024)) +
+           " max_sector_upload_ms=" + std::to_string(stream.maxSectorUploadMs) +
+           " probe_faces=" + std::to_string(r.probe.captured()) +
+           " probe_batches=" + std::to_string(r.probeBatches) +
+           " probe_triangles=" + std::to_string(r.probeTriangles);
 }
 StreamingStats Renderer::streamingStats() const
 {
@@ -1428,20 +1867,40 @@ StreamingStats Renderer::streamingStats() const
     if (!r.detailStream)
         return {};
     const auto worker = r.detailStream->stats();
-    return {r.detailMeshes.size(),
-            r.detailStream->cells().size(),
-            r.detailResidency->bytes() + r.pendingBytes,
-            r.peakDetailBytes,
-            r.detailUploads,
-            r.detailEvictions,
-            worker.queued,
-            worker.ready,
-            r.maxDetailUploadMs};
+    StreamingStats stats{r.detailMeshes.size(),
+                         r.detailStream->cells().size(),
+                         r.detailResidency->bytes() + r.pendingBytes,
+                         r.peakDetailBytes,
+                         r.detailUploads,
+                         r.detailEvictions,
+                         worker.queued,
+                         worker.ready,
+                         r.maxDetailUploadMs};
+    if (r.sectorStream)
+    {
+        const auto sectorWorker = r.sectorStream->stats();
+        stats.residentSectors = r.residentSectors;
+        stats.totalSectors = r.sectors.size();
+        stats.sectorBytes = r.sectorBytes + r.pendingSectorBytes;
+        stats.peakSectorBytes = r.peakSectorBytes;
+        stats.sectorUploads = r.sectorUploads;
+        stats.sectorEvictions = r.sectorEvictions;
+        stats.sectorsQueued = sectorWorker.queued;
+        stats.sectorsReady = sectorWorker.ready;
+        stats.maxSectorUploadMs = r.maxSectorUploadMs;
+        const auto all = r.sectorStream->sectors();
+        for (size_t id = 0; id < all.size(); ++id)
+            if (!r.sectors[id].installed)
+                stats.nearestMissingSector =
+                    std::min(stats.nearestMissingSector, all[id].distance(r.sectorEye));
+    }
+    return stats;
 }
 void Renderer::prepare(const World &world)
 {
     auto &r = *impl_;
     r.effects.clearWeatherCache();
+    r.probe.reset();
     r.minimap.rebuild(world);
     r.buildLampMap(world);
     r.detailStream.reset(); // Join old immutable jobs before starting a new city.
@@ -1451,7 +1910,17 @@ void Renderer::prepare(const World &world)
     r.pendingBatches.clear();
     r.pendingBytes = r.detailUploads = r.detailEvictions = r.peakDetailBytes = 0;
     r.maxDetailUploadMs = 0;
-    r.city.clear();
+    r.sectorStream.reset(); // The worker of the old city stops before its meshes go.
+    r.sectors.clear();
+    r.openSea.reset();
+    r.sectorOrders.clear();
+    r.sectorAnchor.reset();
+    r.pendingSector.reset();
+    r.pendingSectorBatches.clear();
+    r.pendingSectorSurface = 0;
+    r.pendingSectorBytes = r.sectorBytes = r.peakSectorBytes = r.residentSectors = r.sectorUploads =
+        r.sectorEvictions = r.sectorBatches = 0;
+    r.maxSectorUploadMs = 0;
     r.sceneryBytes = 0;
     r.actorMotion.clear();
     auto &walls = r.walls;
@@ -1484,19 +1953,30 @@ void Renderer::prepare(const World &world)
             r.potholeArt[i] = r.white;
         }
     }
-    // Chunk ownership covers the whole island and coast, regardless of grid size.
-    double low = -std::ceil(world.landEdge / 144) * 144, high = -low;
-    for (double z = low; z < high; z += 144)
-        for (double x = low; x < high; x += 144)
-        {
-            auto data = cityChunk(world, x, z);
-            for (int i = 0; i < SurfaceCount; ++i)
-                if (!data[i].indices.empty())
-                {
-                    r.sceneryBytes += meshBytes(data[i]);
-                    r.city.push_back(r.uploadSurface(data[i], i, false));
-                }
-        }
+    // The standing city within the draw distance of the player is built before the
+    // first frame; from then on the worker follows the eye (updateSectors).
+    r.sectorStream = std::make_unique<SectorStream>(world);
+    r.sectors.resize(r.sectorStream->sectors().size());
+    r.sectorResident.assign(r.sectors.size(), false);
+    {
+        const auto at = world.position();
+        const Vec3 eye{float(at.x), 0, float(at.z)};
+        for (const auto &order :
+             planSectors(r.sectorStream->sectors(), r.sectorResident, eye, float(r.graphics.distance)).load)
+            r.installSector(order.id);
+    }
+    if (world.layout.revision())
+    {
+        // The same four bands the outer sectors extend their water over (cityChunk).
+        const float edge = float(std::ceil(world.layout.edge() / Sector::size) * Sector::size),
+                    out = edge + 1800, y = float(CityLayout::waterLevel);
+        MeshData sea;
+        quad(sea, {-out, y, out}, {out, y, out}, {out, y, edge}, {-out, y, edge});
+        quad(sea, {-out, y, -edge}, {out, y, -edge}, {out, y, -out}, {-out, y, -out});
+        quad(sea, {-out, y, edge}, {-edge, y, edge}, {-edge, y, -edge}, {-out, y, -edge});
+        quad(sea, {edge, y, edge}, {out, y, edge}, {out, y, -edge}, {edge, y, -edge});
+        r.openSea = r.uploadSurface(sea, Water, false);
+    }
     r.detailStream = std::make_unique<DetailStream>(world);
     r.measuredDetailBytes.assign(r.detailStream->cells().size(), 0);
     r.detailResidency = std::make_unique<DetailResidency>(r.detailStream->cells().size());
@@ -1531,11 +2011,14 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     const int sceneHeight = r.mode == SceneMode::scaled ? std::max(1, (h * 3 + 2) / 4) : h;
     if (post)
         r.post.resize(sceneWidth, sceneHeight);
+    r.updateSectors(view.eye);
     r.updateDetails(view.eye);
     r.timer.begin();
     float day = float(world.clock.daylight()), rain = float(world.rain);
-    Vec3 fog = {.48f * day + .055f, .62f * day + .055f, .73f * day + .07f};
-    fog = fog * (1 - rain * .35f);
+    // The sky and the haze of the managed game for this hour and weather.
+    const auto air = Atmosphere::create(world.rain, world.clock.daylight(), world.clock.sunHeight(),
+                                        world.wetness, world.clock.hour > 12);
+    const Vec3 fog = air.horizon;
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
@@ -1546,8 +2029,8 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     const float detailScale = .5f + .25f * r.graphics.quality;
     const float nearPlane = std::clamp(view.distance * .01f, .12f, 8.f);
     const float farPlane = std::max(650.f, range + view.distance + 100.f);
-    auto vp = Mat4::perspective(float(pi / 3), float(w) / h, nearPlane, farPlane) *
-              Mat4::lookAt(view.eye, view.target);
+    const auto projection = Mat4::perspective(float(pi / 3), float(w) / h, nearPlane, farPlane);
+    auto vp = projection * Mat4::lookAt(view.eye, view.target);
     Vec3 sun{float(std::cos((world.clock.hour - 6) * pi / 12)), float(world.clock.sunHeight()), .3f};
     auto shadow = sunShadow(view.target, sun);
     if (!view.shadows || r.graphics.quality == 0)
@@ -1651,18 +2134,60 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             tunnelFloor[tunnels * 3 + 2] = float(lamps - std::floor(lamps / 9) * 9);
             ++tunnels;
         }
-    for (int pass = 0; pass < 2; ++pass)
+    // The reflection probe of the managed game follows the player, 1.8 m above the ground
+    // under them. The lowest quality does without it.
+    int probeFace = -1;
+    Vec3 probeEye{};
+    if (r.graphics.quality > 0)
     {
-        bool depthPass = pass == 0;
-        if (depthPass && shadow.strength <= 0)
+        const bool driving = world.controlledCar >= 0;
+        const Body &body = driving ? world.cars[world.controlledCar].body : world.player;
+        const Vec3 centre{float(body.p.x), float(body.height - (driving ? .8 : .85) + 1.8), float(body.p.z)};
+        // The cube is taken again when the city around it has changed: a sector within
+        // its reach has arrived or gone.
+        int surroundings = 0;
+        if (r.sectorStream)
+        {
+            const auto all = r.sectorStream->sectors();
+            for (size_t id = 0; id < all.size(); ++id)
+                if (r.sectors[id].installed && all[id].distance(centre) < ReflectionProbe::farPlane)
+                    surroundings += int(id) + 1;
+        }
+        probeFace = r.probe.begin(centre, world.clock.hour, world.rain, world.time, surroundings);
+        probeEye = r.probe.pending();
+    }
+    const Mat4 probeMatrix = probeFace < 0
+                                 ? Mat4::identity()
+                                 : ReflectionProbe::projection() * ReflectionProbe::view(probeEye, probeFace);
+    const Vec3 sunRay{float(std::cos((world.clock.hour - 6) * pi / 12)), float(world.clock.sunHeight()), .3f};
+    // The sun map, then one face of the probe while it is being taken, then the view.
+    for (int pass = 0; pass < 3; ++pass)
+    {
+        const bool depthPass = pass == 0, probePass = pass == 1, viewPass = pass == 2;
+        if ((depthPass && shadow.strength <= 0) || (probePass && probeFace < 0))
             continue;
+        const Vec3 eye = probePass ? probeEye : view.eye;
+        const Mat4 &passMatrix = depthPass ? shadow.matrix : probePass ? probeMatrix : vp;
+        const float passRange = probePass ? ReflectionProbe::farPlane : range;
         ActiveTexture(TEXTURE0 + 5);
         // Never sample a depth texture while rendering into it.
         glBindTexture(GL_TEXTURE_2D, depthPass ? 0 : r.shadowTexture);
+        ActiveTexture(TEXTURE0 + Impl::probeUnit);
+        glBindTexture(TEXTURE_CUBE_MAP, r.probeCubes[r.probeFront]);
         ActiveTexture(TEXTURE0);
-        BindFramebuffer(FRAMEBUFFER, depthPass ? r.shadowFbo : (post ? r.post.sceneTarget() : 0));
-        glViewport(0, 0, depthPass ? SunShadow::resolution : sceneWidth,
-                   depthPass ? SunShadow::resolution : sceneHeight);
+        BindFramebuffer(FRAMEBUFFER, depthPass   ? r.shadowFbo
+                                     : probePass ? r.probeFbo
+                                                 : (post ? r.post.sceneTarget() : 0));
+        if (probePass)
+            FramebufferTexture2D(FRAMEBUFFER, COLOR_ATTACHMENT0, TEXTURE_CUBE_MAP_POSITIVE_X + probeFace,
+                                 r.probeCubes[1 - r.probeFront], 0);
+        const int passWidth = depthPass   ? SunShadow::resolution
+                              : probePass ? ReflectionProbe::size
+                                          : sceneWidth;
+        const int passHeight = depthPass   ? SunShadow::resolution
+                               : probePass ? ReflectionProbe::size
+                                           : sceneHeight;
+        glViewport(0, 0, passWidth, passHeight);
         glColorMask(!depthPass, !depthPass, !depthPass, !depthPass);
         if (depthPass)
         {
@@ -1676,12 +2201,20 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         }
         glClear(GL_DEPTH_BUFFER_BIT | (depthPass ? 0 : GL_COLOR_BUFFER_BIT));
         Uniform1i(r.uniform("uDepthPass"), depthPass ? 1 : 0);
-        UniformMatrix4fv(r.uniform("uViewProjection"), 1, GL_FALSE,
-                         (depthPass ? shadow.matrix : vp).m.data());
-        Uniform3f(r.uniform("uEye"), view.eye.x, view.eye.y, view.eye.z);
+        UniformMatrix4fv(r.uniform("uViewProjection"), 1, GL_FALSE, passMatrix.m.data());
+        Uniform3f(r.uniform("uEye"), eye.x, eye.y, eye.z);
         Uniform3f(r.uniform("uFog"), fog.x, fog.y, fog.z);
-        Uniform3f(r.uniform("uSun"), float(std::cos((world.clock.hour - 6) * pi / 12)),
-                  float(world.clock.sunHeight()), .3f);
+        Uniform3f(r.uniform("uZenith"), air.zenith.x, air.zenith.y, air.zenith.z);
+        Uniform4f(r.uniform("uAir"), air.density, air.heightScale, air.golden, float(world.wetness));
+        Uniform3f(r.uniform("uSun"), sunRay.x, sunRay.y, sunRay.z);
+        // A face of the probe mirrors only the sky and the analytic city: no recursion.
+        Uniform1i(r.uniform("uProbe"), Impl::probeUnit);
+        Uniform1i(r.uniform("uProbePass"), probePass ? 1 : 0);
+        Uniform1i(r.uniform("uProbeReady"), viewPass && r.probe.ready() && r.graphics.quality > 0 ? 1 : 0);
+        const Vec3 probeCentre = r.probe.centre();
+        Uniform3f(r.uniform("uProbeCentre"), probeCentre.x, probeCentre.y, probeCentre.z);
+        Uniform1i(r.uniform("uCoat"), 0);
+        Uniform1i(r.uniform("uPaintMask"), 0);
         Uniform1f(r.uniform("uDay"), day);
         Uniform1f(r.uniform("uTime"), float(world.time));
         Uniform1f(r.uniform("uHour"), float(world.clock.hour));
@@ -1711,34 +2244,52 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         glBindTexture(GL_TEXTURE_2D, r.rug);
         ActiveTexture(TEXTURE0);
         Uniform1i(r.uniform("uSkin"), 0);
-        Uniform1f(r.uniform("uAlpha"), 1);
-        Frustum frustum(depthPass ? shadow.matrix : vp);
+        r.forgetConstants();
+        r.setScalar(Impl::Constant::alpha, 1);
+        if (probePass)
+            r.probeBatches = r.probeTriangles = 0;
+        Frustum frustum(passMatrix);
         auto visible = [&](Vec3 p, float radius, float objectRange)
         {
-            auto delta = p - view.eye;
-            const float limit = std::min(range, objectRange) + radius;
+            auto delta = p - eye;
+            const float limit = std::min(passRange, objectRange) + radius;
             return (depthPass || dot(delta, delta) < limit * limit) && frustum.sphere(p, radius);
         };
         auto drawScenery = [&](const auto &b)
         {
-            if ((!depthPass || (!b.detail && b.surface != 4)) &&
+            // Facade details are too small for the sun map and for a face of the probe.
+            if ((viewPass || (!b.detail && (probePass || b.surface != 4))) &&
                 visible(b.centre, b.radius, b.detail ? buildingDetailEnd * detailScale : range))
             {
                 if (depthPass)
                     ++r.shadowBatches;
-                else
+                else if (viewPass)
                 {
                     ++r.submittedBatches;
                     r.submittedTriangles += size_t(b.mesh.count) / 3;
                     if (b.detail)
                         ++r.submittedDetails;
                 }
+                else
+                {
+                    ++r.probeBatches;
+                    r.probeTriangles += size_t(b.mesh.count) / 3;
+                }
                 r.draw(b, Mat4::identity());
             }
         };
-        for (const auto &b : r.city)
-            drawScenery(b);
-        if (!depthPass)
+        // The standing city is drawn surface by surface, not sector by sector: all of
+        // its road, then all of its pavement. The batches of one surface share their
+        // textures and constants, so only the first of a run has to set them.
+        for (int slot = 0; slot < SurfaceCount; ++slot)
+        {
+            for (const auto &sector : r.sectors)
+                if (const int at = sector.at[size_t(slot)]; at >= 0)
+                    drawScenery(sector.batches[size_t(at)]);
+            if (slot == Water && r.openSea)
+                drawScenery(*r.openSea);
+        }
+        if (viewPass)
             for (const auto &[id, batches] : r.detailMeshes)
                 for (const auto &b : batches)
                     drawScenery(b);
@@ -1746,6 +2297,8 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             instances.clear();
         for (auto id : r.visibleFixtures)
         {
+            if (probePass)
+                break;
             const auto &f = world.fixtures[id];
             const auto &body = world.staticBodies[f.body];
             Vec3 at{float(body.p.x), float(body.height), float(body.p.z)};
@@ -1802,8 +2355,8 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 r.material(!part && kind == size_t(World::FixtureKind::dumpster) ? r.dumpsterTexture
                                                                                  : r.white,
                            0, part ? finishes[kind].trim : finishes[kind].body);
-                Uniform1i(r.uniform("uInstanced"), 2);
-                Uniform1f(r.uniform("uMetallic"), finishes[kind].metal);
+                r.setFlag(Impl::Constant::instanced, 2);
+                r.setScalar(Impl::Constant::metallic, finishes[kind].metal);
                 mesh.drawInstances(instances);
                 if (depthPass)
                     ++r.shadowBatches;
@@ -1820,8 +2373,8 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         {
             auto centre = t.foot + Vec3{0, t.height * .55f, 0};
             // Conservative sphere covers both LODs, the crown and the wind deformation.
-            float radius = t.height * .8f, distance = (centre - view.eye).length();
-            if (distance - radius > std::min(float(treeDrawDistance), range) ||
+            float radius = t.height * .8f, distance = (centre - eye).length();
+            if (distance - radius > std::min(float(treeDrawDistance), passRange) ||
                 !frustum.sphere(centre, radius))
                 continue;
             float angle = float(t.seed % 1000) * .01f;
@@ -1843,19 +2396,40 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             {
                 r.setModel(Mat4::identity());
                 r.material(r.white, 0, {1, 1, 1});
-                Uniform1i(r.uniform("uInstanced"), 1);
-                Uniform1i(r.uniform("uSurface"), 8 + part);
-                Uniform1i(r.uniform("uTreeLod"), GLint(k % 2));
+                r.setFlag(Impl::Constant::instanced, 1);
+                r.setFlag(Impl::Constant::surface, 8 + part);
+                r.setFlag(Impl::Constant::treeLod, int(k % 2));
                 auto &mesh = r.treeModels[k][part];
                 mesh.drawInstances(instances);
                 if (depthPass)
                     ++r.shadowBatches;
-                else
+                else if (viewPass)
                 {
                     ++r.submittedBatches;
                     r.submittedTriangles += size_t(mesh.count) / 3 * instances.size();
                 }
+                else
+                {
+                    ++r.probeBatches;
+                    r.probeTriangles += size_t(mesh.count) / 3 * instances.size();
+                }
             }
+        }
+        if (probePass)
+        {
+            // The probe holds the city that stands still and the sky, as in the managed
+            // game: nothing that moves, and nothing small.
+            r.drawSky(air, sunRay, ReflectionProbe::direction(probeFace), ReflectionProbe::up(probeFace), 1,
+                      1, float(world.time), true);
+            if (r.probe.finish(world.time))
+            {
+                r.probeFront = 1 - r.probeFront;
+                ActiveTexture(TEXTURE0 + Impl::probeUnit);
+                glBindTexture(TEXTURE_CUBE_MAP, r.probeCubes[r.probeFront]);
+                GenerateMipmap(TEXTURE_CUBE_MAP);
+                ActiveTexture(TEXTURE0);
+            }
+            continue;
         }
         for (const auto &site : world.sites)
         {
@@ -1885,6 +2459,10 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             for (const auto &batch : lods[lod])
                 r.draw(batch, transform);
         }
+        if (viewPass)
+            // Before anything translucent: glass does not write depth.
+            r.drawSky(air, sunRay, view.target - view.eye, {0, 1, 0}, float(std::tan(pi / 6)), float(w) / h,
+                      float(world.time), false);
         auto vehicleTransform = [](const Car &c)
         {
             Vec3 base{float(c.body.p.x), float(c.body.height - .8), float(c.body.p.z)};
@@ -2152,10 +2730,12 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                         partTransform =
                             transform * Mat4::translate(pivot) * spin * Mat4::translate(pivot * -1.f);
                     }
-                    if (c.paint && !depthPass)
+                    if (!depthPass)
                     {
                         Uniform1i(r.uniform("uPaintIndex"), c.paint);
                         Uniform1i(r.uniform("uPaintMask"), b.paintMask);
+                        // The body and the glass mirror the city; a wreck mirrors nothing.
+                        Uniform1i(r.uniform("uCoat"), c.destroyed ? -1 : translucent ? 2 : 1);
                     }
                     r.draw(b, partTransform, beacon);
                 }
@@ -2165,8 +2745,12 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                     glDisable(GL_BLEND);
                 }
             }
-            if (c.paint && !depthPass)
+            if (!depthPass)
+            {
                 Uniform1i(r.uniform("uPaintIndex"), 0);
+                Uniform1i(r.uniform("uPaintMask"), 0);
+                Uniform1i(r.uniform("uCoat"), 0);
+            }
         }
         for (const auto &s : world.scooters)
         {
@@ -2186,9 +2770,15 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         for (size_t i = 0; i < world.animals.size(); ++i)
         {
             const auto &a = world.animals[i];
+            // Dead, or stunned by a car: it lies, and in the first second after the blow tumbles.
+            const bool stunned = a.knockedUntil > world.time;
             bool dead = a.deadUntil > 0;
             Vec2 pos = a.p + a.velocity * (world.animalClock - .1);
-            Vec3 at{float(pos.x), float(a.altitude + .065 + (dead ? .09 : 0.)), float(pos.z)};
+            // A body in the air moves between the steps of the animals' clock as well.
+            const double since = world.animalClock - .1;
+            const double flight =
+                (dead || stunned) && a.rise != 0 ? a.rise * since - .5 * 9.81 * since * since : 0;
+            Vec3 at{float(pos.x), float(a.altitude + flight + .065 + (dead ? .09 : 0.)), float(pos.z)};
             if (!visible(at, 1.25f, 105))
                 continue;
             const auto &rig = r.animalRigs[a.variant];
@@ -2197,15 +2787,18 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                                           : distance < 40             ? 1
                                                                       : 2,
                                           rig.model.lods.size() - 1);
-            int clip = dead                                           ? 0
+            int clip = dead || stunned                                ? 0
                        : a.flock >= 0 && world.flocks[a.flock].flying ? 3
                        : a.velocity.length2() > 4                     ? 2
                        : a.velocity.length2() > .01                   ? 1
                                                                       : 0;
             double phase = (clip == 1 || clip == 2 ? a.distance : world.time) / rig.cycle[clip] + i * .137;
-            float pose = dead ? 0.f : float(clip * 64 + std::fmod(phase, 1.) * 64);
+            float pose = dead || stunned ? 0.f : float(clip * 64 + std::fmod(phase, 1.) * 64);
             float scale = a.species == Species::bird ? .72f : float(.94 + (i % 5) * .03);
-            Mat4 model = Mat4::translate(at) * Mat4::yaw(float(a.heading)) * Mat4::roll(dead ? 1.5f : 0.f) *
+            const float tilt = dead      ? 1.5f
+                               : stunned ? float(clamp(a.knockedUntil - world.time, 0., 1.)) * 1.2f
+                                         : 0.f;
+            Mat4 model = Mat4::translate(at) * Mat4::yaw(float(a.heading)) * Mat4::roll(tilt) *
                          Mat4::scale({scale, scale, scale});
             Uniform1i(r.uniform("uSkin"), 1);
             Uniform1f(r.uniform("uPose"), pose);
@@ -2318,9 +2911,32 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         if (visible(p, 1, 250))
             r.solid(p, {.12f, .12f, .12f}, {1, .6f, .2f}, 2);
     }
+    {
+        // Puddles mirror the city, and the haze takes distant smoke: the effects share
+        // the sky, the haze and the probe of the scene.
+        UseProgram(r.effectShader);
+        auto at = [&](const char *name) { return GetUniformLocation(r.effectShader, name); };
+        const Vec3 probeCentre = r.probe.centre();
+        Uniform3f(at("uEye"), view.eye.x, view.eye.y, view.eye.z);
+        Uniform1f(at("uTime"), float(world.time));
+        Uniform3f(at("uSun"), sunRay.x, sunRay.y, sunRay.z);
+        Uniform3f(at("uFog"), fog.x, fog.y, fog.z);
+        Uniform3f(at("uZenith"), air.zenith.x, air.zenith.y, air.zenith.z);
+        Uniform4f(at("uAir"), air.density, air.heightScale, air.golden, float(world.wetness));
+        Uniform1f(at("uDay"), day);
+        Uniform1f(at("uRain"), rain);
+        Uniform1i(at("uProbeReady"), r.probe.ready() && r.graphics.quality > 0 ? 1 : 0);
+        Uniform3f(at("uProbeCentre"), probeCentre.x, probeCentre.y, probeCentre.z);
+    }
     r.effects.draw(r.effectShader, world, view, vp, r.graphics.effects);
     if (post)
-        r.post.present(w, h, day, rain, float(world.clock.sunHeight()), r.graphics.bloom);
+        // Contact shading follows the quality setting, as in the managed game: none at
+        // the lowest, eight samples at the middle one and twelve at the highest.
+        r.post.present(w, h, day, rain, float(world.clock.sunHeight()), r.graphics.bloom,
+                       {projection.m[0], projection.m[5], nearPlane, farPlane,
+                        r.graphics.quality > 1   ? 12
+                        : r.graphics.quality > 0 ? 8
+                                                 : 0});
     r.timer.end();
     UseProgram(0);
 }

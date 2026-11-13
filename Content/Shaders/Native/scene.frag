@@ -6,8 +6,14 @@ out vec4 fragColor;
 uniform sampler2D uColor, uNormal, uOrm, uRug;
 uniform int uHasNormal, uHasOrm, uSkin, uSurface, uDetail;
 uniform int uPaintIndex, uPaintMask;
-uniform vec3 uEye, uSun, uFog, uTint;
-uniform float uDay, uRain, uEmissive, uAlpha, uTime, uHour;
+// 1 on the body of a car, 2 on its glass: the clear coat that mirrors the city.
+// -1 on a wreck, which mirrors nothing.
+uniform int uCoat;
+// 1 while a face of the reflection probe is rendered: linear light is kept.
+uniform int uProbePass;
+uniform vec3 uEye, uTint;
+uniform float uEmissive, uAlpha, uTime, uHour;
+#include "environment.glsl"
 uniform float uRoughness, uMetallic, uDetailStart, uDetailEnd;
 uniform sampler2D uShadow;
 uniform mat4 uShadowMatrix;
@@ -22,6 +28,16 @@ uniform float uGridLow, uLampSide;
 uniform vec3 uLampPosition[12], uLampColor[12], uLampDirection[12];
 const float PI = 3.14159265;
 float hash(float n) { return fract(sin(n * 12.9898 + 1.312) * 43758.5453); }
+// Value noise of the managed surface shader, for the patches of a wet street.
+float latticeHash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+float patches(vec3 p) {
+    vec3 i = floor(p), f = fract(p);
+    f = f*f*(3.-2.*f);
+    return mix(mix(mix(latticeHash(i), latticeHash(i+vec3(1,0,0)), f.x),
+                   mix(latticeHash(i+vec3(0,1,0)), latticeHash(i+vec3(1,1,0)), f.x), f.y),
+               mix(mix(latticeHash(i+vec3(0,0,1)), latticeHash(i+vec3(1,0,1)), f.x),
+                   mix(latticeHash(i+vec3(0,1,1)), latticeHash(i+vec3(1,1,1)), f.x), f.y), f.z);
+}
 float foliage(vec2 uv, float species) {
     vec2 p = uv*2.-1.;
     float mask = 0.;
@@ -86,7 +102,7 @@ int tunnelAt(vec3 p) {
 vec3 localLights(vec3 n, vec3 albedo, bool underground) {
     vec3 sum = vec3(0.);
     float dark = underground ? 0. : 1. - uDay;
-    float wet = uRain * max(n.y, 0.);
+    float wet = uAir.w * max(n.y, 0.);
     if (dark > .001 && uGridNodes > 0) {
         // Each node owns the posts beside its northern and eastern streets; the lamp
         // map holds the height of every lamp head, or a large negative value for none.
@@ -214,9 +230,9 @@ vec3 apartment(vec3 normal, vec3 view) {
     vec3 fabric = mix(vec3(.34,.26,.18),vec3(.19,.26,.22),hash(seed+7));
     if (curtain == 7 || curtain == 8) fabric = vec3(.48,.47,.40);
     roomColor = mix(roomColor,fabric*folds*(.12+.7*uDay+1.4*lamp),cloth);
-    float fresnel = .09+.55*pow(1.0-max(dot(normal,view),0),5.0);
-    vec3 sky = pow(uFog,vec3(2.2))*(.3+.7*uDay);
-    roomColor = mix(roomColor,sky,fresnel);
+    // The glass mirrors the street as in the managed game.
+    float fresnel = .15+.70*pow(1.0-abs(dot(normal,view)),4.0);
+    roomColor = mix(roomColor,cityReflection(vWorld,reflect(-view,normal),.16,false),fresnel);
     float glass = rectangle(vUv,vec2(.5),vec2(.452,.452));
     glass *= 1.0-rectangle(vUv,vec2(.5),vec2(.018,.5));
     glass *= 1.0-rectangle(vUv,vec2(.75,.32),vec2(.25,.015));
@@ -306,6 +322,8 @@ void main() {
         vec3 phases = vec3(swell, chop, ripple);
         vec3 waves = cos(phases) * (1.-smoothstep(vec3(.55), vec3(PI), fwidth(phases)));
         vec2 slope = waves.x*vec2(.024,.014) + waves.y*vec2(-.011,.019) + waves.z*vec2(.016,.004);
+        // As in the managed game the swell flattens with distance: far water is a calm mirror.
+        slope /= 1.+eyeDistance*.012;
         n = normalize(vec3(slope.x, 1., slope.y));
     }
     if (uHasNormal != 0) {
@@ -318,23 +336,36 @@ void main() {
         n = normalize(mat3(t*scale,b*scale,n)*(texture(uNormal,vUv).xyz*2.0-1.0));
     }
     vec3 baseColor = tex.rgb*uTint;
-    if (uPaintIndex > 0 && (vehicleMaterial == 1 || uPaintMask > 0)) {
+    // How much of the pixel is body paint: all of a dedicated paint material, the
+    // coloured part of an atlas shared with the trim.
+    float paint = 0.;
+    if (vehicleMaterial == 1 || uPaintMask > 0) {
         const vec3 colors[12] = vec3[12](
             vec3(.19,.49,.55),vec3(.66,.22,.16),vec3(.40,.48,.25),vec3(.83,.72,.47),
             vec3(.28,.38,.66),vec3(.72,.71,.65),vec3(.48,.18,.29),vec3(.22,.40,.32),
             vec3(.78,.47,.22),vec3(.34,.32,.48),vec3(.48,.59,.66),vec3(.28,.26,.24));
         float lightness = dot(baseColor,vec3(.2126,.7152,.0722));
         float chroma = max(max(baseColor.r,baseColor.g),baseColor.b)-min(min(baseColor.r,baseColor.g),baseColor.b);
-        float coverage = uPaintMask == 2 ? smoothstep(.025,.14,chroma)*smoothstep(.055,.19,lightness) : 1.;
-        baseColor = mix(baseColor,colors[uPaintIndex-1]*(.50+.75*lightness),coverage);
+        paint = uPaintMask == 2 ? smoothstep(.025,.14,chroma)*smoothstep(.055,.19,lightness) : 1.;
+        if (uPaintIndex > 0) baseColor = mix(baseColor,colors[uPaintIndex-1]*(.50+.75*lightness),paint);
+    }
+    int tunnel = uTunnelCount > 0 ? tunnelAt(vWorld) : -1;
+    // Wet asphalt of the managed game: the street does not wet evenly. Patches of it
+    // darken, turn smooth and mirror the city for as long as the street stays wet.
+    // No rain falls under the roof of a tunnel.
+    float damp = 0.;
+    if (uSurface == 2 && uAir.w > .002 && tunnel < 0) {
+        damp = uAir.w*smoothstep(.2,.7,patches(vWorld*.7));
+        baseColor *= 1.-damp*.3;
     }
     vec3 albedo = pow(max(baseColor,vec3(.001)),vec3(2.2));
     vec3 orm = uHasOrm != 0 ? texture(uOrm,vUv).rgb : vec3(1,uRoughness,uMetallic);
     float ao = clamp(orm.r,.15,1), metal = clamp(orm.b,0,1);
-    float rough = mix(clamp(orm.g,.08,1),.24,uRain*max(n.y,0));
+    float rough = mix(clamp(orm.g,.08,1),.24,uAir.w*max(n.y,0));
+    rough = mix(rough,.14,damp);
     if (vehicleMaterial == 22) rough = .12;
     else if (vehicleMaterial == 34) { rough = .25; metal = .82; }
-    else if (vehicleMaterial == 1) rough = mix(.43, .25, uRain);
+    else if (vehicleMaterial == 1) rough = mix(.43, .25, uAir.w);
     vec3 v = normalize(uEye-vWorld), l = normalize(uSun), h = normalize(v+l);
     float nl = max(dot(n,l),0), nv = max(dot(n,v),.001), nh = max(dot(n,h),0);
     float a = rough*rough, a2 = a*a, denom = nh*nh*(a2-1.0)+1.0;
@@ -354,7 +385,6 @@ void main() {
     vec3 color = albedo*skylight*(.12+.28*uDay)*ao+(diffuse+specular)*light*nl*(.15+2.8*uDay)*sunVisibility;
     if (uSurface == 9) color += albedo*light*.42*uDay*max(dot(-n,l),0.)*sunVisibility;
     color += sky*f0*(.18+.45*(1.0-rough))*ao;
-    int tunnel = uTunnelCount > 0 ? tunnelAt(vWorld) : -1;
     if (tunnel >= 0) {
         // Under the roof: no sky and no sun, a dim fill and a ceiling lamp row every nine metres.
         vec3 t = uTunnels[tunnel], f = uTunnelFloors[tunnel];
@@ -367,7 +397,15 @@ void main() {
     }
     if (uLocalLights != 0) color += localLights(n, albedo, tunnel >= 0);
     if (vehicleMaterial < 0) color += albedo*uEmissive;
-    if (vehicleMaterial == 22) color = mix(color, sky, .17+.49*pow(1.-nv, 5.));
+    // Reflections of the managed game: glass, chrome and the clear coat of vehicles.
+    float graze = pow(1.-abs(dot(n,v)),5.), coat = 0.;
+    if (vehicleMaterial == 22) coat = .38+.50*graze;
+    else if (vehicleMaterial == 34) coat = .55;
+    else if (vehicleMaterial == 1) coat = .055+.28*graze;
+    else if (uCoat == 2) coat = .45+.45*graze;
+    else if (uCoat == 1) coat = metal*.4+paint*(.04+.2*graze);
+    if (coat > 0. && uCoat >= 0) color = mix(color,cityReflection(vWorld,reflect(-v,n),rough,tunnel >= 0),min(coat,.9));
+    if (damp > 0.) color = mix(color,cityReflection(vWorld,reflect(-v,n),.12,tunnel >= 0),damp*(.12+.40*pow(1.-max(dot(n,v),0.),4.)));
     if (vehicleMaterial == 8) {
         bool blue = tex.b > tex.r * 1.4;
         if (blue && uEmissive > 0.) {
@@ -376,9 +414,12 @@ void main() {
         } else color += albedo * (1.-uDay) * .75;
     }
     if (uSurface == 6) color = apartment(n,v);
-    if (uSurface == 4) color = mix(color,sky,.04+.70*pow(1.0-max(dot(n,v),0),5.0));
-    float fog = 1.0-exp(-eyeDistance*(.00052+.0028*uRain));
-    color = mix(color,sky,fog);
-    color = color/(color+vec3(1));
-    fragColor = vec4(pow(color,vec3(1.0/2.2)),tex.a*uAlpha);
+    if (uSurface == 4) color = mix(color,cityReflection(vWorld,reflect(-v,n),.12,false),.12+.75*pow(1.0-max(dot(n,v),0),4.0));
+    // The haze of the managed game takes a distant surface to the colour of the horizon.
+    float air = airTransmission(uEye,vWorld);
+    if (uProbePass != 0) {
+        fragColor = vec4(mix(fromDisplay(uFog),color,air),1.);
+        return;
+    }
+    fragColor = vec4(mix(uFog,toDisplay(color),air),tex.a*uAlpha);
 }

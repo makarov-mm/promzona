@@ -1,6 +1,9 @@
 #include "promzona/detail_stream.hpp"
+#include "promzona/sector_stream.hpp"
 #include <chrono>
+#include <cmath>
 #include <iostream>
+#include <memory>
 #include <numeric>
 #include <stdexcept>
 using namespace pz;
@@ -130,6 +133,140 @@ void worker()
         shortLived.request(order);
     }
 }
+// Which sectors of the standing city are in memory for an eye and a draw distance.
+void sectorPlan()
+{
+    std::vector<Sector> row;
+    for (int i = 0; i < 20; ++i)
+        row.push_back({i * Sector::size, 0});
+    const Vec3 eye{72, 30, 72};
+    check(row[0].distance(eye) == 0 && row[1].distance(eye) == 72 && row[4].distance(eye) == 504 &&
+              Sector{-144, -144}.distance(eye) == float(std::hypot(72., 72.)),
+          "distance to the square of a sector, height ignored");
+    std::vector<bool> resident(row.size());
+    auto plan = planSectors(row, resident, eye, 400);
+    check(plan.evict.empty() && plan.load.size() == 4, "sectors within the draw distance and its slack");
+    for (size_t k = 0; k < plan.load.size(); ++k)
+        check(plan.load[k].id == k && plan.load[k].distance == row[k].distance(eye), "the nearest first");
+    for (size_t k = 0; k < 4; ++k)
+        resident[k] = true;
+    plan = planSectors(row, resident, eye, 400);
+    check(plan.load.empty() && plan.evict.empty(), "nothing to do while the eye stands");
+    // Forty metres on, the fourth sector is past the draw distance but within the halo.
+    Vec3 walked{32, 30, 72};
+    check(row[3].distance(walked) == 400 && row[4].distance(walked) == 544, "walk back from the border");
+    plan = planSectors(row, resident, {-8, 30, 72}, 400);
+    check(plan.load.empty() && plan.evict.empty(), "a sector just out of range is kept");
+    resident[3] = false;
+    plan = planSectors(row, resident, {-8, 30, 72}, 400);
+    check(plan.load.empty(), "but it is not built there");
+    resident[3] = true;
+    plan = planSectors(row, resident, {-40, 30, 72}, 400);
+    check(plan.evict == std::vector<size_t>{3}, "past the halo it is released");
+    // A jump across the city: the old neighbourhood goes, the new one comes nearest first.
+    plan = planSectors(row, resident, {19.5f * float(Sector::size), 30, 72}, 400);
+    check(plan.evict.size() == 4 && plan.load.size() == 4 && plan.load.front().id == 19 &&
+              plan.load.back().id == 16,
+          "a jump replaces the neighbourhood");
+    // A smaller draw distance releases what a larger one had loaded.
+    plan = planSectors(row, resident, eye, 130);
+    check(plan.evict == (std::vector<size_t>{2, 3}) && plan.load.empty(), "the draw distance bounds memory");
+    bool refused = false;
+    try
+    {
+        planSectors(row, std::vector<bool>(3), eye, 400);
+    }
+    catch (const std::invalid_argument &)
+    {
+        refused = true;
+    }
+    check(refused, "residency of another city is refused");
+}
+void sectorWorker()
+{
+    auto world = std::make_unique<World>();
+    world->generate(20261105u);
+    SectorStream stream(*world);
+    const auto sectors = stream.sectors();
+    const double edge = std::ceil(world->landEdge / Sector::size) * Sector::size;
+    const auto side = size_t(std::lround(2 * edge / Sector::size));
+    check(sectors.size() == side * side && sectors.front().x == -edge && sectors.front().z == -edge &&
+              sectors.back().x == edge - Sector::size && sectors.back().z == edge - Sector::size,
+          "the sectors cover the island and its coast");
+    // A sector in the middle of the city, and what a direct build of it gives.
+    const size_t centre = (side / 2) * side + side / 2;
+    const auto reference = cityChunk(*world, sectors[centre].x, sectors[centre].z, Sector::size);
+    check(chunkBytes(reference) > 100000, "a sector of the centre has geometry");
+    auto same = [&](const CityChunk &a, const CityChunk &b)
+    {
+        for (size_t m = 0; m < a.size(); ++m)
+        {
+            if (a[m].indices != b[m].indices || a[m].vertices.size() != b[m].vertices.size())
+                return false;
+            for (size_t v = 0; v < a[m].vertices.size(); ++v)
+                if ((a[m].vertices[v].position - b[m].vertices[v].position).length() > 1e-7f ||
+                    (a[m].vertices[v].normal - b[m].vertices[v].normal).length() > 1e-7f ||
+                    a[m].vertices[v].uv != b[m].vertices[v].uv ||
+                    a[m].vertices[v].joints != b[m].vertices[v].joints)
+                    return false;
+        }
+        return true;
+    };
+    // The stream keeps its own world: the owner may start another city or leave.
+    world.reset();
+    const auto direct = stream.build(centre);
+    check(direct.id == centre && direct.bytes == chunkBytes(reference) && same(direct.geometry, reference),
+          "a sector built at once is the sector of the city");
+    std::vector<SectorOrder> all;
+    for (size_t id = 0; id < sectors.size(); ++id)
+        all.push_back({id, sectors[id].distance({})});
+    std::ranges::stable_sort(all, {}, &SectorOrder::distance);
+    stream.request(all);
+    until([&] { return stream.stats().ready == SectorStream::maxReady; });
+    auto stats = stream.stats();
+    check(stats.queued <= SectorStream::maxQueued && stats.readyBytes > 0,
+          "the worker waits for the renderer");
+    auto first = stream.poll();
+    check(first && first->id == all.front().id && first->bytes == chunkBytes(first->geometry),
+          "the nearest sector arrives first");
+    stream.request({});
+    until([&] { return !stream.stats().busy; });
+    check(stream.stats().ready == 0 && stream.stats().queued == 0 && !stream.poll(),
+          "a jump of the eye cancels what was queued and finished");
+    const std::array<SectorOrder, 1> again{SectorOrder{centre, 0}};
+    stream.request(again);
+    std::unique_ptr<SectorStream::Packet> streamed;
+    until(
+        [&]
+        {
+            streamed = stream.poll();
+            return bool(streamed);
+        });
+    check(streamed->id == centre && streamed->bytes == direct.bytes && same(streamed->geometry, reference),
+          "the worker delivers the same sector");
+    bool refused = false;
+    try
+    {
+        const std::array<SectorOrder, 1> bad{SectorOrder{sectors.size(), 0}};
+        stream.request(bad);
+    }
+    catch (const std::out_of_range &)
+    {
+        refused = true;
+    }
+    check(refused, "a sector outside the city is refused");
+    for (int i = 0; i < 3; ++i)
+    {
+        // Leaving while the worker still has sectors to build must not hang.
+        World next;
+        next.generate(321u + i);
+        SectorStream shortLived(next);
+        std::vector<SectorOrder> orders;
+        for (size_t id = 0; id < shortLived.sectors().size(); ++id)
+            orders.push_back({id, 0});
+        shortLived.request(orders);
+    }
+}
 } // namespace
 int main()
 {
@@ -137,6 +274,8 @@ int main()
     {
         residency();
         worker();
+        sectorPlan();
+        sectorWorker();
         std::cout << "Streaming: deterministic geometry, cancellation, bounded queues, residency and "
                      "shutdown passed\n";
         return 0;

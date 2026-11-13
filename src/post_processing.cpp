@@ -2,24 +2,34 @@
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
+#include <iterator>
 #include <sstream>
 
 namespace pz
 {
 using namespace gl;
-void PostProcessing::initialize(GLuint glowProgram, GLuint resolveProgram)
+void PostProcessing::initialize(GLuint glowProgram, GLuint resolveProgram, GLuint occlusionProgram)
 {
     glow_ = glowProgram;
     resolve_ = resolveProgram;
+    occlusion_ = occlusionProgram;
     GenVertexArrays(1, &vao_);
     UseProgram(glow_);
     Uniform1i(GetUniformLocation(glow_, "source"), 0);
     pass_ = GetUniformLocation(glow_, "pass");
     threshold_ = GetUniformLocation(glow_, "threshold");
+    UseProgram(occlusion_);
+    Uniform1i(GetUniformLocation(occlusion_, "depthImage"), 0);
+    lens_ = GetUniformLocation(occlusion_, "lens");
+    samples_ = GetUniformLocation(occlusion_, "samples");
     UseProgram(resolve_);
     Uniform1i(GetUniformLocation(resolve_, "sceneImage"), 0);
     Uniform1i(GetUniformLocation(resolve_, "glowImage"), 1);
+    Uniform1i(GetUniformLocation(resolve_, "depthImage"), 2);
+    Uniform1i(GetUniformLocation(resolve_, "occlusionImage"), 3);
     bloom_ = GetUniformLocation(resolve_, "enableBloom");
+    shaded_ = GetUniformLocation(resolve_, "enableOcclusion");
+    clip_ = GetUniformLocation(resolve_, "clip");
     conditions_ = GetUniformLocation(resolve_, "conditions");
     UseProgram(0);
 }
@@ -29,8 +39,8 @@ void PostProcessing::resize(int w, int h)
         return;
     if (!depth_)
     {
-        GenFramebuffers(3, fb_.data());
-        glGenTextures(3, color_.data());
+        GenFramebuffers(GLsizei(fb_.size()), fb_.data());
+        glGenTextures(GLsizei(color_.size()), color_.data());
         glGenTextures(1, &depth_);
     }
     w_ = w;
@@ -38,21 +48,38 @@ void PostProcessing::resize(int w, int h)
     glowW_ = (w + 3) / 4;
     glowH_ = (h + 3) / 4;
     ActiveTexture(TEXTURE0);
-    auto allocate = [](GLuint tex, int width, int height, bool depth)
+    enum class Kind
     {
+        colour,
+        depth,
+        shade
+    };
+    auto allocate = [](GLuint tex, int width, int height, Kind kind)
+    {
+        // Depth and the shading made from it are read texel by texel.
+        const bool exact = kind != Kind::colour;
         glBindTexture(GL_TEXTURE_2D, tex);
-        glTexImage2D(GL_TEXTURE_2D, 0, depth ? DEPTH_COMPONENT24 : GL_RGBA8, width, height, 0,
-                     depth ? GL_DEPTH_COMPONENT : GL_RGBA, depth ? GL_UNSIGNED_INT : GL_UNSIGNED_BYTE,
-                     nullptr);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, depth ? GL_NEAREST : GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, depth ? GL_NEAREST : GL_LINEAR);
+        glTexImage2D(GL_TEXTURE_2D, 0,
+                     kind == Kind::depth   ? DEPTH_COMPONENT24
+                     : kind == Kind::shade ? R8
+                                           : GL_RGBA8,
+                     width, height, 0,
+                     kind == Kind::depth   ? GL_DEPTH_COMPONENT
+                     : kind == Kind::shade ? GL_RED
+                                           : GL_RGBA,
+                     kind == Kind::depth ? GL_UNSIGNED_INT : GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, exact ? GL_NEAREST : GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, exact ? GL_NEAREST : GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, CLAMP_TO_EDGE);
     };
-    allocate(depth_, w, h, true);
+    allocate(depth_, w, h, Kind::depth);
     for (unsigned i = 0; i < fb_.size(); ++i)
     {
-        allocate(color_[i], i ? glowW_ : w, i ? glowH_ : h, false);
+        if (i == 3)
+            allocate(color_[i], (w + 1) / 2, (h + 1) / 2, Kind::shade);
+        else
+            allocate(color_[i], i ? glowW_ : w, i ? glowH_ : h, Kind::colour);
         BindFramebuffer(FRAMEBUFFER, fb_[i]);
         FramebufferTexture2D(FRAMEBUFFER, COLOR_ATTACHMENT0, GL_TEXTURE_2D, color_[i], 0);
         if (!i)
@@ -63,13 +90,25 @@ void PostProcessing::resize(int w, int h)
     glBindTexture(GL_TEXTURE_2D, 0);
     BindFramebuffer(FRAMEBUFFER, 0);
 }
-void PostProcessing::present(int width, int height, float day, float rain, float sunHeight, bool bloom)
+void PostProcessing::present(int width, int height, float day, float rain, float sunHeight, bool bloom,
+                             const ContactShading &contact)
 {
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_BLEND);
     glDisable(GL_CULL_FACE);
     BindVertexArray(vao_);
     ActiveTexture(TEXTURE0);
+    const bool shaded = contact.samples > 0;
+    if (shaded)
+    {
+        UseProgram(occlusion_);
+        Uniform4f(lens_, contact.scaleX, contact.scaleY, contact.nearPlane, contact.farPlane);
+        Uniform1i(samples_, contact.samples);
+        BindFramebuffer(FRAMEBUFFER, fb_[3]);
+        glViewport(0, 0, (w_ + 1) / 2, (h_ + 1) / 2);
+        glBindTexture(GL_TEXTURE_2D, depth_);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+    }
     if (bloom)
     {
         UseProgram(glow_);
@@ -87,23 +126,30 @@ void PostProcessing::present(int width, int height, float day, float rain, float
     glViewport(0, 0, width, height);
     UseProgram(resolve_);
     Uniform1i(bloom_, bloom);
+    Uniform1i(shaded_, shaded);
+    Uniform2f(clip_, contact.nearPlane, contact.farPlane);
     float lowSun = (sunHeight - .15f) * 4.f;
     Uniform3f(conditions_, day, rain, std::exp(-lowSun * lowSun) * day);
-    glBindTexture(GL_TEXTURE_2D, color_[0]);
-    ActiveTexture(TEXTURE0 + 1);
-    glBindTexture(GL_TEXTURE_2D, color_[1]);
+    const GLuint images[] = {color_[0], color_[1], depth_, color_[3]};
+    for (unsigned unit = std::size(images); unit-- > 0;)
+    {
+        ActiveTexture(TEXTURE0 + unit);
+        glBindTexture(GL_TEXTURE_2D, images[unit]);
+    }
     glDrawArrays(GL_TRIANGLES, 0, 3);
-    glBindTexture(GL_TEXTURE_2D, 0);
-    ActiveTexture(TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, 0);
+    for (unsigned unit = std::size(images); unit-- > 0;)
+    {
+        ActiveTexture(TEXTURE0 + unit);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
     BindVertexArray(0);
 }
 void PostProcessing::releaseTargets()
 {
     if (depth_)
     {
-        DeleteFramebuffers(3, fb_.data());
-        glDeleteTextures(3, color_.data());
+        DeleteFramebuffers(GLsizei(fb_.size()), fb_.data());
+        glDeleteTextures(GLsizei(color_.size()), color_.data());
         glDeleteTextures(1, &depth_);
         depth_ = 0;
         w_ = h_ = 0;
@@ -118,6 +164,8 @@ PostProcessing::~PostProcessing()
         DeleteProgram(glow_);
     if (resolve_)
         DeleteProgram(resolve_);
+    if (occlusion_)
+        DeleteProgram(occlusion_);
 }
 void SceneTimer::enable()
 {

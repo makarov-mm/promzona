@@ -143,8 +143,9 @@ int main()
             require(std::abs(c.body.height - .8 - w.surface(c.body.p, c.body.roadLevel)) < 1e-6,
                     "new car is not on the road");
         }
+        // It may have been put down at a red light: a whole turn of the lights is 28 s.
         const Vec2 parked = w.cars[wreck].body.p;
-        for (int i = 0; i < 600; ++i)
+        for (int i = 0; i < 60 * 32 && (w.cars[wreck].body.p - parked).length() <= 5; ++i)
             w.step({}, frame);
         require((w.cars[wreck].body.p - parked).length() > 5, "new car does not drive");
 
@@ -214,6 +215,25 @@ int main()
         require(w.people[swimmer].dead && w.people[swimmer].drowned && w.drownings == 1,
                 "walker did not drown");
         require(w.wanted == 0 && w.surfaceMarks.size() == marks, "drowning left blood or a wanted level");
+        // The body hangs half a metre under the surface and sinks to the bed at 0.6 m/s.
+        {
+            const auto &p = w.people[swimmer];
+            const double bed = w.terrain.bedHeight(p.body.p.x, p.body.p.z);
+            const double depth = CityLayout::waterLevel - bed;
+            auto feet = [&] { return p.body.height - .85; };
+            require(depth > 2.2 && std::abs(feet() - (CityLayout::waterLevel - .5)) < .02,
+                    "a drowned body does not float under the surface");
+            const double died = p.diedAt;
+            for (int i = 0; i < 60; ++i)
+                w.step({}, frame);
+            require(std::abs(feet() - (CityLayout::waterLevel - .5 - (w.time - died) * .6)) < 1e-6 &&
+                        std::abs(w.time - died - 1) < .02,
+                    "a drowned body does not sink at 0.6 m/s");
+            for (int i = 0; i < int((depth / .6 + 1) * 60); ++i)
+                w.step({}, frame);
+            require(std::abs(feet() - w.terrain.height(p.body.p)) < .02,
+                    "a drowned body does not reach the bed");
+        }
         w.nextRescueDispatch = 0;
         for (int i = 0; i < 600; ++i)
             w.step({}, frame);

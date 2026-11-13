@@ -1,5 +1,9 @@
 #include "promzona/world.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <numbers>
+
 namespace pz
 {
 namespace
@@ -9,6 +13,19 @@ bool civilian(const Car &car)
     return car.kind == 0 || car.kind == 1 || car.kind == 2 || car.kind == 8;
 }
 } // namespace
+
+Vec2 World::peaceOffset(int spot)
+{
+    if (spot < 0)
+        return {};
+    const double angle = spot * (2 * std::numbers::pi / 8), radius = 2.8 + spot / 8 * 1.2;
+    return Vec2{std::sin(angle), std::cos(angle)} * radius;
+}
+
+bool World::peaceGround(Vec2 at, double margin) const
+{
+    return layout.urbanSite(at, margin) && CityLayout::waterLevel - terrain.bedHeight(at.x, at.z) <= .01;
+}
 
 bool World::startPeaceJob(JobKind kind)
 {
@@ -25,22 +42,38 @@ bool World::startPeaceJob(JobKind kind)
              false, time + 720};
     auto origin = position();
     // Port of the managed choice: the bus stops and the food kiosks within 700 m, nearest
-    // first, no two of them within a hundred metres of each other.
+    // first, no two of them within a hundred metres of each other; then a free point of
+    // pavement beside each. A marker is never on a roof, a ramp, a carriageway or in water,
+    // and never inside the shelter, a parked car or somebody who stands there.
     std::vector<int> candidates;
     for (int i = 0; i < int(sites.size() + busStops.size()); ++i)
         if (peacePlace(i) && (peacePoint(i) - origin).length2() < 700 * 700)
             candidates.push_back(i);
     std::ranges::stable_sort(candidates, {}, [&](int i) { return (peacePoint(i) - origin).length2(); });
+    auto freePavement = [&](Vec2 at)
+    {
+        return peaceGround(at, 1) && layout.roadDistance(at) > layout.roadHalf() &&
+               std::ranges::none_of(roadLevels,
+                                    [&](const RoadLevel &level) { return level.reserved(at, 3); }) &&
+               vehicleSpace(at, terrain.height(at) + .85, nullptr, false);
+    };
     int count = 0;
     for (int i : candidates)
     {
+        const Vec2 centre = peacePoint(i);
         bool nearby = false;
         for (int n = 0; n < count; ++n)
-            if ((peacePoint(next.route.sites[n]) - peacePoint(i)).length2() < 100 * 100)
+            if ((peaceSpot(next.route.sites[n], next.route.spots[n]) - centre).length2() < 100 * 100)
                 nearby = true;
         if (nearby)
             continue;
-        next.route.sites[count++] = i;
+        int spot = 0;
+        while (spot < peaceSpots && !freePavement(centre + peaceOffset(spot)))
+            ++spot;
+        if (spot == peaceSpots)
+            continue;
+        next.route.sites[count] = i;
+        next.route.spots[count++] = spot;
         if (count == next.stopCount())
             break;
     }
@@ -113,7 +146,7 @@ void World::stepPeaceJob(double dt)
         auto &car = cars[job.actor];
         if (car.destroyed || car.falling)
         {
-            finishJob(false);
+            finishJob(false, L"Заказ сорван");
             return;
         }
         if (controlledCar != job.actor || car.fireTime > 0 || drone.active)
@@ -165,7 +198,8 @@ bool World::validPeaceJob() const
     for (int n = 0; n < job.stopCount(); ++n)
     {
         int i = r.sites[n];
-        if (!peacePlace(i))
+        if (!peacePlace(i) || r.spots[n] < -1 || r.spots[n] >= peaceSpots ||
+            (r.spots[n] >= 0 && !peaceGround(peaceSpot(i, r.spots[n]), .5)))
             return false;
         if (std::find(r.sites.begin(), r.sites.begin() + n, i) != r.sites.begin() + n)
             return false;

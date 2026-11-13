@@ -144,6 +144,14 @@ struct Car
     // A driver pushed off the route who cannot go on backs up a little and tries again
     // (the managed CityCar.Stuck and ReverseFor). Not saved.
     double wedgedFor{}, reverseFor{};
+    // A crew on a call goes round whoever is ahead: by this much steering when it makes
+    // straight for the suspect (the managed PolicePursuit), and pulled out of its lane by
+    // `overtake` metres, on the way to `pullOut`, when it follows the street (the managed
+    // OvertakeOffset). Not saved.
+    double avoid{}, overtake{}, pullOut{};
+    // On its way back to the street after a call, until it is in a lane (World::rejoinRoad).
+    // Not saved.
+    bool rejoining{};
     // Moved by the distant model in the last step. Not saved.
     bool distant{};
     double blockedSince{-1}, nextLaneDecision{}, senseAt{}, trafficLimit{100};

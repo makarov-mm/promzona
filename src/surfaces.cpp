@@ -159,10 +159,22 @@ void World::supportCar(Car &c, Vec2 previousPosition, double dt)
     if (foot <= floor)
     {
         foot = floor;
-        c.verticalVelocity = 0;
+        // Port of WreckVerticalStep: a wreck that comes down hard thuds, raises smoke and
+        // hops once more.
+        // A car on its wheels hops as well (AfterContacts): 22 % of the speed it came
+        // down with, until that is less than 0.15 m/s.
+        const double landing = -c.verticalVelocity;
+        c.verticalVelocity = c.destroyed           ? (landing > 1.8 ? landing * .12 : 0)
+                             : landing * .22 < .15 ? 0
+                                                   : landing * .22;
+        if (c.destroyed && landing > 2 && (b.p - position()).length2() < 160 * 160)
+        {
+            sounds.push_back({"impact", b.p, std::min(1., landing / 12)});
+            emit(Vec3{float(b.p.x), float(floor + .3), float(b.p.z)}, floor, ParticleKind::smoke, 8, 1.5);
+        }
     }
     c.lift = std::max(0., foot - floor);
-    c.wreckSupported = c.lift < .03;
+    c.wreckSupported = c.lift < .03 && c.verticalVelocity <= 0;
     b.height = foot + .8;
 }
 void World::supportPerson(Body &b, Vec2 previousPosition, double dt)

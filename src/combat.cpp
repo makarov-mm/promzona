@@ -214,7 +214,7 @@ void World::killPerson(Person &p, Vec2 velocity, bool playerCaused, bool drowned
     p.body.v = velocity;
     p.body.wake();
     if (job.kind == JobKind::elimination && &p == &people[job.actor])
-        finishJob(playerCaused);
+        finishJob(playerCaused, L"Заказ сорван");
     else if (job.passenger() && &p == &people[job.actor])
         finishJob(false);
     if (!drowned)
@@ -257,24 +257,33 @@ void World::vehicleImpact(Car &c, double hit, Vec2 change)
         return;
     if (hit > 1.5 && std::isfinite(hit))
         c.applyImpactRotation(change);
-    if (c.destroyed || c.impactCooldown > 0)
-        return;
-    if (!std::isfinite(hit) || hit <= 1.5)
+    if (!std::isfinite(hit) || hit <= 1.5 || c.impactCooldown > 0)
         return;
     c.impactCooldown = .4;
+    if (c.destroyed)
+    {
+        // Port of WreckAfterContacts: a wreck that is struck clangs, hops and sheds scrap.
+        c.verticalVelocity = std::max(c.verticalVelocity, std::min(1.5, std::max(0., hit - 6) * .10));
+        sounds.push_back({"impact", c.body.p, std::min(.8, hit / 12)});
+        emit(c.body.p, c.lift + .5, c.body.roadLevel, ParticleKind::debris, 6, 2);
+        return;
+    }
     sounds.push_back({"impact", c.body.p, std::min(1., hit / 10)});
     if (controlledCar >= 0 && !transitPassenger() && &c == &cars[controlledCar] && hit > 2.5)
         reportCrime(std::min(.3, hit * .018));
+    const double before = c.health;
     damageCar(c, hit * .025);
+    // One burst of fire when a hard blow all but finishes the car, not at every bump.
+    if (before > .05 && c.health <= .05 && hit > 6)
+    {
+        emit(c.body.p, 1.1, c.body.roadLevel, ParticleKind::fire, 36, 5);
+        emit(c.body.p, 1, c.body.roadLevel, ParticleKind::smoke, 24, 2);
+        emit(c.body.p, .8, c.body.roadLevel, ParticleKind::debris, 24, 6);
+    }
     c.verticalVelocity = std::max(c.verticalVelocity, hit > 6 ? std::min(2.8, (hit - 6) * .14) : 0.);
-    if (particles.size() + 18 <= 5000)
-        for (int n = 0; n < 18; n++)
-            particles.push_back(
-                {{float(c.body.p.x), float(c.body.height), float(c.body.p.z)},
-                 {float(random.next() * 5 - 2.5), float(random.next() * 3), float(random.next() * 5 - 2.5)},
-                 {1, .6f, .2f},
-                 .4f,
-                 .035f});
+    emit(c.body.p, .65, c.body.roadLevel, ParticleKind::spark, 18, 4);
+    emit(c.body.p, .6, c.body.roadLevel, ParticleKind::debris, 8, 3);
+    addScuffs(c);
     if (c.health <= 0)
         destroyCar(c);
 }
@@ -301,17 +310,17 @@ void World::explode(Vec2 p, double y, double strength, bool vehicleBlast, bool p
         auto b = pending.front();
         pending.pop_front();
         scareWildlife(b.p, b.y, 5. * b.strength);
-        sounds.push_back({"explosion", b.p, .95});
+        sounds.push_back({"explosion", b.p, b.vehicle ? 1. : .95});
         if (playerCaused)
             reportCrime(.45, 80, false);
-        for (int i = 0; i < 95 && particles.size() < 5000; i++)
+        // Fire, smoke and scrap, as CityTraffic.Explode and RocketBlast throw them. The
+        // middle of a car is 0.8 m above its wheels.
         {
-            double a = random.next() * 2 * pi, r = random.next() * 8;
-            particles.push_back({{float(b.p.x), float(b.y), float(b.p.z)},
-                                 {float(std::cos(a) * r), float(random.next() * 10), float(std::sin(a) * r)},
-                                 {1, float(.15 + random.next() * .55), .04f},
-                                 float(1 + random.next() * 2),
-                                 float(.12 + random.next() * .25)});
+            const double floor = floorBelow(b.p, b.y);
+            const Vec3 at{float(b.p.x), float(b.y + (b.vehicle ? .2 : 0)), float(b.p.z)};
+            emit(at, floor, ParticleKind::fire, b.vehicle ? 55 : 45, b.vehicle ? 7 : 6);
+            emit(at + Vec3{0, b.vehicle ? .5f : 0, 0}, floor, ParticleKind::smoke, b.vehicle ? 32 : 26, 3);
+            emit(at, floor, ParticleKind::debris, b.vehicle ? 40 : 24, b.vehicle ? 8 : 7);
         }
         auto effect = [&](Vec2 target, double targetY, double radius)
         {
@@ -357,7 +366,7 @@ void World::explode(Vec2 p, double y, double strength, bool vehicleBlast, bool p
                 killPerson(person, v, playerCaused);
         }
         if (controlledCar < 0)
-            hurtPlayer(6 * effect(player.p, player.height, 8));
+            woundPlayer(6 * effect(player.p, player.height, 8));
     }
 }
 void World::shoot(double heading, double pitch)
@@ -409,6 +418,11 @@ void World::shoot(double heading, double pitch)
     auto hit = traceAttack(start, dir, y, slope, w ? w->range : 1.55, controlledCar);
     if (w && hit.kind == HitKind::water)
         splash(start + dir * hit.distance, mounted ? .75 : .35);
+    else if (w)
+        bulletSparks(start, dir, y, slope, hit);
+    // A fist that lands on metal or a wall is heard.
+    else if (hit.kind == HitKind::car || hit.kind == HitKind::scenery)
+        sounds.push_back({"impact", start + dir * hit.distance, .35});
     for (int i = 1; w && i < std::min(80, int(hit.distance * 2)); i++)
         particles.push_back(
             {{float(start.x + dir.x * i * .5), float(y + slope * i * .5), float(start.z + dir.z * i * .5)},
@@ -433,8 +447,21 @@ void World::shoot(double heading, double pitch)
         if (p.health <= 0)
             killPerson(p, dir * 4, true);
         else
+        {
             p.body.impulse(dir * 90);
+            sounds.push_back({"impact", p.body.p, .4});
+        }
     }
+}
+// Port of the sparks of CityTraffic.Fire: three where a bullet stops short of its range.
+void World::bulletSparks(Vec2 from, Vec2 dir, double y, double slope, const AttackHit &hit)
+{
+    if (hit.kind == HitKind::none || hit.kind == HitKind::water)
+        return;
+    const Vec2 end = from + dir * hit.distance;
+    const double height = y + slope * hit.distance;
+    emit(Vec3{float(end.x), float(height), float(end.z)}, floorBelow(end, height), ParticleKind::spark, 3,
+         1.5);
 }
 void World::flame(Vec2 direction, double y)
 {
@@ -445,17 +472,20 @@ void World::flame(Vec2 direction, double y)
     {
         auto dir = forward(heading + ray * .075);
         auto hit = traceAttack(position(), dir, y, 0, range, controlledCar);
-        for (int n = 0; n < 6 && particles.size() < 5000; n++)
+        // Short moving tongues with a random phase, not rows at the cadence of the weapon.
+        for (int n = 0; n < 6 && particles.size() < maxParticles; n++)
         {
-            double start = .9 + random.next() * 2.1;
+            const double start = .9 + effectNoise() * 2.1;
             if (hit.distance <= start)
                 continue;
-            auto at = position() + dir * start;
-            particles.push_back({{float(at.x), float(y), float(at.z)},
-                                 {float(dir.x * 18), .5f, float(dir.z * 18)},
-                                 {1, .3f, .03f},
-                                 float(std::min(.38, (hit.distance - start) / 18)),
-                                 .1f});
+            const Vec2 at = position() + dir * start + Vec2{dir.z, -dir.x} * ((effectNoise() - .5) * .12);
+            Particle tongue;
+            tongue.kind = ParticleKind::flame;
+            tongue.p = {float(at.x), float(y + (effectNoise() - .5) * .12), float(at.z)};
+            tongue.v = {float(dir.x * 18), float(.3 + effectNoise() * .5), float(dir.z * 18)};
+            tongue.span = tongue.life = float(std::min(.38, (hit.distance - start) / 18));
+            tongue.size = float(.065 + effectNoise() * .055);
+            particles.push_back(tongue);
         }
         if (hit.kind == HitKind::car && !heated[hit.index])
         {
@@ -518,9 +548,9 @@ void World::combatStep(double dt)
         }
         else if (r.travel >= weapon(WeaponId::bazooka)->range)
             rockets.erase(rockets.begin() + static_cast<std::ptrdiff_t>(i));
-        else if (random.next() < dt * 40 && particles.size() < 5000)
-            particles.push_back(
-                {{float(r.p.x), float(r.height), float(r.p.z)}, {0, .5f, 0}, {.4f, .4f, .4f}, .65f, .1f});
+        else if (effectNoise() < dt * 40)
+            emit(Vec3{float(r.p.x), float(r.height), float(r.p.z)}, floorBelow(r.p, r.height),
+                 ParticleKind::smoke, 1, .25);
     }
     for (auto &c : cars)
     {
@@ -531,8 +561,15 @@ void World::combatStep(double dt)
             destroyCar(c);
             continue;
         }
+        const bool inSight = (c.body.p - position()).length2() < 190 * 190;
+        // A damaged engine smokes from under the bonnet.
+        if (c.health < .6 && inSight && effectNoise() < dt * (1 - c.health) * 6)
+            emit(c.body.p + forward(c.heading()), .8, c.body.roadLevel, ParticleKind::smoke, 1, .6);
         if (c.fireTime <= 0)
             continue;
+        // The fire is heard every three seconds for as long as it burns.
+        if (inSight && int(c.fireTime / 3) != int((c.fireTime + dt) / 3))
+            sounds.push_back({"fire", c.body.p, .5});
         c.fireTime += dt;
         if (controlledCar >= 0 && !transitPassenger() && &c == &cars[controlledCar])
         {
@@ -547,13 +584,11 @@ void World::combatStep(double dt)
         }
         else if (c.fireTime > 12)
             destroyCar(c);
-        if (!c.destroyed && (c.body.p - position()).length2() < 190 * 190 && random.next() < dt * 35 &&
-            particles.size() < 5000)
-            particles.push_back({{float(c.body.p.x), float(c.body.height + .4), float(c.body.p.z)},
-                                 {0, 2, 0},
-                                 {1, .25f, .03f},
-                                 .7f,
-                                 .25f});
+        if (!c.destroyed && inSight && effectNoise() < dt * 35)
+        {
+            emit(c.body.p, 1.1 + c.lift, c.body.roadLevel, ParticleKind::fire, 2, 1.6);
+            emit(c.body.p, 1.6 + c.lift, c.body.roadLevel, ParticleKind::smoke, 2, 1.4);
+        }
     }
     fireClock += dt;
     if (fireClock < .1)
@@ -593,12 +628,14 @@ void World::combatStep(double dt)
         p.fear = 2;
         if (p.health <= 0)
             killPerson(p, {}, p.burnPlayerCaused);
-        else if ((p.body.p - position()).length2() < 110 * 110 && particles.size() < 5000)
-            particles.push_back({{float(p.body.p.x), float(p.body.height), float(p.body.p.z)},
-                                 {0, 1, 0},
-                                 {1, .25f, .03f},
-                                 .6f,
-                                 .15f});
+        else if ((p.body.p - position()).length2() < 110 * 110)
+        {
+            const double feet = p.body.height - .85;
+            const Vec3 at{float(p.body.p.x), float(feet), float(p.body.p.z)};
+            const double floor = floorBelow(p.body.p, feet + .3);
+            emit(at + Vec3{0, .65f, 0}, floor, ParticleKind::fire, 2, .6);
+            emit(at + Vec3{0, 1.3f, 0}, floor, ParticleKind::smoke, 1, .4);
+        }
     }
     if (playerBurnUntil > time && waterDepth(position(), ground()) > .35)
         playerBurnUntil = 0;

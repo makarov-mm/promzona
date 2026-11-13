@@ -236,6 +236,10 @@ void World::updateFixtures(Vec2 focus, double dt)
                 f.spin = std::min(7., speed * .4) * (b.v.x + b.v.z < 0 ? -1 : 1);
             if (f.kind == FixtureKind::hydrant)
                 f.sprayUntil = time + 16;
+            // Struck, not nudged: sparks fly from it, or water from the broken hydrant.
+            if (speed > 2)
+                emit(b.p, .55, b.roadLevel,
+                     f.kind == FixtureKind::hydrant ? ParticleKind::water : ParticleKind::spark, 10, 3);
         }
         if (!f.displaced)
             continue;

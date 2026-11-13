@@ -1,6 +1,7 @@
 #include "promzona/renderer.hpp"
 #include "promzona/audio.hpp"
 #include "promzona/architecture.hpp"
+#include "promzona/sector_stream.hpp"
 #include <atomic>
 #include <chrono>
 #include <fstream>
@@ -330,6 +331,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     std::filesystem::path screenshot, content, logPath, smokeOutput, importFile;
     std::optional<Language> languageOverride;
     std::optional<Density> densityOverride;
+    std::optional<int> qualityOverride;
     wchar_t executable[32768]{};
     GetModuleFileNameW(nullptr, executable, 32768);
     auto exeDirectory = std::filesystem::path(executable).parent_path();
@@ -372,7 +374,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         else if (arg == L"--language" && i + 1 < argc)
             languageOverride = languageFromCode(utf8(argv[++i]));
         else if (arg == L"--density" && i + 1 < argc)
-            densityOverride = densityFromCode(utf8(argv[++i]), Density::high);
+            densityOverride = densityFromCode(utf8(argv[++i]), Density::full);
+        else if (arg == L"--quality" && i + 1 < argc)
+            qualityOverride = std::clamp(_wtoi(argv[++i]), 0, 2);
         else if (arg == L"--content" && i + 1 < argc)
             content = argv[++i];
         else if (arg == L"--import-save" && i + 1 < argc)
@@ -405,12 +409,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             scenario != L"leaflets" && scenario != L"taxi" && scenario != L"wildlife" &&
             scenario != L"scooter" && scenario != L"delivery-rider" && scenario != L"ambulance" &&
             scenario != L"hydrant" && scenario != L"phone-booth" && scenario != L"soda-machine" &&
-            scenario != L"puddle" && scenario != L"pothole" && scenario != L"canal-impact" &&
-            scenario != L"people" && scenario != L"bus" && scenario != L"job-board" &&
-            scenario != L"contract-series" && scenario != L"console" && scenario != L"street-hail" &&
-            scenario != L"estate" && scenario != L"courtyard" && scenario != L"cottages" &&
-            scenario != L"centre" && scenario != L"garages" && scenario != L"rail-yard" &&
-            scenario != L"seafront" && scenario != L"canal-mouth" && scenario != L"crowd")
+            scenario != L"wreckage" && scenario != L"puddle" && scenario != L"pothole" &&
+            scenario != L"canal-impact" && scenario != L"people" && scenario != L"bus" &&
+            scenario != L"job-board" && scenario != L"contract-series" && scenario != L"console" &&
+            scenario != L"street-hail" && scenario != L"estate" && scenario != L"courtyard" &&
+            scenario != L"cottages" && scenario != L"centre" && scenario != L"garages" &&
+            scenario != L"rail-yard" && scenario != L"seafront" && scenario != L"canal-mouth" &&
+            scenario != L"crowd")
             throw std::runtime_error("Unknown smoke scenario");
         if (content.empty())
             content = std::filesystem::is_directory(exeDirectory / L"Content")
@@ -486,6 +491,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             renderer.sceneMode(displayMode);
             const auto graphicsFile = app.saveFile.parent_path() / "graphics.txt";
             auto graphics = smoke ? GraphicsPreferences{} : GraphicsPreferences::load(graphicsFile);
+            if (qualityOverride)
+                graphics.quality = *qualityOverride;
             renderer.graphics(graphics);
             FrontEnd menus;
             // The first run follows the Windows interface language, as the managed game did.
@@ -498,14 +505,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                                      : systemLanguage == LANG_UKRAINIAN ? Language::ukrainian
                                                                                         : Language::english);
             renderer.language(menus.language);
-            // New games start with the managed game's first fill. Automated runs keep the
-            // low population their scenarios were written for unless told otherwise; `crowd`
-            // is the day scenario in the full city.
+            // New games start with the population the managed game keeps. Automated runs
+            // keep the low one their scenarios were written for unless told otherwise;
+            // `crowd` is the day scenario in the full city.
             const auto densityFile = app.saveFile.parent_path() / "density.txt";
             menus.population = densityOverride        ? *densityOverride
                                : scenario == L"crowd" ? Density::full
                                : smoke                ? Density::low
-                                                      : loadDensity(densityFile, Density::high);
+                                                      : loadDensity(densityFile, Density::full);
             SaveSlots slots(app.saveFile);
             auto refreshSlots = [&]
             {
@@ -532,8 +539,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                 app.message = L"Сохранение C# версии перенесено в слот " + std::to_wstring(target);
                 log << "Imported managed save format " << carried.format << ", road revision "
                     << carried.roadRevision << ", seed " << carried.seed << ", weapons " << carried.weapons
-                    << (carried.positionKept ? ", position kept" : ", default start") << ", slot " << target
-                    << std::endl;
+                    << (carried.positionKept ? ", position kept" : ", default start")
+                    << (carried.carKept ? ", vehicle kept" : "") << ", cars " << carried.cars << ", people "
+                    << carried.people << ", slot " << target << std::endl;
             }
             if (profile)
                 renderer.profileGpu();
@@ -641,6 +649,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             bool trafficPassed = false, officerCaptured = false, consoleReviewed = false;
             bool capturedHome = false;
             Vec2 passingWreckPosition;
+            // The wreckage review: the most particles of each kind seen in one frame, and what was heard.
+            std::array<size_t, 8> particlePeak{};
+            std::array<int, 3> wreckageCars{-1, -1, -1};
+            int blastsHeard = 0, firesHeard = 0;
             while (app.running)
             {
                 MSG msg;
@@ -1013,14 +1025,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             if (scenario == L"storm")
                             {
                                 world->clock.setHour(16);
-                                world->rain = world->rainTarget = 1;
+                                world->setWeather(1);
                                 world->weatherClock = 120;
                                 world->time = 95;
                             }
                             if (scenario == L"night")
                             {
                                 world->clock.setHour(22);
-                                world->rain = world->rainTarget = .85;
+                                world->setWeather(.85);
                                 world->weatherClock = 120;
                             }
                             if (scenario == L"drone")
@@ -1038,7 +1050,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 scenario == L"delivery-rider")
                             {
                                 world->clock.setHour(10);
-                                world->rain = world->rainTarget = 0;
+                                world->setWeather(0);
                                 world->controlledCar = -1;
                                 world->player.roadLevel = 0;
                                 if (scenario == L"wildlife")
@@ -1080,6 +1092,44 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                     }
                                 }
                             }
+                            if (scenario == L"wreckage")
+                            {
+                                // Three parked cars up the street: one with a damaged engine, one on
+                                // fire and one that is blown up while the player watches.
+                                auto &own = world->cars.at(world->controlledCar);
+                                const Vec2 origin = own.body.p, ahead = forward(own.heading());
+                                own.body.v = {};
+                                int staged = 0;
+                                for (auto &c : world->cars)
+                                {
+                                    if (&c == &own || c.kind > 2 || c.line >= 0 || staged == 3)
+                                        continue;
+                                    // The last one stands clear of the others: its blast reaches ten metres.
+                                    c.body.p = origin + ahead * (staged == 2 ? 32. : 9. + 9 * staged);
+                                    c.body.angle = own.body.angle;
+                                    c.body.roadLevel = own.body.roadLevel;
+                                    c.body.height = world->surface(c.body.p, c.body.roadLevel) + .8;
+                                    c.body.v = {};
+                                    c.driverless = true;
+                                    c.health = staged == 0 ? .45 : staged == 1 ? .3 : 1;
+                                    if (staged == 1)
+                                        c.fireTime = 2;
+                                    wreckageCars[staged++] = int(&c - world->cars.data());
+                                }
+                                if (staged != 3)
+                                    throw std::runtime_error("No cars to stage the wreckage with");
+                                world->clock.setHour(13);
+                                world->setWeather(0);
+                                world->weatherClock = 120;
+                                const Vec2 side{ahead.z, -ahead.x}, eye = origin + ahead * 8 + side * 11;
+                                View view;
+                                view.eye = {float(eye.x), float(world->terrain.height(eye) + 4.5),
+                                            float(eye.z)};
+                                const Vec2 centre = origin + ahead * 19;
+                                view.target = {float(centre.x), float(world->terrain.height(centre) + 1.2),
+                                               float(centre.z)};
+                                reviewView = view;
+                            }
                             if (scenario == L"hydrant")
                             {
                                 auto at = world->position();
@@ -1103,7 +1153,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 car.body.v = incoming * 11;
                                 car.body.wake();
                                 world->clock.setHour(11);
-                                world->rain = world->rainTarget = 0;
+                                world->setWeather(0);
                                 View view;
                                 auto camera = target + perpendicular(incoming) * 3.6 - incoming * 4.5;
                                 view.eye = {float(camera.x), float(world->terrain.height(camera) + 2.35),
@@ -1124,7 +1174,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 world->player.roadLevel = 0;
                                 world->player.height = world->terrain.height(bank) + .85;
                                 world->inventory.give(WeaponId::pistol, 30);
-                                world->rain = world->rainTarget = 0;
+                                world->setWeather(0);
                                 world->clock.setHour(11);
                                 View view;
                                 view.eye = {float(target.x - 1.), 1.6f, float(target.z - 6.)};
@@ -1146,7 +1196,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 car.body.height = world->terrain.height(car.body.p) + .8;
                                 car.body.angle = 0;
                                 car.body.v = {0, 5};
-                                world->rain = world->rainTarget = 0;
+                                world->setWeather(0);
                                 world->clock.setHour(10);
                                 View v;
                                 auto eye = target + Vec2{-3.8, -4.0};
@@ -1177,7 +1227,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 car.body.height = world->terrain.height(car.body.p) + .8;
                                 car.body.angle = 0;
                                 car.body.v = {0, 7};
-                                world->rain = world->rainTarget = 0;
+                                world->setWeather(0);
                                 world->clock.setHour(10);
                                 View v;
                                 auto eye = hole->p + Vec2{-2.6, -3.4};
@@ -1263,7 +1313,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                     unit->body.angle = -pi / 2;
                                     unit->body.height = world->terrain.height(unit->body.p) + .8;
                                     unit->body.v = {};
-                                    world->rain = world->rainTarget = 0;
+                                    world->setWeather(0);
                                     world->clock.setHour(11);
                                     View view;
                                     auto eye = origin + Vec2{24, -5};
@@ -1296,7 +1346,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                     passingWreckPosition = wreck.body.p;
                                     place(world->cars.at(0), 2, CityLayout::lane);
                                     world->clock.setHour(11);
-                                    world->rain = world->rainTarget = 0;
+                                    world->setWeather(0);
                                     world->weatherClock = 120;
                                     auto eye = origin + Vec2{6, -6};
                                     View view;
@@ -1369,7 +1419,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 car.health = .62;
                                 recoveryStart = car.body.p;
                                 world->clock.setHour(11);
-                                world->rain = world->rainTarget = 0;
+                                world->setWeather(0);
                                 world->weatherClock = 120;
                             }
                             if (scenario == L"carjack")
@@ -1403,7 +1453,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 if (hijackedCar < 0)
                                     throw std::runtime_error("Missing accessible patrol car");
                                 world->clock.setHour(13);
-                                world->rain = world->rainTarget = 0;
+                                world->setWeather(0);
                             }
                             if (scenario == L"ambulance")
                             {
@@ -1418,7 +1468,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 auto side = rotate(Vec2{1, 0}, unit->body.angle);
                                 auto at = unit->body.p + side * 3.4;
                                 world->clock.setHour(10);
-                                world->rain = world->rainTarget = 0;
+                                world->setWeather(0);
                                 world->controlledCar = -1;
                                 world->player.p = at + side * 8;
                                 world->player.height = world->terrain.height(world->player.p) + .85;
@@ -1813,7 +1863,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 c.body.roadLevel = 0;
                                 c.body.height = world->terrain.height(c.body.p) + .8;
                                 world->clock.setHour(scenario == L"facade-night" ? 22 : 10);
-                                world->rain = world->rainTarget = 0;
+                                world->setWeather(0);
                                 world->weatherClock = 120;
                             }
                             if (scenario == L"park" || scenario == L"park-unshadowed" ||
@@ -1838,7 +1888,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 c.body.roadLevel = 0;
                                 c.body.height = world->terrain.height(c.body.p) + .8;
                                 world->clock.setHour(scenario == L"park-evening" ? 17.5 : 10);
-                                world->rain = world->rainTarget = 0;
+                                world->setWeather(0);
                                 world->weatherClock = 120;
                             }
                             const std::array<std::wstring_view, 8> locations{
@@ -1942,7 +1992,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 world->player.verticalSpeed = 0;
                                 world->player.height = world->terrain.height(*observer) + .85;
                                 world->clock.setHour(15);
-                                world->rain = world->rainTarget = 0;
+                                world->setWeather(0);
                                 world->weatherClock = 120;
                             }
                             smokeStart = world->position();
@@ -2092,10 +2142,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         if (app.pressed['N'])
                             world->clock.setHour(world->clock.hour + 6);
                         if (app.pressed['P'])
-                        {
-                            world->rainTarget = world->rainTarget > .5 ? 0 : 1;
-                            world->weatherClock = world->rainTarget > .5 ? 80 : 180;
-                        }
+                            world->setRain(world->rainTarget <= .5);
                         if (app.pressed[VK_F5])
                             saveGame(menus.active, true);
                         if (app.pressed[VK_F9])
@@ -2148,6 +2195,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             input.car = {.85, 0, false, false};
                         if (smoke && scenario == L"tank")
                             input.shooting = frames >= 150;
+                        if (smoke && scenario == L"wreckage")
+                        {
+                            input.car = {0, 0, true, true};
+                            // The damaged car has just been struck: sparks, scrap and scuffed flanks.
+                            if (frames == 20)
+                                world->vehicleImpact(world->cars.at(wreckageCars[0]), 4, {4, 0});
+                            if (frames == 40)
+                                world->destroyCar(world->cars.at(wreckageCars[2]));
+                        }
                         if (smoke && (scenario == L"drive" || scenario == L"storm"))
                             input.car = {frames < smokeFrames * 2 / 3 ? 1. : 0., .12, false,
                                          frames >= smokeFrames * 2 / 3};
@@ -2206,6 +2262,19 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         // The line-up looks at the camera out at sea.
                         for (const auto &member : lineup)
                             world->people[member.first].heading = pi * .5;
+                        if (smoke && scenario == L"wreckage")
+                        {
+                            std::array<size_t, 8> seen{};
+                            for (const auto &p : world->particles)
+                                ++seen[size_t(p.kind)];
+                            for (size_t kind = 0; kind < seen.size(); ++kind)
+                                particlePeak[kind] = std::max(particlePeak[kind], seen[kind]);
+                            for (const auto &sound : world->sounds)
+                            {
+                                blastsHeard += sound.name == "explosion";
+                                firesHeard += sound.name == "fire";
+                            }
+                        }
                         if (vehicleBefore < 0 && world->controlledCar >= 0)
                         {
                             app.look = world->cars[world->controlledCar].heading();
@@ -2303,7 +2372,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         view.target = front + Vec3{0, 5, 0};
                         view.eye = front + normal * 23 + cross({0, 1, 0}, normal) * 12 + Vec3{0, 8, 0};
                         world->clock.setHour(10);
-                        world->rain = world->rainTarget = 0;
+                        world->setWeather(0);
                     }
                     if (smoke && scenario == L"pursuit")
                     {
@@ -2332,13 +2401,23 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     if (smoke && scenario == L"streaming")
                     {
                         auto stats = renderer.streamingStats();
-                        if (stats.peakGpuBytes > 64 * 1024 * 1024 || stats.queued > 8 || stats.ready > 2)
+                        if (stats.peakGpuBytes > 64 * 1024 * 1024 || stats.queued > 8 || stats.ready > 2 ||
+                            stats.sectorsQueued > SectorStream::maxQueued ||
+                            stats.sectorsReady > SectorStream::maxReady)
                             throw std::runtime_error("Streaming exceeded its memory/queue budget");
+                        // A jump of the camera must never show a hole under it, and the
+                        // standing city takes less memory than all of it would.
+                        if (stats.nearestMissingSector < sectorUrgent)
+                            throw std::runtime_error("Streaming left the ground at the camera unbuilt");
                         if (frames % 180 == 179)
                         {
                             if (stats.residentCells == 0)
                                 throw std::runtime_error(
                                     "Streaming left a visited neighbourhood without details");
+                            if (stats.nearestMissingSector <= float(graphics.distance) + sectorReach ||
+                                stats.residentSectors >= stats.totalSectors)
+                                throw std::runtime_error(
+                                    "Streaming did not bring the city within the draw distance into memory");
                             log << "Stop " << frames / 180 << ": " << renderer.sceneryStats() << std::endl;
                             renderer.screenshot(smokeOutput /
                                                     ("stop-" + std::to_string(frames / 180) + ".bmp"),
@@ -2435,7 +2514,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     {
                         auto stats = renderer.streamingStats();
                         if (stats.evictions < 10 || stats.uploads <= stats.residentCells ||
-                            stats.residentCells >= stats.totalCells)
+                            stats.residentCells >= stats.totalCells || stats.sectorEvictions < 20 ||
+                            stats.sectorUploads < 20)
                             throw std::runtime_error(
                                 "Streaming route did not exercise eviction and reloading");
                     }
@@ -2563,6 +2643,31 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         if (world->scooters.at(rider.ownedScooter).rider != reviewRider ||
                             rider.distance - riderStartDistance < 1.5)
                             throw std::runtime_error("Delivery rider did not travel with their scooter");
+                    }
+                    if (scenario == L"wreckage")
+                    {
+                        const auto &smoking = world->cars.at(wreckageCars[0]);
+                        const auto &burning = world->cars.at(wreckageCars[1]);
+                        const auto &blown = world->cars.at(wreckageCars[2]);
+                        log << "wreckage peaks: spark=" << particlePeak[size_t(ParticleKind::spark)]
+                            << " smoke=" << particlePeak[size_t(ParticleKind::smoke)]
+                            << " debris=" << particlePeak[size_t(ParticleKind::debris)]
+                            << " fire=" << particlePeak[size_t(ParticleKind::fire)]
+                            << " blasts=" << blastsHeard << " fires=" << firesHeard
+                            << " burning=" << burning.fireTime << " scuffs=" << world->scuffs.size()
+                            << std::endl;
+                        if (!blown.destroyed || blastsHeard != 1)
+                            throw std::runtime_error("The staged car did not blow up once");
+                        if (burning.destroyed || burning.fireTime <= 0 || firesHeard < 1)
+                            throw std::runtime_error("The staged fire went out or was not heard");
+                        if (smoking.destroyed || smoking.fireTime > 0)
+                            throw std::runtime_error("The damaged car caught fire");
+                        if (particlePeak[size_t(ParticleKind::spark)] < 18 || world->scuffs.empty())
+                            throw std::runtime_error("The struck car shows no sparks or scuffs");
+                        if (particlePeak[size_t(ParticleKind::fire)] < 55 ||
+                            particlePeak[size_t(ParticleKind::smoke)] < 60 ||
+                            particlePeak[size_t(ParticleKind::debris)] < 30)
+                            throw std::runtime_error("The wreckage threw too few particles");
                     }
                     if (scenario == L"hydrant" &&
                         std::ranges::none_of(world->fixtures,

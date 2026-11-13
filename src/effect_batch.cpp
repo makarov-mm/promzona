@@ -108,6 +108,36 @@ void EffectBatch::marks(const World &w, const Frustum &frustum, float day)
     }
 }
 
+// Port of the collision marks of CityEffects.Draw: dark strips on both flanks of a car
+// that was hit, and a patch on the wall beside it.
+void EffectBatch::scuffs(const World &w, const Frustum &frustum, float day)
+{
+    for (const auto &s : w.scuffs)
+    {
+        const float opacity = float(std::clamp(1. - (w.time - s.born) / s.duration(), 0., 1.)) * .8f;
+        if (s.wall)
+        {
+            if (!frustum.sphere(s.at, 1.f))
+                continue;
+            const Vec3 along = s.facesX ? Vec3{0, 0, -.7f} : Vec3{.7f, 0, 0};
+            billboard(s.at, along, Vec3{0, .26f, 0}, Vec3{.08f, .07f, .06f} * (.35f + .65f * day), opacity,
+                      1.f);
+            continue;
+        }
+        const auto car = std::ranges::find(w.cars, s.car, &Car::id);
+        if (car == w.cars.end() || std::abs(car->roll) > .3)
+            continue;
+        const Vec3 centre{float(car->body.p.x), float(car->body.height - .13), float(car->body.p.z)};
+        if (!frustum.sphere(centre, 3.f))
+            continue;
+        const auto dir = forward(car->heading());
+        const Vec3 f{float(dir.x), 0, float(dir.z)}, side{f.z, 0, -f.x};
+        for (float flank : {-1.f, 1.f})
+            billboard(centre + side * (flank * (float(car->body.halfW) + .015f)), f * .55f, Vec3{0, .10f, 0},
+                      Vec3{.05f, .045f, .04f} * (.35f + .65f * day), opacity, 1.f);
+    }
+}
+
 void EffectBatch::hydrants(const World &w, const Frustum &frustum, float day)
 {
     for (auto index : w.nearbyStaticBodies)
@@ -166,18 +196,15 @@ void EffectBatch::draw(GLuint shader, const World &w, const View &view, const Ma
     up_ = cross(right_, forward_);
     Frustum frustum(vp);
     float day = float(w.clock.daylight());
-    // Low grazing angles reflect more sky. The cached corners follow the road grade.
+    // The shader mirrors the city and the sky in a puddle; this is the colour of its bed.
+    // The cached corners follow the road grade.
     for (const auto &puddle : w.puddles)
     {
         Vec3 centre = (puddle.corners[0] + puddle.corners[2]) * .5f;
         Vec3 delta = eye_ - centre;
         if (dot(delta, delta) > 100 * 100 || !frustum.sphere(centre, 2.f))
             continue;
-        float grazing = 1.f - std::clamp(delta.unit().y, 0.f, 1.f);
-        float reflection = grazing * grazing * grazing;
-        Vec3 sky = Vec3{.46f, .61f, .72f} * (.14f + .86f * day);
-        Vec3 base = Vec3{.07f, .10f, .105f} * (.35f + .65f * day);
-        append(puddle.corners, base + (sky - base) * reflection, .78f, 4.f);
+        append(puddle.corners, Vec3{.07f, .10f, .105f} * (.35f + .65f * day), .78f, 4.f);
     }
     for (const auto &wave : w.ripples)
     {
@@ -200,9 +227,33 @@ void EffectBatch::draw(GLuint shader, const World &w, const View &view, const Ma
             auto delta = p.p - eye_;
             if (dot(delta, delta) > 150 * 150 || !frustum.sphere(p.p, p.size * 2.f))
                 continue;
-            float fade = std::min(1.f, p.life * 9.f);
-            billboard(p.p, right_ * p.size, up_ * p.size, p.color, fade * .94f, 1.f);
+            if (p.kind == ParticleKind::plain)
+            {
+                float fade = std::min(1.f, p.life * 9.f);
+                billboard(p.p, right_ * p.size, up_ * p.size, p.color, fade * .94f, 1.f);
+                continue;
+            }
+            // The colours and the fade of the managed game (CityEffects.Draw).
+            using enum ParticleKind;
+            const float age = p.span - p.life;
+            const Vec3 colour = p.kind == flame
+                                    ? (age < .12f ? Vec3{2.2f, 1.5f, .35f} : Vec3{1.8f, .42f, .035f})
+                                : p.kind == sand   ? Vec3{.63f, .53f, .34f}
+                                : p.kind == spark  ? Vec3{1.7f, .68f, .14f}
+                                : p.kind == smoke  ? Vec3{.24f, .25f, .24f}
+                                : p.kind == debris ? Vec3{.32f, .29f, .24f}
+                                : p.kind == fire   ? Vec3{3.f, .62f, .06f}
+                                                   : Vec3{.50f, .72f, .85f};
+            const float fade =
+                std::clamp(p.life / std::max(p.span, 1e-4f) * 3.f, 0.f, 1.f) * (p.kind == smoke   ? .38f
+                                                                                : p.kind == flame ? .46f
+                                                                                                  : .85f);
+            // Smoke, scrap and dust are lit by the day; what glows is not.
+            const bool lit = p.kind == smoke || p.kind == debris || p.kind == sand || p.kind == water;
+            billboard(p.p, right_ * p.size, up_ * p.size, lit ? colour * (.35f + .65f * day) : colour, fade,
+                      1.f);
         }
+        scuffs(w, frustum, day);
         // Render exhaust and wet-tyre spray locally. Their visual phase never changes the simulation RNG.
         for (const auto &car : w.cars)
         {
@@ -218,7 +269,7 @@ void EffectBatch::draw(GLuint shader, const World &w, const View &view, const Ma
             float speed = float(car.body.v.length());
             Vec3 rear = p - f * float(car.body.halfH);
             bool spray =
-                w.rain > .25 && speed > 3 && w.precipitationSurface(car.body.p) < car.body.height + .25;
+                w.wetness > .2 && speed > 3 && w.precipitationSurface(car.body.p) < car.body.height + .25;
             for (int i = 0; i < 5; ++i)
             {
                 double cycles = w.time * 1.35 + car.id * .373 + i * .2;
@@ -232,7 +283,7 @@ void EffectBatch::draw(GLuint shader, const World &w, const View &view, const Ma
                         billboard(at + side * float(s * car.body.halfW) - Vec3{0, .24f, 0},
                                   right_ * (radius * 1.4f), up_ * radius,
                                   Vec3{.60f, .70f, .76f} * (.45f + .55f * day),
-                                  float(w.rain) * .22f * (1 - age), 1.f);
+                                  float(w.wetness) * .22f * (1 - age), 1.f);
             }
         }
     }
@@ -251,10 +302,12 @@ void EffectBatch::draw(GLuint shader, const World &w, const View &view, const Ma
     BufferData(ARRAY_BUFFER, std::ptrdiff_t(vertices_.size() * sizeof(Vertex)), vertices_.data(),
                DYNAMIC_DRAW);
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // The shader hands over colour already multiplied by its opacity (see effects.frag).
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
     glDepthMask(GL_FALSE);
     glDrawArrays(GL_TRIANGLES, 0, GLsizei(vertices_.size()));
     glDepthMask(GL_TRUE);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_BLEND);
     BindVertexArray(0);
 }

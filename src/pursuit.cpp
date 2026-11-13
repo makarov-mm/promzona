@@ -93,10 +93,7 @@ void World::updateDispatch()
         if (!c.responding)
             continue;
         if (int(i) == controlledCar || c.destroyed || c.falling || !required[c.kind])
-        {
-            c.responding = false;
-            c.seesSuspect = false;
-        }
+            standDown(c);
         else
             --required[c.kind];
     }
@@ -130,6 +127,98 @@ void World::updateDispatch()
     for (int k : policeRoster(wantedLevel()))
         if (required[k] && deployResponder(k))
             break;
+}
+
+// Where a crew may drive in a straight line (the managed ClearWalk): not through a house,
+// a fence or a kiosk, not into a cut or deep water, not off the land.
+bool World::chaseGround(Vec2 at) const
+{
+    const double ground = terrain.height(at);
+    return std::max(std::abs(at.x), std::abs(at.z)) < landEdge - 3 && !openCut(at) &&
+           CityLayout::waterLevel - terrain.bedHeight(at.x, at.z) <= .65 &&
+           !insideBuilding(at, ground + .8, .4) && !scenerySolid(at, ground + .8, .3);
+}
+
+// After CityTraffic.RejoinRoad: a unit whose chase is over goes back to the street graph by
+// itself. The managed car makes for the nearest stop line in a straight line, whichever way
+// that lane goes; five units left in the junction where the suspect had stood all took the
+// stop line of the same street, from the wrong side, and stood in the box for good. Here
+// the unit takes the lane that goes its way and lies nearest to it, within two junctions,
+// and curves into it from where the bonnet points, to that lane's stop line.
+bool World::rejoinRoad(Car &c)
+{
+    if (c.body.roadLevel || !c.grounded())
+        return false;
+    struct Way
+    {
+        double score, ahead;
+        int from, to;
+        Vec2 stop, along;
+    };
+    const Vec2 at = c.body.p, nose = forward(c.heading());
+    const int ci = gridIndex(at.x), cj = gridIndex(at.z);
+    std::vector<Way> ways;
+    for (int j = std::max(0, cj - 2); j <= std::min(nodes - 1, cj + 2); ++j)
+        for (int i = std::max(0, ci - 2); i <= std::min(nodes - 1, ci + 2); ++i)
+        {
+            const int node = i + j * nodes;
+            for (int back : layout.neighbours(node))
+            {
+                const Vec2 along = (nodePoint(node) - nodePoint(back)).unit();
+                const Vec2 stop =
+                    nodePoint(node) - along * stopLine + perpendicular(along) * CityLayout::laneOffset(0);
+                // The stop line has to be ahead in the lane, with room to come into it, and
+                // the junction before it not further back than its own far side.
+                const double ahead = dot(stop - at, along);
+                if (ahead < 4 || ahead > spacing + 9)
+                    continue;
+                ways.push_back({std::abs(cross(stop - at, along)) + 10 * (1 - dot(nose, along)) + .05 * ahead,
+                                ahead, back, node, stop, along});
+            }
+        }
+    std::ranges::sort(ways, {}, &Way::score);
+    for (const auto &way : ways)
+    {
+        const double handle = clamp(way.ahead * .4, 2., 8.);
+        Path path(at, at + nose * handle, way.stop - way.along * handle, way.stop);
+        // Nothing solid on the way: the curve itself and 1.1 m to either side of it.
+        bool open = true;
+        for (double s = 0; s <= path.length() && open; s += 1)
+        {
+            const auto [point, heading] = path.sample(s);
+            const Vec2 side = perpendicular(forward(heading)) * 1.1;
+            open = chaseGround(point) && chaseGround(point + side) && chaseGround(point - side);
+        }
+        if (!open)
+            continue;
+        // The stop line is in the first lane, as the crossing that follows expects.
+        c.laneIndex = 0;
+        c.routeFrom = way.from;
+        c.routeTo = way.to;
+        c.previousNode = c.plannedTo = -1;
+        c.route = std::move(path);
+        c.routePhase = c.routeLevel = 0;
+        c.routeDistance = c.senseAt = 0;
+        c.rejoining = true;
+        return true;
+    }
+    return false;
+}
+
+// The end of a police mission (CityTraffic.ServicesStep and PoliceDispatchStep): the unit
+// is traffic again. One that left the street after the suspect, or stands across it, goes
+// back to the street by RejoinRoad instead of steering for the segment it left.
+void World::standDown(Car &c)
+{
+    const bool pursued = c.responding;
+    c.responding = c.seesSuspect = false;
+    c.avoid = c.wedgedFor = c.reverseFor = 0;
+    if (!pursued || c.destroyed || c.falling || c.driverless || c.kind == 12 || c.line >= 0 || !c.route ||
+        int(&c - cars.data()) == controlledCar)
+        return;
+    const auto [onRoute, heading] = c.route->sample(c.route->closestDistance(c.body.p));
+    if ((onRoute - c.body.p).length() > 1.5 || dot(forward(c.heading()), forward(heading)) < .9)
+        rejoinRoad(c);
 }
 
 int World::pursuitNext(int node, int previous)
@@ -318,9 +407,10 @@ void World::responseFire(Car &c)
     c.nextShot = time + (c.kind == 12 ? 2.3 : c.kind == 14 ? .65 : .9);
     sounds.push_back({c.kind == 12 ? "shot" : "automatic", c.body.p, .75});
     if (hit.kind == HitKind::player)
-        hurtPlayer(.055);
+        woundPlayer(.055);
     else
         damageCar(cars[hit.index], .095);
+    bulletSparks(c.body.p, dir, y, (targetY - y) / range, hit);
     for (double t = 2; t < hit.distance && particles.size() < 5000; t += 2.3)
         particles.push_back({{float(c.body.p.x + dir.x * t), float(y + (targetY - y) * t / range),
                               float(c.body.p.z + dir.z * t)},

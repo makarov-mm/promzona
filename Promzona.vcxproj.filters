@@ -9,11 +9,15 @@
   <ItemGroup>
     <None Include="Content/Shaders/Native\effects.frag"><Filter>Шейдеры</Filter></None>
     <None Include="Content/Shaders/Native\effects.vert"><Filter>Шейдеры</Filter></None>
+    <None Include="Content/Shaders/Native\environment.glsl"><Filter>Шейдеры</Filter></None>
     <None Include="Content/Shaders/Native\scene.frag"><Filter>Шейдеры</Filter></None>
     <None Include="Content/Shaders/Native\fullscreen.vert"><Filter>Шейдеры</Filter></None>
     <None Include="Content/Shaders/Native\glow.frag"><Filter>Шейдеры</Filter></None>
+    <None Include="Content/Shaders/Native\occlusion.frag"><Filter>Шейдеры</Filter></None>
     <None Include="Content/Shaders/Native\resolve.frag"><Filter>Шейдеры</Filter></None>
     <None Include="Content/Shaders/Native\scene.vert"><Filter>Шейдеры</Filter></None>
+    <None Include="Content/Shaders/Native\sky.frag"><Filter>Шейдеры</Filter></None>
+    <None Include="Content/Shaders/Native\sky.vert"><Filter>Шейдеры</Filter></None>
     <None Include="Content/Shaders/Native\ui.frag"><Filter>Шейдеры</Filter></None>
     <None Include="Content/Shaders/Native\ui.vert"><Filter>Шейдеры</Filter></None>
   </ItemGroup>
@@ -21,6 +25,7 @@
     <ClInclude Include="include/promzona\animation.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\appearance.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\architecture.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\atmosphere.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\assets.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\audio.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\city_mesh.hpp"><Filter>Заголовки</Filter></ClInclude>
@@ -28,6 +33,7 @@
     <ClInclude Include="include/promzona\control_hints.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\core.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\detail_stream.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\sector_stream.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\fleet.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\gl.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\hud_damage.hpp"><Filter>Заголовки</Filter></ClInclude>
@@ -40,6 +46,7 @@
     <ClInclude Include="include/promzona\minimap.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\names.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\physics.hpp"><Filter>Заголовки</Filter></ClInclude>
+    <ClInclude Include="include/promzona\reflection_probe.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\renderer.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\road_levels.hpp"><Filter>Заголовки</Filter></ClInclude>
     <ClInclude Include="include/promzona\sun_shadow.hpp"><Filter>Заголовки</Filter></ClInclude>
@@ -70,6 +77,7 @@
     <ClCompile Include="src\control_hints.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\core.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\detail_stream.cpp"><Filter>Исходники</Filter></ClCompile>
+    <ClCompile Include="src\sector_stream.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\drone.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\effect_batch.cpp"><Filter>Исходники</Filter></ClCompile>
     <ClCompile Include="src\post_processing.cpp"><Filter>Исходники</Filter></ClCompile>

@@ -154,7 +154,12 @@ bool World::intersectionClear(const Car &car) const
     const Vec2 centre = nodePoint(node);
     auto f = (centre - nodePoint(car.routeFrom)).unit();
     int d = f.z > .5 ? 0 : f.x > .5 ? 1 : f.z < -.5 ? 2 : 3;
-    if (neighbours(node).size() >= 3 && !CityLayout::green(node % nodes, node / nodes, d, time))
+    // A crew on its way to a patient does not wait for the lights (the managed
+    // IsResponding); whoever is crossing still has the junction, and beyond it there has
+    // to be room, as for anybody.
+    const auto *call = car.kind == 4 ? ambulanceCall(int(car.id)) : nullptr;
+    if (!(call && call->stage == RescueStage::driving) && neighbours(node).size() >= 3 &&
+        !CityLayout::green(node % nodes, node / nodes, d, time))
         return false;
     auto each = [&](double radius, auto visit) { return eachCarNear(*this, centre, radius, visit); };
     if (junctionHeld(node, &car))
@@ -323,6 +328,187 @@ bool World::tryChangeLane(Car &c, int destination)
     return true;
 }
 
+// Port of the managed pursuit (PolicePursuit and PoliceRuleStep in CityTraffic.Pursuit.cs):
+// an emergency crew treats traffic as a steering cost, never as a red light, a reservation
+// or a right of way. Whoever is ahead is gone round and slows the unit down; nothing but a
+// contact stops it. Before this port a unit queued like everybody else: one that came
+// round a junction with its bonnet at the car waiting at the opposite stop line stood
+// there for the rest of the pursuit, and the four streets of the junction with it.
+void World::sensePursuit(Car &c, bool local)
+{
+    const auto &b = c.body;
+    const Vec2 nose = forward(c.heading());
+    c.blockedSince = -1;
+    c.avoid = c.pullOut = 0;
+    if (!local)
+    {
+        // PoliceRuleStep: on the rails of the distant model the unit pulls out towards the
+        // middle of the street round whoever is ahead, at twelve metres a second at most.
+        // Reckoned from the lane, not from where the unit has pulled out to: until it is
+        // past, whoever it goes round is still in the lane.
+        const Vec2 side = perpendicular(nose), lane = c.route ? c.route->sample(c.routeDistance).first : b.p;
+        nearby(*this, lane, 20,
+               [&](const TrafficCell &cell)
+               {
+                   for (int i = cell.car; i >= 0; i = nextTrafficCar[i])
+                   {
+                       const auto &other = cars[i];
+                       if (&other == &c || i == controlledCar || !sameSurface(*this, b, other.body))
+                           continue;
+                       const Vec2 gap = other.body.p - lane;
+                       const double ahead = dot(gap, nose);
+                       if (ahead > -b.halfH - other.body.halfH && ahead < 18 &&
+                           std::abs(dot(gap, side)) < b.halfW + other.body.halfW + .5)
+                       {
+                           c.trafficLimit = 12;
+                           c.pullOut = -2.8;
+                       }
+                   }
+               });
+        return;
+    }
+    // The managed car may come up at 1.8 m/s for every metre left, and never slower than
+    // four metres a second. From its full speed nothing brakes like that: here the unit also
+    // comes up no faster than it can stop from, and so does not go on into those ahead.
+    auto pace = [](double gap)
+    { return std::max(4., std::min(gap * 1.8, std::sqrt(12 * std::max(0., gap)))); };
+    if (c.seesSuspect || !c.route)
+    {
+        // PolicePursuit, straight for the suspect: steering away from whatever is in front
+        // of the bonnet, never slower than four metres a second for a car and five for a
+        // walker.
+        const Vec2 side{nose.z, -nose.x};
+        double steer = 0, speed = 100;
+        nearby(*this, b.p, 18,
+               [&](const TrafficCell &cell)
+               {
+                   for (int i = cell.car; i >= 0; i = nextTrafficCar[i])
+                   {
+                       const auto &other = cars[i];
+                       if (&other == &c || i == controlledCar || !sameSurface(*this, b, other.body))
+                           continue;
+                       const Vec2 gap = other.body.p - b.p;
+                       const double ahead = dot(gap, nose), lateral = dot(gap, side);
+                       if (gap.length2() < 18 * 18 && ahead > 0 && ahead < 16 &&
+                           std::abs(lateral) < b.halfW + other.body.halfW + .8)
+                       {
+                           steer += std::copysign(.65, lateral == 0 ? (c.id % 2 ? -1. : 1.) : -lateral);
+                           speed = std::min(speed, pace(ahead - b.halfH - other.body.halfH));
+                       }
+                   }
+                   for (int i = cell.person; i >= 0; i = nextTrafficPerson[i])
+                   {
+                       const auto &walker = people[i];
+                       if (walker.riding >= 0 || !sameSurface(*this, b, walker.body))
+                           continue;
+                       const Vec2 gap = walker.body.p - b.p;
+                       const double ahead = dot(gap, nose), lateral = dot(gap, side);
+                       if (gap.length2() < 10 * 10 && ahead > 0 && ahead < 9 && std::abs(lateral) < 2)
+                       {
+                           steer += std::copysign(.5, lateral == 0 ? 1. : -lateral);
+                           speed = std::min(speed, 5.);
+                       }
+                   }
+               });
+        if (!b.roadLevel)
+            for (const auto &animal : animals)
+            {
+                const Vec2 gap = animal.p - b.p;
+                if (animal.deadUntil > time || animal.altitude > .3 || gap.length2() >= 7 * 7)
+                    continue;
+                const double lateral = dot(gap, side);
+                if (dot(gap, nose) > 0 && std::abs(lateral) < 1.8)
+                {
+                    steer += std::copysign(.3, -lateral);
+                    speed = std::min(speed, 7.);
+                }
+            }
+        c.avoid = steer;
+        c.trafficLimit = speed;
+        return;
+    }
+    // Along the street the same cost is paid in metres: the unit pulls out of its lane to
+    // where nobody is, as the managed rule-driven car does (OvertakeOffset), instead of
+    // steering away from the bonnet's own line. Steered by the bonnet, a unit behind two
+    // cars at a stop line swung out, lost sight of them, swung back in and pushed them.
+    const auto [onRoute, heading] = c.route->sample(c.routeDistance);
+    const Vec2 dir = forward(heading), across = perpendicular(dir);
+    const double mine = dot(b.p - onRoute, across);
+    // What lies ahead, as a stretch across the street and the metres left to it. Whoever
+    // comes the other way is counted from further off, by as much as the two close in a
+    // second and a half: pulled out into the oncoming lane, a unit met the first car in it.
+    struct Shadow
+    {
+        double from, to, gap, closing;
+        bool walker;
+    };
+    std::array<Shadow, 24> shadows;
+    size_t count = 0;
+    auto shade = [&](const Body &other, double reach, double halfWidth, double halfLength, bool walker)
+    {
+        const Vec2 gap = other.p - b.p;
+        const double ahead = dot(gap, dir), closing = walker ? 0. : std::max(0., -dot(other.v, dir));
+        if (count == shadows.size() || ahead <= -b.halfH - halfLength || ahead >= reach + closing * 1.5 ||
+            !sameSurface(*this, b, other))
+            return;
+        const double middle = dot(other.p - onRoute, across), width = b.halfW + halfWidth + .6;
+        shadows[count++] = {middle - width, middle + width, ahead - b.halfH - halfLength, closing, walker};
+    };
+    nearby(*this, b.p, 34,
+           [&](const TrafficCell &cell)
+           {
+               for (int i = cell.car; i >= 0; i = nextTrafficCar[i])
+                   if (&cars[i] != &c && i != controlledCar)
+                       shade(cars[i].body, 16, projectedExtent(cars[i].body, across),
+                             projectedExtent(cars[i].body, dir), false);
+               for (int i = cell.person; i >= 0; i = nextTrafficPerson[i])
+                   if (people[i].riding < 0)
+                       shade(people[i].body, 9, people[i].body.radius + .5, people[i].body.radius, true);
+           });
+    // Where the unit may be: on the carriageway of a street, and a lane's width to either
+    // side of a crossing path or a level road.
+    double lowest = -3.4, highest = 3.4;
+    if (c.routePhase == 0)
+    {
+        const Vec2 axis = (nodePoint(c.routeTo) - nodePoint(c.routeFrom)).unit();
+        if (dot(axis, dir) > .95)
+        {
+            const double lane = dot(onRoute - nodePoint(c.routeFrom), perpendicular(axis)),
+                         edge = layout.roadHalf() - b.halfW - .4;
+            lowest = std::min(0., -edge - lane);
+            highest = std::max(0., edge - lane);
+        }
+    }
+    auto shaded = [&](double offset)
+    {
+        for (size_t k = 0; k < count; ++k)
+            if (offset > shadows[k].from && offset < shadows[k].to)
+                return true;
+        return false;
+    };
+    if (shaded(0))
+    {
+        // The free place nearest to where the unit already is; with none, straight on.
+        double best = 1e9;
+        for (size_t k = 0; k < count; ++k)
+            for (const double offset : {shadows[k].from - .05, shadows[k].to + .05})
+                if (offset >= lowest && offset <= highest && !shaded(offset) &&
+                    std::abs(offset - c.overtake) < best &&
+                    (c.routePhase == 0 || chaseGround(b.p + dir * 6 + across * (offset - mine))))
+                {
+                    best = std::abs(offset - c.overtake);
+                    c.pullOut = offset;
+                }
+    }
+    // Slowed down only by what is in front of the bumper where the unit is now: to five
+    // metres a second for somebody on foot, which knocks nobody down for good, and never
+    // below four for a car.
+    for (size_t k = 0; k < count; ++k)
+        if (mine > shadows[k].from + .3 && mine < shadows[k].to - .3 && shadows[k].gap > -1)
+            c.trafficLimit =
+                std::min(c.trafficLimit, shadows[k].walker ? 5. : pace(shadows[k].gap - shadows[k].closing));
+}
+
 void World::senseTraffic(Car &c, bool local)
 {
     if (trafficCells.empty())
@@ -330,13 +516,18 @@ void World::senseTraffic(Car &c, bool local)
     const double interval = local ? .15 : .38;
     c.senseAt = time + interval + (c.id % 7) * .012;
     c.trafficLimit = 100;
+    if (c.responding)
+    {
+        sensePursuit(c, local);
+        return;
+    }
     const auto &b = c.body;
     // Traffic on a route looks along the route. Out of a turn the bonnet still points across
     // the lanes: looking along it, a car took the tram that waited in the oncoming lane for
     // an obstacle and stopped, the tram waited for the junction behind the car to clear, and
     // the truck in the junction waited for the car.
     const auto nose = forward(c.heading());
-    const bool routed = c.route && c.routePhase != 1 && !c.responding;
+    const bool routed = c.route && c.routePhase != 1;
     const auto dir = routed ? forward(c.route->sample(c.routeDistance).second) : nose,
                right = perpendicular(dir);
     // What stands right in front of the bumper counts whichever way the route goes.
@@ -365,7 +556,7 @@ void World::senseTraffic(Car &c, bool local)
     auto pathSide = [&](double distance)
     {
         // A level road winds too: its oncoming lane is not ahead because the bonnet points at it.
-        if (c.routePhase == 1 || c.responding || !c.route)
+        if (c.routePhase == 1 || !c.route)
             return 0.;
         auto [p, heading] = c.route->sample(c.routeDistance + distance);
         double over = c.routeDistance + distance - c.route->length();
@@ -390,7 +581,7 @@ void World::senseTraffic(Car &c, bool local)
     // crossing of the street the car turns into is watched along the curve, as the
     // managed Enter checks the crossing paths before a car may go.
     std::array<Vec2, 8> curve{}, curveAhead{};
-    const bool turning = c.routePhase == 1 && c.route && !c.responding;
+    const bool turning = c.routePhase == 1 && c.route;
     // The walked line of the street the car turns into is 9.1 m from the middle of the
     // junction. A car that gives way does so before it, in the box: one that stopped
     // across the line stood in the way of everybody it was waiting for.
@@ -480,7 +671,7 @@ void World::senseTraffic(Car &c, bool local)
                for (int i = cell.car; i >= 0; i = nextTrafficCar[i])
                {
                    const auto &other = cars[i];
-                   if (&other == &c || (c.responding && i == controlledCar))
+                   if (&other == &c)
                        continue;
                    auto delta = other.body.p - b.p;
                    if (turning)
@@ -599,11 +790,11 @@ void World::senseTraffic(Car &c, bool local)
                    if (people[i].riding < 0)
                        yieldToWalker(people[i].body);
            });
-    if (controlledCar < 0 && !c.responding)
+    if (controlledCar < 0)
         yieldToWalker(player);
 
     // A bus keeps its lane whatever stands in it.
-    if (!blocker || c.routePhase != 0 || c.responding || c.kind == 5)
+    if (!blocker || c.routePhase != 0 || c.kind == 5)
     {
         c.blockedSince = -1;
         return;

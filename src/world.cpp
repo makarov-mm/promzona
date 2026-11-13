@@ -276,6 +276,7 @@ void World::newRoute(Car &car)
     }
     car.routeDistance = 0;
     car.senseAt = 0;
+    car.rejoining = false;
 }
 Vec2 World::pickupSite()
 {
@@ -318,6 +319,8 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress,
     people.clear();
     pickups.clear();
     particles.clear();
+    scuffs.clear();
+    effectSeed = 4191;
     surfaceMarks.clear();
     ripples.clear();
     tireContacts.clear();
@@ -355,10 +358,10 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress,
     time = 0;
     playerDistance = 0;
     aiming = firing = false;
-    rain = rainTarget = 0;
+    setWeather(0);
     dayNightCycle = true;
     simulationSpeed = 1;
-    weatherClock = 120;
+    weatherClock = 90;
     shotCooldown = wantedCooldown = 0;
     godMode = helicopterLanding = false;
     playerKnockedUntil = 0;
@@ -592,6 +595,17 @@ void World::generate(std::uint32_t newSeed, std::function<void(float)> progress,
     settleRoles();
     report(1);
 }
+double World::weatherSpell(bool raining) const
+{
+    std::uint32_t n = seed ^ (std::uint32_t(std::int64_t(time * 10)) * 0x9e3779b9u);
+    n ^= n >> 16;
+    n *= 0x7feb352du;
+    n ^= n >> 15;
+    n *= 0x846ca68bu;
+    n ^= n >> 16;
+    const double chance = (n >> 8) / 16777216.;
+    return raining ? 45 + 90 * chance : 120 + 240 * chance;
+}
 void World::step(PlayerInput input, double dt)
 {
     if (!(dt > 0 && dt <= .025))
@@ -606,10 +620,11 @@ void World::step(PlayerInput input, double dt)
     weatherClock -= dt;
     if (weatherClock <= 0)
     {
-        rainTarget = 1 - rainTarget;
-        weatherClock = rainTarget ? 80 : 180;
+        rainTarget = rainTarget > .5 ? 0 : 1;
+        weatherClock = weatherSpell(rainTarget > .5);
     }
-    rain += (rainTarget - rain) * (1 - std::exp(-dt * .15));
+    rain += (rainTarget - rain) * (1 - std::exp(-dt * .16));
+    wetness += (rainTarget - wetness) * (1 - std::exp(-dt * (rainTarget > 0 ? .05 : .006)));
     firing = false;
     stepEntry(input, dt);
     if (drone.active)
@@ -753,7 +768,7 @@ void World::step(PlayerInput input, double dt)
             Input controls = input.car;
             if (controls.throttle == 0 && !controls.brake && b.v.length2() < .36)
                 controls.brake = true;
-            stepVehicle(car, controls, dt, 1 - rain * .2);
+            stepVehicle(car, controls, dt, 1 - wetness * .2);
         }
         else if (car.destroyed)
         {
@@ -764,7 +779,7 @@ void World::step(PlayerInput input, double dt)
                  car.driverless || vehicleEntry.car == int(i) || car.summoned || car.personal ||
                  car.kind == 11 ||
                  ((job.kind == JobKind::vehicle || job.kind == JobKind::broadcast) && int(i) == job.actor))
-            stepVehicle(car, {0, 0, true, false}, dt, 1 - rain * .2);
+            stepVehicle(car, {0, 0, true, false}, dt, 1 - wetness * .2);
         else if (!local)
         {
             if (!car.route)
@@ -796,6 +811,15 @@ void World::step(PlayerInput input, double dt)
                 newRoute(car);
             auto sample = car.route->sample(car.routeDistance);
             b.p = sample.first;
+            // Port of the managed PoliceRuleStep: a crew on a call pulls out towards the
+            // middle of the street round whoever is ahead and comes back afterwards.
+            car.overtake += clamp((car.responding ? car.pullOut : 0.) - car.overtake, -dt * 3, dt * 3);
+            if (car.overtake != 0)
+            {
+                const Vec2 pulledOut = b.p + perpendicular(forward(sample.second)) * car.overtake;
+                if (chaseGround(pulledOut))
+                    b.p = pulledOut;
+            }
             b.angle = -sample.second;
             b.v = forward(sample.second) * speed;
             b.roadLevel = car.routeLevel;
@@ -826,11 +850,17 @@ void World::step(PlayerInput input, double dt)
             }
             double lookAhead = 2.8 + std::abs(dot(b.v, forward(car.heading()))) * .35;
             double aimDistance = car.routeDistance + lookAhead;
-            auto aim = car.route->sample(aimDistance).first;
+            const auto ahead = car.route->sample(aimDistance);
+            auto aim = ahead.first;
             // Continue the tangent past an endpoint instead of steering back towards a
             // point just behind the front axle after a small physical overshoot.
             if (aimDistance > car.route->length())
                 aim += forward(end.second) * (aimDistance - car.route->length());
+            // A crew on a call drives beside its lane where the lane is taken
+            // (World::sensePursuit); everybody else keeps to the line.
+            car.overtake =
+                car.responding ? car.overtake + clamp(car.pullOut - car.overtake, -dt * 3, dt * 3) : 0.;
+            aim += perpendicular(forward(ahead.second)) * car.overtake;
             double desired = std::atan2(aim.x - b.p.x, aim.z - b.p.z);
             double target =
                 car.routePhase == 1
@@ -864,6 +894,16 @@ void World::step(PlayerInput input, double dt)
                     (b.p - focus).length2() < 19 * 19 &&
                     (controlledCar < 0 ? player.v.length2() : cars[controlledCar].body.v.length2()) < 1)
                     target = 0;
+                // Port of the managed PolicePursuit: nobody drives at a suspect on foot. In
+                // sight of him and within nineteen metres the unit stops where it is. Units
+                // that kept coming stood bumper to bumper round him, and could not leave
+                // when the stars had gone. It comes up no faster than it can stop from: at
+                // full speed to the last metre, a unit went on into those already there.
+                if (controlledCar < 0)
+                {
+                    const double away = (b.p - focus).length();
+                    target = away < 19 ? 0. : std::min(target, 4 + std::sqrt(2 * 5 * (away - 19)));
+                }
             }
             auto dir = forward(car.heading());
             // What the driver would do with nothing in the way.
@@ -875,6 +915,15 @@ void World::step(PlayerInput input, double dt)
                 2 * std::sin(wrap(desired - car.heading())) / std::max(1., (aim - b.p).length());
             double steering = std::atan(car.wheelbase * curvature) / steerLimit;
             target = std::min(target, std::sqrt(3.2 / std::max(.001, std::abs(curvature))));
+            // Backing up, the wheels are turned for the route, whatever is steered round.
+            const double towards = steering;
+            if (car.responding)
+            {
+                // Whoever is ahead of a crew on a call is steered round and paid for in speed
+                // (World::sensePursuit).
+                steering = clamp(steering, -1., 1.) + car.avoid;
+                target *= clamp(1 - std::abs(car.avoid) * .45, .5, 1.);
+            }
             // Port of the managed driver's way out (CityTraffic.Physics.cs): pushed off the
             // route and facing away from it, or wedged, it backs up slowly and tries again;
             // its pose is never reset. A driver here stops short of what is in front of the
@@ -882,13 +931,86 @@ void World::step(PlayerInput input, double dt)
             // by what is ahead: a truck that came out of a turn too wide stood nose to nose
             // with the van at the opposite stop line, each in the way of the other.
             std::optional<Input> backing;
-            if (!car.responding)
+            // Not into whoever is behind.
+            auto blockedBehind = [&]
+            {
+                for (const auto &other : cars)
+                {
+                    // In the metre and a half behind the bumper, that is. Whoever was near
+                    // and anywhere behind the middle of the car counted: a van that stood
+                    // across the flank of a unit, its nose at the rear door, kept the unit
+                    // against a post for good.
+                    if (&other == &car || !onSameSurface(b, other.body))
+                        continue;
+                    const Vec2 centre = b.p - dir * (b.halfH + .75), facing = forward(other.heading()),
+                               gap = other.body.p - centre;
+                    bool apart = false;
+                    for (const Vec2 axis : {dir, perpendicular(dir), facing, perpendicular(facing)})
+                        apart = apart || std::abs(dot(gap, axis)) >
+                                             .75 * std::abs(dot(dir, axis)) +
+                                                 (b.halfW + .15) * std::abs(cross(dir, axis)) +
+                                                 other.body.halfH * std::abs(dot(facing, axis)) +
+                                                 other.body.halfW * std::abs(cross(facing, axis));
+                    if (!apart)
+                        return true;
+                }
+                for (const auto &walker : people)
+                {
+                    const Vec2 gap = walker.body.p - b.p;
+                    if (walker.riding < 0 && dot(gap, dir) < 0 && dot(gap, dir) > -b.halfH - 3 &&
+                        std::abs(cross(gap, dir)) < b.halfW + .6 && onSameSurface(b, walker.body))
+                        return true;
+                }
+                return false;
+            };
+            // What the driver may do with the traffic it gives way to taken into account.
+            const double allowed = std::min(wish, car.trafficLimit);
+            if (car.responding)
+            {
+                // Port of the managed pursuit (PoliceChaseStep in CityTraffic.Pursuit.cs): a
+                // unit that wants to go and has stood for 1.8 seconds, or has the suspect
+                // more than three metres behind it while it crawls, backs up for 1.1
+                // seconds with the wheels turned away and tries again. On its way to the
+                // suspect it still waits its turn behind traffic; in sight of him it does
+                // not. A unit that holds back while a colleague makes the stop is not stuck.
+                if (wish > 1 && (car.seesSuspect || allowed > 1) && std::abs(speed) < .5)
+                    car.wedgedFor += dt;
+                else
+                    car.wedgedFor = 0;
+                if (car.reverseFor <= 0 && wish > 1 &&
+                    (car.wedgedFor > 1.8 ||
+                     (car.seesSuspect && dot(aim - b.p, dir) < -3 && std::abs(speed) < 1.5)))
+                {
+                    car.reverseFor = 1.1;
+                    car.wedgedFor = 0;
+                }
+                if (car.reverseFor > 0)
+                {
+                    car.reverseFor -= dt;
+                    backing = blockedBehind() ? Input{0, clamp(steering, -1., 1.), true, false}
+                                              : Input{-.65, towards > 0 ? -.85 : .85, false, false};
+                }
+            }
+            else
             {
                 const auto [onRoute, routeHeading] = car.route->sample(car.routeDistance);
                 const double routeError = (onRoute - b.p).length();
                 const bool displaced = routeError > 1.5 || dot(dir, forward(routeHeading)) < .9;
-                if (car.routePhase != 1 && displaced && wish > 1 && car.trafficLimit < .2 &&
-                    std::abs(speed) < .25)
+                // Held across the route by what is ahead, or free to go and not moving:
+                // against a post or a trunk that no driver waits for.
+                const bool held = car.routePhase != 1 && displaced && wish > 1 && car.trafficLimit < .2;
+                // A unit whose call is over has no lane yet, and nobody to queue behind:
+                // units left round the place where a suspect had stood faced each other,
+                // each on the other's way back to the street, and waited for good. One
+                // that cannot go backs up like anybody wedged and looks for a way again.
+                if (car.rejoining)
+                {
+                    const Vec2 along = (nodePoint(car.routeTo) - nodePoint(car.routeFrom)).unit();
+                    const Vec2 stop = car.route->sample(car.route->length()).first;
+                    if (dot(dir, along) > .97 && std::abs(cross(b.p - stop, along)) < .8)
+                        car.rejoining = false;
+                }
+                if ((held || allowed > 1 || (car.rejoining && wish > 1)) && std::abs(speed) < .25)
                     car.wedgedFor += dt;
                 else
                     car.wedgedFor = 0;
@@ -901,35 +1023,18 @@ void World::step(PlayerInput input, double dt)
                 if (car.reverseFor > 0)
                 {
                     car.reverseFor -= dt;
-                    // Not into whoever is behind.
-                    bool blocked = false;
-                    for (const auto &other : cars)
-                    {
-                        const Vec2 gap = other.body.p - b.p;
-                        if (&other != &car && dot(gap, dir) < 0 &&
-                            gap.length() < b.halfH + other.body.halfH + 1 && onSameSurface(b, other.body))
-                        {
-                            blocked = true;
-                            break;
-                        }
-                    }
-                    for (size_t k = 0; !blocked && k < people.size(); ++k)
-                    {
-                        const Vec2 gap = people[k].body.p - b.p;
-                        blocked = people[k].riding < 0 && dot(gap, dir) < 0 && dot(gap, dir) > -b.halfH - 3 &&
-                                  std::abs(cross(gap, dir)) < b.halfW + .6 &&
-                                  onSameSurface(b, people[k].body);
-                    }
-                    backing = blocked ? Input{0, clamp(steering, -1., 1.), true, false}
-                                      : Input{clamp((-1.8 - speed) * .35, -.4, .4), steering > 0 ? -.8 : .8,
-                                              false, false};
+                    backing = blockedBehind() ? Input{0, clamp(steering, -1., 1.), true, false}
+                                              : Input{clamp((-1.8 - speed) * .35, -.4, .4),
+                                                      steering > 0 ? -.8 : .8, false, false};
+                    if (car.reverseFor <= 0 && car.rejoining)
+                        rejoinRoad(car);
                 }
             }
             stepVehicle(car,
                         backing ? *backing
                                 : Input{clamp((target - speed) * .4, -1., 1.), clamp(steering, -1., 1.),
                                         target < .2, false},
-                        dt, 1 - rain * .2);
+                        dt, 1 - wetness * .2);
         }
         if (local)
         {
@@ -1081,14 +1186,16 @@ void World::step(PlayerInput input, double dt)
         riderIntent(p, dir, speed);
         socialIntent(p, dir, speed);
         // Ordinary walking: wait for the walk signal, hurry when the lights change halfway.
-        if (local && p.fear <= 0 && p.role == Person::Role::none && p.watchUntil <= time && speed > .2)
+        // The whole city keeps to it, not only the streets about the player: whoever comes
+        // into view is found at the kerb and not in front of the cars that have green.
+        if (p.fear <= 0 && p.role == Person::Role::none && p.watchUntil <= time && speed > .2)
         {
             // Nobody dawdles in the road, least of all once the cars have green.
             if (kerbWait(p) > 0)
                 speed = 0;
             else if (onCrossing(p, false))
                 speed *= onCrossing(p, true) ? 1.5 : 1.2;
-            else if (p.drunk() && p.uniform == Person::Uniform::none)
+            else if (local && p.drunk() && p.uniform == Person::Uniform::none)
                 // A drunk keeps the general direction and little else.
                 dir = rotate(dir, std::sin(time * .9 + p.body.id) * .3);
         }
@@ -1280,10 +1387,25 @@ void World::step(PlayerInput input, double dt)
     }
     for (size_t i = 0; i < people.size(); ++i)
     {
-        if (people[i].riding >= 0)
-            seatPassenger(people[i]);
-        else
-            supportPerson(people[i].body, previousPeople[i], dt);
+        auto &p = people[i];
+        if (p.riding >= 0)
+        {
+            seatPassenger(p);
+            continue;
+        }
+        supportPerson(p.body, previousPeople[i], dt);
+        // Port of the drowned branch of WaterStep: the body hangs half a metre under the
+        // surface and sinks to the bed at 0.6 m/s.
+        if (p.dead && p.drowned && !p.body.roadLevel)
+        {
+            const double bed = terrain.bedHeight(p.body.p.x, p.body.p.z);
+            const double afloat = CityLayout::waterLevel - bed - .5 - (time - p.diedAt) * .6;
+            if (afloat > 0)
+            {
+                p.body.height = bed + .85 + afloat;
+                p.body.verticalSpeed = 0;
+            }
+        }
     }
     if (controlledCar < 0)
         supportPerson(player, previousPlayer, dt);
@@ -1340,16 +1462,7 @@ void World::step(PlayerInput input, double dt)
         pickup.wait = 2;
     }
     std::erase_if(pickups, [](const Pickup &p) { return p.wait < 0; });
-    for (auto &p : particles)
-    {
-        p.life -= float(dt);
-        p.v.y -= float(dt * 6);
-        p.p = p.p + p.v * float(dt);
-    }
-    std::erase_if(particles, [](auto &p) { return p.life <= 0; });
-    if (particles.size() > 5000)
-        particles.erase(particles.begin(),
-                        particles.begin() + static_cast<std::ptrdiff_t>(particles.size() - 5000));
+    stepParticles(dt);
     while (!ripples.empty() && time - ripples.front().born >= WaterRipple::lifetime)
         ripples.pop_front();
     const double dangerDepth = controlledCar >= 0 ? .85 : 1.15;
@@ -1374,7 +1487,7 @@ void World::step(PlayerInput input, double dt)
         wanted = 0;
         dispatchAt = 0;
         for (auto &c : cars)
-            c.responding = false;
+            standDown(c);
         playerBurnUntil = playerKnockedUntil = 0;
         rockets.clear();
         inventory.clear();
@@ -1494,16 +1607,13 @@ std::wstring World::command(const std::string &text)
     else if (cmd == "rain" || cmd == "cycle")
     {
         if (cmd == "rain" && args.size() == 1)
-            rainTarget = 1;
+            setRain(true);
         else
         {
             count(2, "rain on/off | cycle on/off");
             bool on = consoleToggle(args[1]);
             if (cmd == "rain")
-            {
-                rainTarget = on ? 1 : 0;
-                weatherClock = on ? 80 : 180;
-            }
+                setRain(on);
             else
                 dayNightCycle = on;
         }

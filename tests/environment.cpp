@@ -1,13 +1,22 @@
 #include "promzona/world.hpp"
+#include "promzona/atmosphere.hpp"
 #include "promzona/city_mesh.hpp"
+#include "promzona/reflection_probe.hpp"
 #include "promzona/sun_shadow.hpp"
 #include "promzona/minimap.hpp"
 #include "promzona/control_hints.hpp"
 #include "promzona/hud_damage.hpp"
 #include "promzona/visibility.hpp"
+#include "json.hpp"
+#include <array>
+#include <chrono>
+#include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <stdexcept>
+#include <string>
 using namespace pz;
 namespace
 {
@@ -90,6 +99,190 @@ void geometry()
             }
         }
 }
+// The colours of the sky and the haze of the managed game for a few known hours, and
+// when the reflection probe is taken again.
+void skyAndProbe()
+{
+    auto same = [](Vec3 a, Vec3 b) { return (a - b).length() < 1e-5f; };
+    const auto noon = Atmosphere::create(0, 1, 1, 0);
+    check(same(noon.horizon, {.64f, .73f, .80f}) && same(noon.zenith, {.19f, .39f, .65f}) &&
+              noon.golden == 0 && std::abs(noon.density - .00052f) < 1e-8f && noon.heightScale == 140,
+          "clear noon: pale horizon, blue zenith, thin haze");
+    const auto downpour = Atmosphere::create(1, 1, 1, 1);
+    check(same(downpour.horizon, {.39f, .44f, .49f}) && same(downpour.zenith, {.24f, .28f, .33f}) &&
+              std::abs(downpour.density - .00332f) < 1e-7f && downpour.heightScale == 240,
+          "rain at noon: grey sky, thick and tall haze");
+    const auto night = Atmosphere::create(0, 0, -1, 0), dampNight = Atmosphere::create(0, 0, -1, 1);
+    check(same(night.horizon, {.025f, .036f, .058f}) && same(night.zenith, {.006f, .012f, .027f}) &&
+              night.golden == 0,
+          "clear midnight is nearly black");
+    check(std::abs(dampNight.density - night.density - .00018f) < 1e-8f, "a wet street steams at night");
+    // A sun a little above the horizon: the hour of golden light, redder in the evening.
+    const auto morning = Atmosphere::create(0, .63, .1, 0, false),
+               evening = Atmosphere::create(0, .63, .1, 0, true);
+    check(std::abs(morning.golden - 1) < 1e-6f && std::abs(morning.density - .00076f) < 1e-7f,
+          "low sun in clear air is golden");
+    check(evening.horizon.y < morning.horizon.y - .05f && evening.horizon.z < morning.horizon.z - .05f &&
+              evening.horizon.x > evening.horizon.z + .3f && same(evening.zenith, morning.zenith),
+          "the evening horizon is redder than the morning one");
+    check(Atmosphere::create(1, .63, .1, 1, true).golden == 0, "rain puts the golden light out");
+    const double nothing = std::numeric_limits<double>::quiet_NaN();
+    const auto broken = Atmosphere::create(nothing, nothing, nothing, nothing);
+    check(same(broken.horizon, noon.horizon) && broken.density == noon.density,
+          "bad input means a clear noon");
+    check(std::abs(noon.transmittance(1000) - std::exp(-.52)) < 1e-6 &&
+              std::abs(noon.transmittance(1000, 0, 140) - std::exp(-.52 * (1 - std::exp(-1.)))) < 1e-6 &&
+              noon.transmittance(1000, 0, 300) > noon.transmittance(1000, 0, 140) &&
+              downpour.transmittance(1000) < noon.transmittance(1000) && noon.transmittance(0) == 1 &&
+              noon.transmittance(1e9) > 0,
+          "haze thins with height and thickens with rain");
+
+    ReflectionProbe probe;
+    const Vec3 at{10, 2, 20};
+    check(!probe.ready() && probe.captured() == 0, "no cube before the first frame");
+    double time = 5;
+    for (int face = 0; face < 6; ++face, time += 1. / 60)
+    {
+        // The player moves on while the cube is taken; it is finished where it began.
+        check(probe.begin(at + Vec3{face * 9.f, 0, 0}, 12 + face, face * .1, time, face) == face,
+              "one face of the cube a frame");
+        check(same(probe.pending(), at) && !probe.ready(), "the cube in use changes only when complete");
+        check(probe.finish(time) == (face == 5), "the sixth face completes the cube");
+    }
+    check(probe.ready() && same(probe.centre(), at) && probe.captured() == 6, "the finished cube is in use");
+    const double done = time - 1. / 60;
+    check(probe.begin(at + Vec3{21, 0, 0}, 12.2, .1, done + 11.9, 0) == -1,
+          "the cube holds within 22 m, a quarter of an hour, a little rain and twelve seconds");
+    auto begun = [&](Vec3 centre, double hour, double rain, double seconds, int generation)
+    {
+        auto copy = probe;
+        return copy.begin(centre, hour, rain, seconds, generation) == 0;
+    };
+    check(begun(at + Vec3{0, 0, 23}, 12, 0, done + 1, 0), "a new cube 22 m further");
+    check(begun(at, 12.3, 0, done + 1, 0), "a new cube when the light has changed");
+    check(begun(at, 12, .2, done + 1, 0), "a new cube when the rain has changed");
+    check(begun(at, 12, 0, done + 12.1, 0), "a new cube every twelve seconds");
+    check(begun(at, 12, 0, done + 1, 1), "a new cube when other scenery is loaded");
+    check(begun(at, 12, 0, done - 30, 0), "a new cube when the clock went back");
+    for (int face = 0; face < 6; ++face)
+    {
+        const Mat4 m = ReflectionProbe::projection() * ReflectionProbe::view(at, face);
+        auto clip = [&](Vec3 p)
+        {
+            return std::array<float, 4>{m.m[0] * p.x + m.m[4] * p.y + m.m[8] * p.z + m.m[12],
+                                        m.m[1] * p.x + m.m[5] * p.y + m.m[9] * p.z + m.m[13],
+                                        m.m[2] * p.x + m.m[6] * p.y + m.m[10] * p.z + m.m[14],
+                                        m.m[3] * p.x + m.m[7] * p.y + m.m[11] * p.z + m.m[15]};
+        };
+        const Vec3 along = ReflectionProbe::direction(face), up = ReflectionProbe::up(face);
+        const auto centre = clip(at + along * 10), top = clip(at + along * 10 + up * 9.9f),
+                   behind = clip(at + along * -10);
+        check(std::abs(centre[0]) < 1e-4f && std::abs(centre[1]) < 1e-4f &&
+                  std::abs(centre[3] - 10) < 1e-4f && behind[3] < 0,
+              "each face looks along its axis");
+        check(std::abs(top[0]) < 1e-4f && top[1] > .98f * top[3] && top[1] < top[3],
+              "a face spans a right angle, its up vector at the top");
+        check(dot(along, up) == 0, "the up vector of a face lies in it");
+    }
+    probe.reset();
+    check(!probe.ready() && probe.captured() == 0 && probe.begin(at, 12, 0, 0, 0) == 0,
+          "a new city, a new cube");
+}
+// Weather of the managed game: showers of uneven length, and streets that soak within
+// half a minute and stay wet for minutes after the rain. Grip follows the wet street.
+void weather()
+{
+    const double frame = 1. / 60;
+    {
+        World w;
+        w.generate(20261105);
+        check(w.wetness == 0 && w.weatherClock == 90, "a new game starts dry, the first change in 90 s");
+        w.setRain(true);
+        check(w.rainTarget == 1 && w.weatherClock == 90, "the console holds its weather for 90 s");
+        for (int i = 0; i < 30 * 60; ++i)
+            w.step({}, frame);
+        check(w.rain > .98 && w.wetness > .72 && w.wetness < .82, "half a minute of rain soaks the street");
+        w.setRain(false);
+        for (int i = 0; i < 60 * 60; ++i)
+            w.step({}, frame);
+        check(w.rain < .01 && w.wetness > .5 && w.wetness < .6, "the street is wet a minute after the rain");
+
+        const auto file =
+            std::filesystem::temp_directory_path() /
+            ("promzona-weather-" +
+             std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+        w.rain = .25;
+        w.save(file);
+        World restored;
+        restored.load(file);
+        check(restored.wetness == w.wetness && restored.rain == .25, "the wet street survives saving");
+        nlohmann::json old;
+        {
+            std::ifstream in(file);
+            in >> old;
+        }
+        old.erase("wetness");
+        {
+            std::ofstream out(file);
+            out << old;
+        }
+        restored.load(file);
+        check(restored.wetness == .25, "an older save is as wet as it rained");
+        old["wetness"] = 1.5;
+        {
+            std::ofstream out(file);
+            out << old;
+        }
+        bool refused = false;
+        try
+        {
+            restored.load(file);
+        }
+        catch (const std::exception &)
+        {
+            refused = true;
+        }
+        std::filesystem::remove(file);
+        check(refused, "an impossible wetness is refused");
+
+        double shortest = 1e9, longest = 0, driest = 1e9, calmest = 0;
+        for (int i = 0; i < 400; ++i)
+        {
+            w.time = 100 + i * 7.3;
+            const double shower = w.weatherSpell(true), spell = w.weatherSpell(false);
+            check(shower >= 45 && shower < 135 && spell >= 120 && spell < 360,
+                  "showers of 45 to 135 s, dry spells of two to six minutes");
+            shortest = std::min(shortest, shower);
+            longest = std::max(longest, shower);
+            driest = std::min(driest, spell);
+            calmest = std::max(calmest, spell);
+        }
+        check(shortest < 55 && longest > 125 && driest < 145 && calmest > 335, "spells differ in length");
+        World same;
+        same.seed = w.seed;
+        same.time = w.time;
+        check(same.weatherSpell(true) == w.weatherSpell(true), "a game replays its weather");
+        same.seed += 1;
+        check(same.weatherSpell(true) != w.weatherSpell(true), "another city has other weather");
+    }
+    // The same stop on a dry and on a wet street, with no rain falling in either.
+    auto speedAfterBraking = [&](double wetness)
+    {
+        World w;
+        w.generate(20261105);
+        w.weatherClock = 1000;
+        w.wetness = wetness;
+        auto &car = w.cars[0];
+        car.body.v = forward(car.heading()) * 20;
+        PlayerInput stop;
+        stop.car.brake = true;
+        for (int i = 0; i < 30; ++i)
+            w.step(stop, frame);
+        return car.body.v.length();
+    };
+    const double dry = speedAfterBraking(0), wet = speedAfterBraking(1);
+    check(dry < 19 && wet > dry + .3, "a wet street lengthens the stop after the rain is over");
+}
 void precipitationAndTracks()
 {
     World w;
@@ -158,7 +351,7 @@ void precipitationAndTracks()
     auto &c = w.cars.front();
     c.body.v = {0, 10};
     c.braking = true;
-    w.rain = 0;
+    w.setWeather(0);
     c.body.p = {0, 0};
     c.body.angle = 0;
     w.updateTireMarks({}, .016);
@@ -262,7 +455,7 @@ void precipitationAndTracks()
     auto p = w.puddles.front().centre;
     check(w.inRoadPuddle(p) && !w.inRoadPuddle(p + Vec2{2, 0}), "wet contact follows the puddle footprint");
     w.tireContacts.clear();
-    w.rain = 0;
+    w.setWeather(0);
     c.braking = false;
     c.body.v = {0, 7};
     c.body.p = p + Vec2{c.body.halfW * .83, c.wheelbase * .5};
@@ -417,6 +610,8 @@ void streetFixtures()
     }
     check(f.displaced && (b.p - f.home).length() > 1 && f.sprayUntil > world.time + 15,
           "impact frees hydrant and opens water at its home");
+    check(std::ranges::count(world.particles, ParticleKind::water, &Particle::kind) >= 10,
+          "the struck hydrant throws no water");
     // Loose bags drift near the player even before the first impact. Distant bags stay dormant.
     auto bag =
         std::ranges::find_if(world.fixtures, [&](const auto &other)
@@ -601,12 +796,244 @@ void placement()
         std::cout << "seed " << seed << ": " << world.trees.size() << " trees\n";
     }
 }
+// Port of the particles of the managed game and of what throws them.
+void effects()
+{
+    World w;
+    w.generate(20261105u);
+    w.dispatchAt = w.patrolScanAt = w.nextRescueDispatch = 1e9;
+    w.particles.clear();
+    w.sounds.clear();
+    auto count = [&](ParticleKind kind) { return std::ranges::count(w.particles, kind, &Particle::kind); };
+    auto heard = [&](const char *name)
+    { return std::ranges::count(w.sounds, std::string{name}, &SoundEvent::name); };
+    // The sequence of the effects is the xorshift of the managed game, apart from the
+    // one the city is driven by.
+    {
+        std::uint32_t seed = 4191;
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        const auto state = w.random.state;
+        check(w.effectSeed == 4191 && std::abs(w.effectNoise() - (seed + .5) / 4294967296.) < 1e-15 &&
+                  w.random.state == state,
+              "effect noise is not the managed sequence");
+    }
+    const Vec2 street = w.cars[w.controlledCar].body.p;
+    const double ground = w.surface(street, 0);
+    using enum ParticleKind;
+    struct Range
+    {
+        ParticleKind kind;
+        float lifeLow, lifeHigh, sizeLow, sizeHigh;
+    };
+    const auto state = w.random.state;
+    for (const Range &r : {Range{spark, .3f, .9f, .035f, .095f}, Range{smoke, 2, 4, .25f, .65f},
+                           Range{debris, .5f, 1.5f, .025f, .025f}, Range{water, 1.5f, 1.5f, .035f, .095f},
+                           Range{fire, .5f, 1, .25f, .65f}, Range{sand, .3f, .9f, .035f, .095f}})
+    {
+        w.particles.clear();
+        w.emit(street, .65, 0, r.kind, 200, 4);
+        check(w.particles.size() == 200, "a burst is short of particles");
+        float lifeLow = 1e9f, lifeHigh = 0, sizeLow = 1e9f, sizeHigh = 0, fastest = 0, slowestRise = 1e9f,
+              fastestRise = 0;
+        for (const auto &p : w.particles)
+        {
+            check(p.kind == r.kind && p.span == p.life && std::abs(p.p.y - float(ground + .65)) < 1e-4f &&
+                      std::abs(p.floor - float(ground + .03)) < 1e-4f,
+                  "a particle does not start where it was thrown");
+            lifeLow = std::min(lifeLow, p.life);
+            lifeHigh = std::max(lifeHigh, p.life);
+            sizeLow = std::min(sizeLow, p.size);
+            sizeHigh = std::max(sizeHigh, p.size);
+            fastest = std::max(fastest, std::hypot(p.v.x, p.v.z));
+            slowestRise = std::min(slowestRise, p.v.y);
+            fastestRise = std::max(fastestRise, p.v.y);
+        }
+        check(lifeLow >= r.lifeLow - 1e-4f && lifeHigh <= r.lifeHigh + 1e-4f &&
+                  sizeLow >= r.sizeLow - 1e-4f && sizeHigh <= r.sizeHigh + 1e-4f,
+              "life or size of a kind is not that of the managed game");
+        check(r.lifeLow == r.lifeHigh || (lifeHigh - lifeLow > (r.lifeHigh - r.lifeLow) * .8f),
+              "lives of a burst do not vary");
+        check(fastest <= 4.0001f && fastest > 3.5f && slowestRise >= 1.2f - 1e-4f && fastestRise <= 5.2001f,
+              "a burst is not a cone of the asked speed");
+    }
+    check(w.random.state == state, "effects draw from the sequence of the city");
+    // Smoke rises, spreads and drifts; the rest falls and bounces off the ground.
+    {
+        w.particles.clear();
+        w.emit(street, 1, 0, smoke, 1, 0);
+        w.emit(street, 1, 0, spark, 1, 0);
+        w.particles[0].life = w.particles[0].span = w.particles[1].life = w.particles[1].span = 3;
+        const float size = w.particles[0].size;
+        for (int i = 0; i < 60; ++i)
+            w.stepParticles(1. / 60);
+        const auto &puff = w.particles[0];
+        const auto &fleck = w.particles[1];
+        check(puff.kind == smoke && puff.v.y > .45f && std::abs(puff.size - size - .22f) < .01f &&
+                  puff.v.x > .39f,
+              "smoke does not rise and spread");
+        check(fleck.kind == spark && std::abs(fleck.p.y - fleck.floor) < .02f,
+              "a spark does not come to rest");
+        for (int i = 0; i < 125; ++i)
+            w.stepParticles(1. / 60);
+        check(w.particles.empty(), "particles outlive their span");
+        // Tracers stay what they were: a point that falls at six metres a second squared.
+        w.particles.push_back({{0, 10, 0}, {}, {1, 1, 1}, 1.f, .04f});
+        w.stepParticles(.5);
+        check(w.particles.size() == 1 && std::abs(w.particles[0].v.y + 3) < 1e-5f,
+              "a tracer changed its fall");
+        w.particles.clear();
+    }
+    // A collision: sparks and scrap, dark strips on the car and a patch on the wall beside.
+    auto &c = w.cars[w.controlledCar];
+    {
+        const auto &b = w.buildings.front();
+        c.body.p = b.p + Vec2{b.half.x + 1.5, 0};
+        c.body.height = w.terrain.height(c.body.p) + .8;
+        c.impactCooldown = 0;
+        c.health = 1;
+        w.vehicleImpact(c, 4, {4, 0});
+        check(count(spark) == 18 && count(debris) == 8 && count(fire) == 0 && heard("impact") == 1,
+              "a collision throws the wrong sparks");
+        check(w.scuffs.size() == 2 && !w.scuffs[0].wall && w.scuffs[0].car == c.id && w.scuffs[1].wall &&
+                  w.scuffs[1].facesX && std::abs(w.scuffs[1].at.x - float(b.p.x + b.half.x + .022)) < 1e-3f &&
+                  std::abs(w.scuffs[1].at.z - float(b.p.z)) < 1e-3f,
+              "a collision leaves no marks on the car and the wall");
+        // Out in the street there is no wall to mark; a car hit again in the same moment is not marked twice.
+        w.vehicleImpact(c, 4, {4, 0});
+        check(w.scuffs.size() == 2 && heard("impact") == 1, "the impact cooldown does not hold");
+        w.time += Scuff::onWall + .01;
+        w.stepParticles(.01);
+        check(w.scuffs.size() == 1 && !w.scuffs[0].wall, "the patch on the wall does not fade first");
+        w.time += Scuff::onCar;
+        w.stepParticles(.01);
+        check(w.scuffs.empty(), "scuffs never fade");
+        // The blow that all but finishes the car sets off one burst of fire.
+        w.particles.clear();
+        c.impactCooldown = 0;
+        // Half of the blow counts: the durability budget of damageCar.
+        c.health = .05 + 7 * .025 * .5 - .001;
+        c.fireTime = 0;
+        w.vehicleImpact(c, 7, {7, 0});
+        check(c.health > 0 && c.health <= .05 && count(fire) == 36 && count(smoke) == 24 &&
+                  count(debris) == 32,
+              "no burst of fire from the blow that finishes a car");
+    }
+    // A burning car is heard every three seconds and smokes; a damaged one smokes less.
+    {
+        w.particles.clear();
+        w.sounds.clear();
+        c.body.p = street;
+        c.body.height = ground + .8;
+        c.body.v = {};
+        c.health = .2;
+        c.fireTime = .001;
+        w.controlledCar = -1;
+        w.player.p = street + Vec2{6, 0};
+        w.player.height = w.terrain.height(w.player.p) + .85;
+        for (int i = 0; i < 60 * 7; ++i)
+            w.combatStep(1. / 60);
+        check(heard("fire") == 2, "a burning car is not heard every three seconds");
+        check(count(fire) > 20 && count(smoke) > 150, "a burning car does not burn to the eye");
+        c.fireTime = 0;
+        c.health = .5;
+        w.particles.clear();
+        for (int i = 0; i < 60 * 4; ++i)
+            w.combatStep(1. / 60);
+        check(count(fire) == 0 && count(smoke) > 3 && count(smoke) < 30, "a damaged engine does not smoke");
+        c.health = 1;
+        w.particles.clear();
+        for (int i = 0; i < 60; ++i)
+            w.combatStep(1. / 60);
+        check(w.particles.empty(), "a sound car smokes");
+    }
+    // A car on its wheels that comes down hops with 22 % of the speed, silently, and settles.
+    {
+        w.sounds.clear();
+        w.particles.clear();
+        c.fireTime = 0;
+        c.health = 1;
+        c.body.p = street;
+        c.body.v = {};
+        c.body.height = ground + .8 + 2;
+        c.lift = 2;
+        c.verticalVelocity = 0;
+        double hop = 0;
+        int landings = 0;
+        for (int i = 0; i < 240; ++i)
+        {
+            const double before = c.verticalVelocity;
+            w.supportCar(c, c.body.p, 1. / 60);
+            if (before < 0 && c.verticalVelocity >= 0)
+            {
+                if (!landings)
+                    hop = c.verticalVelocity;
+                ++landings;
+            }
+        }
+        const double landing = std::sqrt(2 * 9.81 * 2);
+        check(std::abs(hop - landing * .22) < .05 && landings >= 2 && landings <= 4 && c.lift == 0 &&
+                  c.verticalVelocity == 0 && w.sounds.empty() && w.particles.empty(),
+              "a car that comes down does not hop and settle");
+    }
+    // A wreck that is struck clangs and hops; dropped, it thuds, raises smoke and hops once.
+    {
+        w.sounds.clear();
+        w.scuffs.clear();
+        c.destroy();
+        c.impactCooldown = 0;
+        c.verticalVelocity = 0;
+        w.vehicleImpact(c, 12, {12, 0});
+        check(heard("impact") == 1 && std::abs(w.sounds.back().gain - .8) < 1e-9 && count(debris) == 6 &&
+                  std::abs(c.verticalVelocity - .6) < 1e-9 && w.scuffs.empty(),
+              "a struck wreck does not clang");
+        w.sounds.clear();
+        w.particles.clear();
+        c.body.v = {};
+        c.body.height = ground + .8 + 2;
+        c.lift = 2;
+        c.verticalVelocity = 0;
+        double bounce = 0;
+        for (int i = 0; i < 120 && heard("impact") == 0; ++i)
+        {
+            w.supportCar(c, c.body.p, 1. / 60);
+            bounce = c.verticalVelocity;
+        }
+        const double landing = std::sqrt(2 * 9.81 * 2);
+        check(heard("impact") == 1 && std::abs(w.sounds.back().gain - landing / 12) < .03 &&
+                  count(smoke) == 8 && std::abs(bounce - landing * .12) < .05 && !c.wreckSupported,
+              "a dropped wreck does not thud and hop");
+        for (int i = 0; i < 120; ++i)
+            w.supportCar(c, c.body.p, 1. / 60);
+        check(c.lift == 0 && c.verticalVelocity == 0 && c.wreckSupported && heard("impact") == 1,
+              "a wreck does not come to rest");
+    }
+    // A bullet or a blast that reaches the player on foot is heard; fire is not.
+    {
+        w.sounds.clear();
+        w.health = 1;
+        w.woundPlayer(.1);
+        check(heard("impact") == 1 && std::abs(w.sounds.back().gain - .5) < 1e-9 &&
+                  std::abs(w.health - .9) < 1e-9,
+              "a hit on the player is silent");
+        w.hurtPlayer(.1);
+        w.godMode = true;
+        w.woundPlayer(.1);
+        w.godMode = false;
+        check(heard("impact") == 1 && std::abs(w.health - .8) < 1e-9,
+              "burns or an immortal player are heard");
+    }
+}
 } // namespace
 int main()
 {
     try
     {
+        effects();
         shadows();
+        skyAndProbe();
+        weather();
         hudAndMap();
         precipitationAndTracks();
         shoreEntry();

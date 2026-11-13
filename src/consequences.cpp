@@ -104,6 +104,14 @@ void World::hurtPlayer(double amount)
     health = std::max(0., health - amount);
 }
 
+void World::woundPlayer(double amount)
+{
+    if (godMode || controlledCar >= 0 || health <= 0 || !std::isfinite(amount) || amount <= 0)
+        return;
+    sounds.push_back({"impact", player.p, .5});
+    hurtPlayer(amount);
+}
+
 // Port of DetectPedestrianImpacts for one walker; the caller supplies nearby cars.
 namespace
 {

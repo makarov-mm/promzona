@@ -5,9 +5,11 @@ layout(location=2) in vec3 aShape;
 uniform mat4 uViewProjection;
 out vec4 color;
 out vec3 shape;
+out vec3 world;
 void main()
 {
     gl_Position = uViewProjection * vec4(aPosition, 1.0);
     color = aColor;
     shape = aShape;
+    world = aPosition;
 }

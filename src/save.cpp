@@ -24,8 +24,23 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Rocket, p, direction, height, slope, travel, 
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ReconDrone, active, position, velocity, altitude, heading, pitch, battery,
                                    health, scanTime, readyAt, nextShot, targets, scanned)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(World::StreetHail, actor, until, spot, posted)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(PeaceRoute, sites, completed, enabled, noise, soundAt, interactAt,
-                                   previous)
+void to_json(json &j, const PeaceRoute &r)
+{
+    j = {{"sites", r.sites}, {"spots", r.spots},     {"completed", r.completed},   {"enabled", r.enabled},
+         {"noise", r.noise}, {"soundAt", r.soundAt}, {"interactAt", r.interactAt}, {"previous", r.previous}};
+}
+void from_json(const json &j, PeaceRoute &r)
+{
+    j.at("sites").get_to(r.sites);
+    // Routes saved before the search for free pavement point at the places themselves.
+    r.spots = j.value("spots", std::array<int, 4>{-1, -1, -1, -1});
+    j.at("completed").get_to(r.completed);
+    j.at("enabled").get_to(r.enabled);
+    j.at("noise").get_to(r.noise);
+    j.at("soundAt").get_to(r.soundAt);
+    j.at("interactAt").get_to(r.interactAt);
+    j.at("previous").get_to(r.previous);
+}
 void to_json(json &j, const PassengerRide &ride)
 {
     j = {{"car", ride.car},
@@ -303,6 +318,7 @@ std::function<void()> World::captureSave(const std::filesystem::path &path) cons
               {"randomState", random.state},
               {"rain", rain},
               {"rainTarget", rainTarget},
+              {"wetness", wetness},
               {"weatherClock", weatherClock},
               {"people", people},
               {"pickups", pickups},
@@ -521,6 +537,8 @@ void World::load(const std::filesystem::path &path)
     READ(rain);
     READ(rainTarget);
     READ(weatherClock);
+    // Games saved before the streets kept their own wetness: as wet as it rained.
+    next.wetness = j.value("wetness", next.rain);
     READ(wantedCooldown);
     READ(shotCooldown);
     READ(rockets);
@@ -531,8 +549,9 @@ void World::load(const std::filesystem::path &path)
     if (next.controlledCar < -1 || next.controlledCar >= int(next.cars.size()) || next.health < 0 ||
         next.health > 1 || next.money < 0 || next.money > 999999999 || next.wanted < 0 || next.wanted > 6 ||
         next.time < 0 || next.rain < 0 || next.rain > 1 || next.rainTarget < 0 || next.rainTarget > 1 ||
-        next.pickups.size() > 5000 || next.particles.size() > 5000 || next.playerDistance < 0 ||
-        next.rockets.size() > 16 || next.fireClock < 0 || next.playerBurnUntil < 0)
+        !(next.wetness >= 0 && next.wetness <= 1) || next.pickups.size() > 5000 ||
+        next.particles.size() > 5000 || next.playerDistance < 0 || next.rockets.size() > 16 ||
+        next.fireClock < 0 || next.playerBurnUntil < 0)
         throw std::runtime_error("Invalid save state");
     next.clock.setHour(j.at("hour"));
     next.clock.cycleMinutes = j.at("cycleMinutes");

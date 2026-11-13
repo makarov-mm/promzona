@@ -66,7 +66,8 @@ void World::civilianCombat(Person &p, double dt)
     if (hit.kind == HitKind::car)
         damageCar(cars[hit.index], gun->npcCarDamage);
     else
-        hurtPlayer(gun->personDamage * .45);
+        woundPlayer(gun->personDamage * .45);
+    bulletSparks(p.body.p, dir, muzzle, slope, hit);
     for (double at = 1; at < hit.distance && particles.size() < 5000; at += 1.4)
         particles.push_back(
             {{float(p.body.p.x + dir.x * at), float(muzzle + slope * at), float(p.body.p.z + dir.z * at)},

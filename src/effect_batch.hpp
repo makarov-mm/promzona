@@ -34,6 +34,7 @@ class EffectBatch
     void billboard(Vec3 p, Vec3 r, Vec3 u, Vec3 color, float alpha, float shape);
     void rain(const World &w, const Frustum &frustum, float daylight);
     void hydrants(const World &w, const Frustum &frustum, float daylight);
+    void scuffs(const World &w, const Frustum &frustum, float daylight);
     void marks(const World &w, const Frustum &frustum, float daylight);
 
   public:

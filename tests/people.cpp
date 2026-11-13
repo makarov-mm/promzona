@@ -574,6 +574,35 @@ void streets()
     at(13);
     require(w.kerbWait(p) == 0, "northbound walker waits for nothing");
 
+    // Out of the player's sight the rule is the same: whoever comes into view later is
+    // found at the kerb, not in front of the cars that have green.
+    {
+        require((centre - w.position()).length() > 320, "the crossing is not out of sight");
+        cross(p, corner, true, 1);
+        p.body.p = centre + Vec2{-kerb - 3, 9.1};
+        p.body.height = w.terrain.height(p.body.p) + .85;
+        p.body.v = {};
+        p.fear = 0;
+        at(14.5);
+        double furthest = -1e9;
+        while (CityLayout::signalPhase(ci, cj, w.time) < 25.5)
+        {
+            w.step({}, frame);
+            furthest = std::max(furthest, p.body.p.x - centre.x);
+        }
+        require(furthest < -kerb - .6 && furthest > -kerb - 1.6 && p.body.v.length() < .2,
+                "a walker out of sight did not wait at the kerb");
+        double pace = 0;
+        for (int i = 0; i < 60 * 15 && p.body.p.x - centre.x < kerb; ++i)
+        {
+            w.step({}, frame);
+            if (std::abs(p.body.p.x - centre.x) < kerb - 1)
+                pace = std::max(pace, p.body.v.length());
+        }
+        require(p.body.p.x - centre.x >= kerb && !p.dead,
+                "a walker out of sight did not cross on the walk signal");
+        require(pace > w.walkingPace(p) * 1.1, "a walker out of sight dawdles in the road");
+    }
     // In the street: the player watches a walker wait for the lights and then cross.
     {
         w.controlledCar = -1;

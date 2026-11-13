@@ -17,9 +17,16 @@ struct View
 };
 struct StreamingStats
 {
+    // Facade details of the apartment blocks near the eye.
     size_t residentCells{}, totalCells{}, gpuBytes{}, peakGpuBytes{}, uploads{}, evictions{}, queued{},
         ready{};
     double maxUploadMs{};
+    // The standing city itself, by sector.
+    size_t residentSectors{}, totalSectors{}, sectorBytes{}, peakSectorBytes{}, sectorUploads{},
+        sectorEvictions{}, sectorsQueued{}, sectorsReady{};
+    double maxSectorUploadMs{};
+    // Distance from the eye to the nearest sector that is not in memory.
+    float nearestMissingSector{1e9f};
 };
 class Renderer
 {

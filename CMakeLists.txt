@@ -20,9 +20,9 @@ endif()
 if(WIN32)
   add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 endif()
-add_library(promzona_core src/core.cpp src/physics.cpp src/layout.cpp src/minimap.cpp src/control_hints.cpp src/road_levels.cpp src/surfaces.cpp src/architecture.cpp src/detail_stream.cpp src/vegetation.cpp src/city_mesh.cpp src/world.cpp src/vehicle_entry.cpp src/vehicle_recovery.cpp src/traffic_lanes.cpp src/street_life.cpp src/street_fixtures.cpp src/surface_effects.cpp src/wildlife.cpp src/social.cpp src/emergency.cpp src/drone.cpp src/pursuit.cpp src/arrest.cpp src/jobs.cpp src/game_console.cpp src/front_end.cpp src/shops.cpp src/peace_jobs.cpp src/passenger_jobs.cpp src/civilian_combat.cpp src/civilian_cover.cpp src/transit.cpp src/combat.cpp src/animation.cpp src/save.cpp src/audio.cpp src/localization.cpp src/names.cpp src/consequences.cpp src/managed_import.cpp src/renewal.cpp src/roles.cpp src/appearance.cpp)
+add_library(promzona_core src/core.cpp src/physics.cpp src/layout.cpp src/minimap.cpp src/control_hints.cpp src/road_levels.cpp src/surfaces.cpp src/architecture.cpp src/detail_stream.cpp src/sector_stream.cpp src/vegetation.cpp src/city_mesh.cpp src/world.cpp src/vehicle_entry.cpp src/vehicle_recovery.cpp src/traffic_lanes.cpp src/street_life.cpp src/street_fixtures.cpp src/surface_effects.cpp src/wildlife.cpp src/social.cpp src/emergency.cpp src/drone.cpp src/pursuit.cpp src/arrest.cpp src/jobs.cpp src/game_console.cpp src/front_end.cpp src/shops.cpp src/peace_jobs.cpp src/passenger_jobs.cpp src/civilian_combat.cpp src/civilian_cover.cpp src/transit.cpp src/combat.cpp src/animation.cpp src/save.cpp src/audio.cpp src/localization.cpp src/names.cpp src/consequences.cpp src/managed_import.cpp src/renewal.cpp src/roles.cpp src/appearance.cpp)
 target_sources(promzona_core PRIVATE
-  include/promzona/animation.hpp include/promzona/appearance.hpp include/promzona/audio.hpp include/promzona/architecture.hpp include/promzona/detail_stream.hpp include/promzona/visibility.hpp include/promzona/surface_effects.hpp include/promzona/vegetation.hpp include/promzona/sun_shadow.hpp
+  include/promzona/animation.hpp include/promzona/appearance.hpp include/promzona/audio.hpp include/promzona/architecture.hpp include/promzona/detail_stream.hpp include/promzona/sector_stream.hpp include/promzona/visibility.hpp include/promzona/surface_effects.hpp include/promzona/vegetation.hpp include/promzona/sun_shadow.hpp include/promzona/atmosphere.hpp include/promzona/reflection_probe.hpp
   include/promzona/city_mesh.hpp include/promzona/combat.hpp
   include/promzona/core.hpp include/promzona/layout.hpp include/promzona/minimap.hpp include/promzona/control_hints.hpp include/promzona/hud_damage.hpp include/promzona/road_levels.hpp
   include/promzona/math.hpp include/promzona/physics.hpp include/promzona/world.hpp include/promzona/fleet.hpp include/promzona/jobs.hpp include/promzona/game_console.hpp include/promzona/front_end.hpp include/promzona/transit.hpp
@@ -87,6 +87,7 @@ if(BUILD_TESTING)
   target_link_libraries(promzona_streaming_tests PRIVATE promzona_core)
   add_test(NAME native_streaming COMMAND promzona_streaming_tests)
   add_executable(promzona_environment_tests tests/environment.cpp)
+  target_include_directories(promzona_environment_tests PRIVATE third_party)
   target_link_libraries(promzona_environment_tests PRIVATE promzona_core)
   add_test(NAME native_environment COMMAND promzona_environment_tests)
   add_executable(promzona_architecture_tests tests/architecture.cpp)
@@ -134,6 +135,8 @@ if(WIN32)
   set(native_shaders
     Content/Shaders/Native/scene.vert Content/Shaders/Native/scene.frag
     Content/Shaders/Native/fullscreen.vert Content/Shaders/Native/resolve.frag Content/Shaders/Native/glow.frag
+    Content/Shaders/Native/occlusion.frag Content/Shaders/Native/environment.glsl
+    Content/Shaders/Native/sky.vert Content/Shaders/Native/sky.frag
     Content/Shaders/Native/ui.vert Content/Shaders/Native/ui.frag
     Content/Shaders/Native/effects.vert Content/Shaders/Native/effects.frag)
   # GLSL is loaded by the game; listing it here is for editing, not MSBuild compilation.

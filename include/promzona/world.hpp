@@ -154,6 +154,9 @@ struct Animal
     int variant{}, flock{-1};
     Vec2 p, goal, velocity, offset;
     double altitude{}, heading{}, distance{}, fear{}, thinkAt{}, deadUntil{};
+    // Thrown by a car: stunned until then, and the vertical speed of the flight. Not kept
+    // in a save; a body in the air simply comes down.
+    double knockedUntil{}, rise{};
 };
 struct Flock
 {
@@ -170,10 +173,27 @@ struct Pickup
     bool energy{}, dropped{};
     int roadLevel{};
 };
+// The particles of the managed game (CityParticle.Kind) move and fade each in their own
+// way: smoke rises and spreads, the rest falls and bounces off the ground. `plain` is a
+// coloured point that only falls -- the tracers.
+enum class ParticleKind : std::uint8_t
+{
+    plain,
+    spark,
+    smoke,
+    debris,
+    water,
+    fire,
+    sand,
+    flame
+};
 struct Particle
 {
     Vec3 p, v, color;
     float life{}, size{};
+    ParticleKind kind{ParticleKind::plain};
+    // The life it began with and the surface under it.
+    float span{}, floor{-1e9f};
 };
 struct PlayerInput
 {
@@ -228,6 +248,10 @@ struct ManagedImport
     int format{}, roadRevision{}, weapons{};
     std::uint32_t seed{};
     bool samePlan{}, positionKept{};
+    // The player was driving; the vehicle of that kind and its damage were carried over.
+    bool driving{}, carKept{};
+    // On the same plan: cars of the traffic and passers-by put back where they were.
+    int cars{}, people{};
 };
 struct World
 {
@@ -293,7 +317,20 @@ struct World
     void updateScooters(double dt);
     void stepWildlife(double dt);
     void scareWildlife(Vec2 origin, double height, double lethalRadius);
-    Vec2 landingSite(Vec2 near, Vec2 away);
+    // A place for an animal, and whether it is a pavement rather than the lawn of a park.
+    struct Perch
+    {
+        Vec2 at;
+        bool pavement{};
+    };
+    // Where the managed game puts an animal (SpawnAnimal): a block taken at random; in a
+    // park somewhere on its lawn, otherwise on the pavement of the street beside the
+    // block. `lawn` looks for a park first, as most flocks of pigeons do.
+    std::optional<Perch> animalPerch(Random &source, bool lawn) const;
+    // The place of the n-th member of a flock around its home: a spiral on a lawn, two
+    // files along a pavement.
+    static Vec2 flockOffset(int member, bool pavement);
+    Perch landingSite(Vec2 near, Vec2 away);
     void takeFlight(int flock, Vec2 from, Vec2 away);
     std::vector<TransitLine> lines;
     // When the driver of a trolleybus that has left its wires is told so again.
@@ -343,8 +380,23 @@ struct World
     int jobsCompleted{}, jobsFailed{}, lastPay{}, seriesStage{}, seriesCompleted{};
     std::int64_t jobEarnings{};
     double energySeconds{}, clinicCredit{}, purchaseAt{}, noticeUntil{};
+    // When a patient without money is next told why the treatment is slow.
+    double clinicPoorAt{};
     std::wstring notice;
     std::vector<Particle> particles;
+    static constexpr size_t maxParticles = 5000;
+    // Port of CityTraffic.Emit. Effects draw from a sequence of their own (Noise in the
+    // managed game): what is seen never changes what happens.
+    std::uint32_t effectSeed{4191};
+    double effectNoise();
+    void emit(Vec3 at, double floor, ParticleKind kind, int count, double speed = 3);
+    // The same, `above` the street, deck or tunnel floor of the level.
+    void emit(Vec2 at, double above, int level, ParticleKind kind, int count, double speed = 3);
+    // The ground, deck or tunnel floor under a point in the air.
+    double floorBelow(Vec2 at, double y) const;
+    void stepParticles(double dt);
+    std::vector<Scuff> scuffs;
+    void addScuffs(const Car &car);
     std::deque<SurfaceMark> surfaceMarks;
     std::deque<WaterRipple> ripples;
     void splash(Vec2 point, double strength);
@@ -404,7 +456,24 @@ struct World
     Body player;
     int controlledCar{0}, money{};
     double wanted{};
-    double health{1}, time{}, shotCooldown{}, wantedCooldown{}, rain{}, rainTarget{}, weatherClock{120};
+    double health{1}, time{}, shotCooldown{}, wantedCooldown{}, rain{}, rainTarget{}, weatherClock{90};
+    // How wet the streets are (Wetness of the managed game): they soak within half a
+    // minute of rain and take minutes to dry. Grip and the look of the road follow it,
+    // not the rain itself.
+    double wetness{};
+    // Rain, its target and the wet streets at once, for scenarios and imported games.
+    void setWeather(double level) { rain = rainTarget = wetness = level; }
+    // The console and the preview key start or stop the rain and hold the weather for a
+    // minute and a half (SetRain of the managed game).
+    void setRain(bool on)
+    {
+        rainTarget = on ? 1 : 0;
+        weatherClock = 90;
+    }
+    // Seconds until the weather turns again. As in the managed game a shower lasts 45
+    // to 135 seconds and a dry spell two to six minutes. The length depends only on the
+    // city and the moment: a game replays its weather, and the main generator is left alone.
+    double weatherSpell(bool raining) const;
     // Console cheat of the managed game: the player and the driven vehicle take no damage.
     bool godMode{};
     double playerKnockedUntil{};
@@ -419,6 +488,8 @@ struct World
     bool detectImpact(Person &person, const Car &car, bool playerDriving);
     void detectPlayerImpact(std::span<const Car *const> traffic);
     void hurtPlayer(double amount);
+    // A bullet or a blast that reaches the player on foot (DamagePlayer): heard as well.
+    void woundPlayer(double amount);
     bool policeSees() const;
     void fadeWanted(double dt);
     // Depth of the canal or the sea under a body whose lowest point is at `feet`;
@@ -543,6 +614,13 @@ struct World
         return index < int(sites.size()) ? sites[size_t(index)].entrance
                                          : busStops[size_t(index) - sites.size()];
     }
+    // The managed game marks not the kiosk or the stop itself but the first free point of
+    // pavement on three rings of eight about it (CityTraffic.StartPeaceJob).
+    static constexpr int peaceSpots = 24;
+    static Vec2 peaceOffset(int spot);
+    Vec2 peaceSpot(int place, int spot) const { return peacePoint(place) + peaceOffset(spot); }
+    // Dry land of the city, clear of its edge and of the canals by the margin.
+    bool peaceGround(Vec2 at, double margin) const;
     int marketInReach() const;
     int garageInReach() const;
     int ownedGarage{-1}, openMarket{-1};
@@ -574,7 +652,8 @@ struct World
     bool startSeries();
     double deliveryHealth() const { return job.series ? (50 + 10 * seriesStage) / 100. : .5; }
     int expectedPay() const;
-    void finishJob(bool success);
+    // A job that fails for a reason of its own says so, as the managed game does.
+    void finishJob(bool success, const wchar_t *failure = nullptr);
     Vec2 jobTarget() const;
     void servicesStep(double dt);
     void clinicRespawn(Vec2 fallen);
@@ -651,6 +730,7 @@ struct World
     void vehicleImpact(Car &car, double speedChange, Vec2 velocityChange = {});
     // A drowning is silent: no blood, no alarmed witnesses and no ambulance call.
     void killPerson(Person &person, Vec2 velocity = {}, bool playerCaused = false, bool drowned = false);
+    void bulletSparks(Vec2 from, Vec2 direction, double y, double slope, const AttackHit &hit);
     AttackHit traceAttack(Vec2 from, Vec2 direction, double y, double slope, double range, int ignoreCar = -1,
                           bool includePlayer = false, const Person *shooter = nullptr) const;
     bool blastVisible(Vec2 from, double y, Vec2 to, double targetY) const;
@@ -692,6 +772,10 @@ struct World
     double trafficIndexAt{};
     void indexTraffic();
     void senseTraffic(Car &car, bool local);
+    void sensePursuit(Car &car, bool local);
+    void standDown(Car &car);
+    bool rejoinRoad(Car &car);
+    bool chaseGround(Vec2 at) const;
     bool tryChangeLane(Car &car, int destination);
     Vec2 pickupSite();
 };

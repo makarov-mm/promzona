@@ -231,7 +231,7 @@ void World::interactPassengerJob()
         const auto &car = cars[controlledCar];
         if (!car.grounded() || car.body.roadLevel || car.body.v.length() >= .8 || !vehicleExit(car))
             return;
-        finishJob((jobTarget() - car.body.p).length() < (job.kind == JobKind::patient ? 14 : 9));
+        finishJob((jobTarget() - car.body.p).length() < arriveRadius(job.kind), L"Высадили без оплаты");
         return;
     }
     if (controlledCar < 0 || job.ride.car >= 0)
@@ -259,7 +259,7 @@ void World::stepPassengerJob(double dt)
     auto &p = people[job.actor];
     if (p.dead || (!job.acquired && time > job.deadline))
     {
-        finishJob(false);
+        finishJob(false, p.dead ? nullptr : L"Пассажир не дождался и ушёл");
         return;
     }
     if (job.ride.car < 0)
@@ -267,7 +267,7 @@ void World::stepPassengerJob(double dt)
     auto &c = cars[job.ride.car];
     if (c.destroyed || c.falling || c.fireTime > 0)
     {
-        finishJob(false);
+        finishJob(false, L"Заказ сорван");
         return;
     }
     if (!job.acquired)
@@ -301,22 +301,23 @@ void World::stepPassengerJob(double dt)
         job.stopped = 0;
         job.ride.away += dt;
         if (job.ride.away > (controlledCar < 0 ? 25 : 3))
-            finishJob(false);
+            finishJob(false, L"Пассажир не дождался и ушёл");
         return;
     }
     job.ride.away = 0;
+    // Every further 12 % of damage since boarding frightens the passenger once more, as
+    // in the managed game: one hard blow can count twice.
     if (job.ride.scares < 3 && job.ride.healthAtLastScare - c.health > .12)
     {
         ++job.ride.scares;
         notify(L"Пассажир испугался удара. Оплата снижена");
-        job.ride.healthAtLastScare = c.health;
+        job.ride.healthAtLastScare -= .12;
     }
     job.ride.healthAtLastScare = std::max(c.health, job.ride.healthAtLastScare);
-    double reach = job.kind == JobKind::patient ? 14 : 9;
     bool parked = c.grounded() && !c.body.roadLevel && c.body.v.length() < .8 &&
-                  (c.body.p - jobTarget()).length() < reach;
+                  (c.body.p - jobTarget()).length() < arriveRadius(job.kind);
     job.stopped = parked ? job.stopped + dt : 0;
-    if (job.stopped >= 1 && vehicleExit(c))
+    if (job.stopped > .8 && vehicleExit(c))
         finishJob(true);
 }
 

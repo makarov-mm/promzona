@@ -1,7 +1,9 @@
 #include "promzona/names.hpp"
+#include "promzona/world.hpp"
 #include "promzona/audio.hpp"
 #include "json.hpp"
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 using namespace pz;
@@ -289,6 +291,85 @@ void chainBlastTest()
           "wildlife beyond the first blast did not react to the exploding vehicle");
 }
 
+// Port of the managed rule for an animal under the wheels: thrown aside and stunned for
+// three seconds; killed only when the car closes at more than four metres a second.
+void knockTest()
+{
+    World w;
+    w.generate(17);
+    w.cars.resize(1);
+    auto &car = w.cars.front();
+    w.controlledCar = 0;
+    // A stray on open ground with a car over it.
+    const auto stray = std::ranges::find_if(w.animals, [&](const Animal &a)
+                                            { return a.flock < 0 && a.species != Species::bird; });
+    check(stray != w.animals.end(), "city has a stray");
+    const Vec2 spot = stray->p;
+    const double ground = w.terrain.height(spot);
+    auto strike = [&](double speed)
+    {
+        *stray = Animal{stray->species, stray->variant, -1, spot, spot, {}, {}, ground};
+        car.body.p = spot - Vec2{.4, 0};
+        car.body.angle = -pi / 2;
+        car.body.height = ground + .8;
+        car.body.v = {speed, 0};
+        w.sounds.clear();
+        w.time += .1;
+        w.stepWildlife(.1);
+        // The car is taken away: what follows is the flight alone.
+        car.body.p = spot + Vec2{0, 300};
+        car.body.v = {};
+    };
+    strike(.9);
+    check(stray->knockedUntil <= w.time && stray->deadUntil == 0 && w.sounds.empty(),
+          "a car that creeps up knocked the animal down");
+    strike(3);
+    check(stray->knockedUntil > w.time + 2.8 && stray->deadUntil == 0 &&
+              std::abs(stray->velocity.x - 1.5) < 1e-9 && std::abs(stray->rise - 3 * .21) < 1e-9 &&
+              std::ranges::count(w.sounds, std::string{"impact"}, &SoundEvent::name) == 1 &&
+              std::abs(w.sounds.front().gain - .3) < 1e-9,
+          "a slow car did not knock the animal down");
+    double highest = 0;
+    for (int n = 0; n < 29; ++n)
+    {
+        w.time += .1;
+        w.stepWildlife(.1);
+        highest = std::max(highest, stray->altitude - w.terrain.height(stray->p));
+        check(stray->knockedUntil > w.time - 1e-9 ? stray->fear == 0 : true, "a stunned animal is afraid");
+    }
+    check(highest > .005 && stray->altitude == w.terrain.height(stray->p) &&
+              (stray->p - spot).length() > .15 && (stray->p - spot).length() < 1.5 &&
+              stray->velocity.length() < .05 && stray->deadUntil == 0,
+          "a knocked animal does not fly, land and come to rest");
+    w.time += .2;
+    w.stepWildlife(.1);
+    w.stepWildlife(.1);
+    check(stray->knockedUntil <= w.time && stray->deadUntil == 0, "a knocked animal does not get up");
+    strike(9);
+    check(stray->deadUntil > w.time && stray->knockedUntil > w.time &&
+              std::abs(stray->rise - 9 * .21) < 1e-9 && std::abs(stray->velocity.x - 4.5) < 1e-9,
+          "a fast car did not kill the animal");
+    highest = 0;
+    for (int n = 0; n < 40; ++n)
+    {
+        w.time += .1;
+        w.stepWildlife(.1);
+        highest = std::max(highest, stray->altitude - w.terrain.height(stray->p));
+    }
+    check(highest > .1 && stray->altitude == w.terrain.height(stray->p) && (stray->p - spot).length() > 1 &&
+              stray->velocity.length() == 0 && stray->deadUntil > w.time,
+          "a body that was thrown does not come down some way off");
+    // A body in the air comes down whatever killed it.
+    stray->altitude = ground + 12;
+    stray->rise = 0;
+    for (int n = 0; n < 20; ++n)
+    {
+        w.time += .1;
+        w.stepWildlife(.1);
+    }
+    check(stray->altitude == w.terrain.height(stray->p), "a dead bird hangs in the air");
+}
+
 void wildlifeTest(World &w)
 {
     auto first = std::ranges::find(w.animals, 0, &Animal::flock);
@@ -308,6 +389,131 @@ void wildlifeTest(World &w)
     w.scareWildlife(first->p, first->altitude, 3);
     check(first->deadUntil > w.time, "blast missed nearby animal");
 }
+// The animals of the managed game live on the pavements as well as in the parks: strays
+// walk from corner to corner, and a flock may settle beside a street.
+void pavementAnimals()
+{
+    World w;
+    w.generate(20261105, {}, CityLayout::districtRevision, Density::full);
+    const auto &l = w.layout;
+    auto fromRoad = [&](Vec2 p) { return l.roadDistance(p) - l.roadHalf(); };
+    auto onPavement = [&](Vec2 p) { return fromRoad(p) > .2 && fromRoad(p) < 2.8; };
+    auto inPark = [&](Vec2 p)
+    {
+        const int i = int(std::floor((p.x - l.coordinate(0)) / World::spacing)),
+                  j = int(std::floor((p.z - l.coordinate(0)) / World::spacing));
+        return i >= 0 && j >= 0 && i < l.nodes() - 1 && j < l.nodes() - 1 && l.park(i, j);
+    };
+    // The same animals, one for one, as when they all lived in parks: a save of that
+    // time is checked against them when it loads.
+    auto count = [&](const World &world, Species species)
+    { return std::ranges::count(world.animals, species, &Animal::species); };
+    check(w.animals.size() == 1133 && count(w, Species::pigeon) == 973 && count(w, Species::cat) == 53 &&
+              count(w, Species::dog) == 53 && count(w, Species::bird) == 54 && w.flocks.size() == 174,
+          "the full city has other animals than its saves");
+    {
+        World low;
+        low.generate(20261105);
+        check(low.animals.size() == 354 && low.flocks.size() == 42 && count(low, Species::cat) == 36 &&
+                  count(low, Species::dog) == 36 && count(low, Species::bird) == 10,
+              "the low city has other animals than its saves");
+    }
+    size_t strays = 0, streetStrays = 0;
+    for (const auto &a : w.animals)
+    {
+        check(fromRoad(a.p) > 0, "an animal was put on the roadway");
+        check(!w.insideBuilding(a.p, w.terrain.height(a.p) + .4, .2), "an animal was put inside a wall");
+        if (a.flock >= 0)
+            continue;
+        ++strays;
+        check(inPark(a.p) || onPavement(a.p), "a stray starts in a park or on a pavement");
+        streetStrays += !inPark(a.p);
+    }
+    check(streetStrays * 2 > strays && streetStrays < strays,
+          "most strays live in the streets, some in parks");
+    size_t pigeonFlocks = 0, streetFlocks = 0;
+    for (size_t f = 0; f < w.flocks.size(); ++f)
+    {
+        const auto first = std::ranges::find(w.animals, int(f), &Animal::flock);
+        if (first == w.animals.end() || first->species != Species::pigeon)
+            continue;
+        ++pigeonFlocks;
+        const bool street = !inPark(w.flocks[f].landing);
+        streetFlocks += street;
+        int member = 0;
+        for (const auto &a : w.animals)
+            if (a.flock == int(f))
+            {
+                const Vec2 offset = World::flockOffset(member++, street);
+                check((a.p - w.flocks[f].landing - offset).length() < 1e-9 &&
+                          (a.offset - offset).length() < 1e-9,
+                      "a flock stands in a spiral on a lawn and in two files on a pavement");
+                check(!street || onPavement(a.p), "a street flock keeps to the pavement");
+            }
+    }
+    check(pigeonFlocks == 120 && streetFlocks >= 12 && streetFlocks <= 45,
+          "about one flock of pigeons in five lives beside a street");
+
+    // A stray far from the player, with nothing to fear, strolls the pavement graph.
+    w.controlledCar = -1;
+    auto &stray = *std::ranges::find_if(w.animals, [&](const Animal &a)
+                                        { return a.flock < 0 && !inPark(a.p) && a.deadUntil == 0; });
+    w.player.p = stray.p + Vec2{400, 0};
+    if (std::abs(w.player.p.x) > 700)
+        w.player.p = stray.p - Vec2{400, 0};
+    stray.thinkAt = 0;
+    stray.fear = 0;
+    const double pace = stray.species == Species::dog ? 1.35 : .85;
+    double walked = 0;
+    for (int tick = 0; tick < 900; ++tick)
+    {
+        const Vec2 before = stray.p;
+        w.time += .1;
+        w.stepWildlife(.1);
+        const double step = (stray.p - before).length();
+        walked += step;
+        check(step <= pace * .1 + 1e-9, "a stray strolls at the pace of the managed game");
+        check(!w.insideBuilding(stray.p, w.terrain.height(stray.p) + .4, .2), "a stray walked into a wall");
+        if ((stray.goal - stray.p).length2() > 1e-12)
+        {
+            const double gx = (stray.goal.x - l.coordinate(0) - l.sidewalk()) / World::spacing,
+                         gz = (stray.goal.z - l.coordinate(0) - l.sidewalk()) / World::spacing;
+            check(std::abs(gx - std::round(gx)) < 1e-9 && std::abs(gz - std::round(gz)) < 1e-9,
+                  "a stray heads for a pavement corner");
+        }
+    }
+    check(walked > 30, "a stray stood still for a minute and a half");
+
+    // A startled flock comes down in a park or beside a street, clear of the roadway.
+    int beside = 0, landings = 0;
+    for (int n = 0; n < 300; ++n)
+    {
+        const auto perch =
+            w.landingSite({double(n % 17) * 40 - 320, double(n % 13) * 50 - 300}, forward(n * .7));
+        ++landings;
+        if (!perch.pavement)
+        {
+            check(std::ranges::find_if(w.habitat, [&](Vec2 p) { return (p - perch.at).length2() < 1e-12; }) !=
+                      w.habitat.end(),
+                  "a lawn to land on is one of the parks");
+            continue;
+        }
+        ++beside;
+        for (int member = 0; member < 10; ++member)
+            check(onPavement(perch.at + World::flockOffset(member, true)),
+                  "a file of pigeons reached the roadway");
+    }
+    check(beside > landings / 10 && beside < landings * 4 / 10,
+          "about one landing in five is beside a street");
+    const auto leader = std::ranges::find(w.animals, 0, &Animal::flock);
+    w.takeFlight(0, leader->p, {1, 0});
+    const bool files = !inPark(w.flocks[0].landing);
+    int member = 0;
+    for (const auto &a : w.animals)
+        if (a.flock == 0)
+            check((a.offset - World::flockOffset(member++, files)).length() < 1e-9,
+                  "a flock forms up for the place it flies to");
+}
 } // namespace
 
 int main()
@@ -325,7 +531,9 @@ int main()
         socialTest(w);
         scooterTest(w);
         wildlifeTest(w);
+        pavementAnimals();
         chainBlastTest();
+        knockTest();
         w.save(path);
         World copy;
         copy.load(path);

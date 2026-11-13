@@ -88,8 +88,14 @@ void World::updateRescues()
                     resumeWalk(medic, vehicleExit(c).value_or(passengerDoor(c, medic.body.p)),
                                c.body.roadLevel);
             }
+            // A patient the crew drove round and could not stop beside is left for four
+            // minutes; anybody else is called for again in twenty-five seconds.
             if (r.patient >= 0 && people[r.patient].dead)
-                people[r.patient].rescueAfter = time + 25;
+                people[r.patient].rescueAfter =
+                    time + (r.stage == RescueStage::driving &&
+                                    (people[r.patient].body.p - c.body.p).length2() < 60 * 60
+                                ? 240
+                                : 25);
             r = {};
             continue;
         }
@@ -110,6 +116,13 @@ void World::updateRescues()
             r.braking = distance < 19 && c.body.roadLevel == patient.body.roadLevel &&
                         blastVisible(door, surface(door, c.body.roadLevel) + .85, patient.body.p,
                                      patient.body.height);
+            // Near a patient it cannot stop beside -- he lies on a bridge over the street
+            // or behind a wall -- a crew drove round the block until the call ran out, ten
+            // minutes of one of the city's two ambulances. While it drives past him the
+            // time the call has left runs nine times as fast; standing in a queue on the
+            // way to him costs nothing.
+            if (!r.braking && distance < 45 && c.body.v.length2() > 3 * 3)
+                r.deadline -= 2;
             if (r.braking && c.body.v.length() < 1.1 &&
                 !scenerySolid(door, surface(door, c.body.roadLevel) + .85, .3))
             {

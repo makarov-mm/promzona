@@ -54,6 +54,15 @@ void test(World &w)
     check(w.lastPay >= 5 && w.lastPay < lateFare && w.jobsCompleted == 2, "late delivery completes");
     check(w.startContract(JobKind::vehicle), "vehicle contract available");
     auto actor = w.job.actor;
+    // The car of the contract stands with nobody in it, as in the managed game: whoever
+    // takes it throws nobody out and commits no crime.
+    {
+        const double wantedBefore = w.wanted;
+        const auto afoot = std::ranges::count_if(w.people, [](const Person &p) { return p.riding < 0; });
+        check(w.cars[actor].driverless && w.unloadCrew(w.cars[actor]) && w.wanted == wantedBefore &&
+                  std::ranges::count_if(w.people, [](const Person &p) { return p.riding < 0; }) == afoot,
+              "taking the car of a contract is a carjacking");
+    }
     w.controlledCar = actor;
     auto &c = w.cars[actor];
     c.body.p = w.sites[w.job.destination].entrance;
@@ -71,8 +80,12 @@ void test(World &w)
     check(w.jobsCompleted == 3 && w.lastPay == 250, "qualified car delivered");
     visit(w, clinic);
     check(w.startContract(JobKind::elimination), "target available");
+    check(w.people[w.job.actor].boardAfter >= w.time + 600 && w.people[w.job.actor].waitingLine < 0 &&
+              !w.waitingForTaxi(w.job.actor),
+          "the target of a contract may leave by tram or taxi");
     w.killPerson(w.people[w.job.actor], {}, false);
     check(w.jobsFailed == 1 && w.job.kind == JobKind::none, "third party kill fails contract");
+    check(w.notice == L"Заказ сорван", "a contract that fails does not say so");
     check(w.startContract(JobKind::elimination), "new target available");
     w.killPerson(w.people[w.job.actor], {}, true);
     check(w.jobsCompleted == 4 && w.lastPay == 350, "player kill rewarded");
@@ -80,6 +93,16 @@ void test(World &w)
     w.money = 0;
     w.servicesStep(1);
     check(w.health > .35 && w.money == 0, "clinic treats broke player");
+    // A patient without money is told why it is slow, once in six seconds.
+    check(w.notice == L"Лечение платное — без денег лечат медленно",
+          "the clinic does not explain the slow cure");
+    w.notice.clear();
+    w.time += 5;
+    w.servicesStep(.1);
+    check(w.notice.empty(), "the clinic repeats itself");
+    w.time += 1.5;
+    w.servicesStep(.1);
+    check(!w.notice.empty(), "the clinic explains only once");
     w.money = 100;
     w.startContract(JobKind::elimination);
     w.clinicRespawn(w.sites[clinic].entrance);
@@ -197,23 +220,103 @@ void peacePlaces(const std::filesystem::path &path)
     w.player.height = w.terrain.height(w.player.p) + .85;
     check(w.startContract(JobKind::leaflets), "no leaflet route from a bus stop");
     const auto &route = w.job.route.sites;
-    check(route[0] == int(w.sites.size()) + stop &&
-              (w.jobTarget() - w.busStops[size_t(stop)]).length() < 1e-9,
-          "the bus stop next to the player is not the first place of the route");
+    const auto &spots = w.job.route.spots;
+    check(route[0] == int(w.sites.size()) + stop, "the bus stop next to the player is not the first place");
+    // The mark is not on the stop itself but on free pavement a few steps from it.
+    check(std::abs(World::peaceOffset(0).z - 2.8) < 1e-9 && std::abs(World::peaceOffset(0).x) < 1e-9 &&
+              std::abs(World::peaceOffset(10).x - 4) < 1e-9 && std::abs(World::peaceOffset(10).z) < 1e-9 &&
+              std::abs(World::peaceOffset(23).length() - 5.2) < 1e-9 && World::peaceOffset(-1).length() == 0,
+          "the rings about a place are not those of the managed game");
+    check((w.jobTarget() - w.peaceSpot(route[0], spots[0])).length() < 1e-9,
+          "the route does not point at the chosen spot");
     for (int a = 0; a < w.job.stopCount(); ++a)
     {
-        check(w.peacePlace(route[size_t(a)]), "a place of the route is neither a kiosk nor a bus stop");
+        const int place = route[size_t(a)], spot = spots[size_t(a)];
+        check(w.peacePlace(place), "a place of the route is neither a kiosk nor a bus stop");
+        const Vec2 at = w.peaceSpot(place, spot);
+        const double away = (at - w.peacePoint(place)).length();
+        check(spot >= 0 && spot < World::peaceSpots && away > 2.79 && away < 5.21,
+              "a place of the route has no spot beside it");
+        check(w.layout.roadDistance(at) > w.layout.roadHalf() && w.layout.urbanSite(at, 1) &&
+                  !w.levelAt(at) && w.vehicleSpace(at, w.terrain.height(at) + .85, nullptr, false),
+              "a spot of the route is not free pavement");
+        // The first free point of the rings, not any free point.
+        for (int n = 0; n < spot; ++n)
+        {
+            const Vec2 before = w.peaceSpot(place, n);
+            check(w.layout.roadDistance(before) <= w.layout.roadHalf() || !w.layout.urbanSite(before, 1) ||
+                      w.levelAt(before, 5) ||
+                      !w.vehicleSpace(before, w.terrain.height(before) + .85, nullptr, false),
+                  "a free point nearer the place was passed over");
+        }
         for (int b = 0; b < a; ++b)
-            check((w.peacePoint(route[size_t(a)]) - w.peacePoint(route[size_t(b)])).length() >= 100,
+            check((w.peacePoint(place) - w.peaceSpot(route[size_t(b)], spots[size_t(b)])).length() >= 100,
                   "two places of the route are next to each other");
     }
     w.save(path);
     World restored;
     restored.load(path);
-    std::filesystem::remove(path);
     check(restored.job.kind == JobKind::leaflets && restored.job.route.sites == route &&
-              (restored.jobTarget() - w.jobTarget()).length() < 1e-9,
+              restored.job.route.spots == spots && (restored.jobTarget() - w.jobTarget()).length() < 1e-9,
           "a route by way of a bus stop is lost in a save");
+    // A route saved before the search points at the places themselves, as it did then.
+    {
+        nlohmann::json saved;
+        {
+            std::ifstream in(path, std::ios::binary);
+            saved = nlohmann::json::parse(in);
+        }
+        auto store = [&](const nlohmann::json &document)
+        {
+            std::ofstream out(path, std::ios::binary | std::ios::trunc);
+            out << document;
+        };
+        check(saved.at("job").at("route").contains("spots"), "the save does not keep the spots");
+        auto earlier = saved;
+        earlier["job"]["route"].erase("spots");
+        store(earlier);
+        World opened;
+        opened.load(path);
+        check(opened.job.route.sites == route &&
+                  opened.job.route.spots == std::array<int, 4>{-1, -1, -1, -1} &&
+                  (opened.jobTarget() - w.peacePoint(route[0])).length() < 1e-9,
+              "a route of an earlier save does not open as it was");
+        // A number off the rings is refused.
+        for (int wrong : {World::peaceSpots, -2})
+        {
+            auto bad = saved;
+            bad["job"]["route"]["spots"][1] = wrong;
+            store(bad);
+            bool refused = false;
+            try
+            {
+                World broken;
+                broken.load(path);
+            }
+            catch (const std::exception &)
+            {
+                refused = true;
+            }
+            check(refused, "a save with a spot off the rings is accepted");
+        }
+    }
+    std::filesystem::remove(path);
+    // Somebody standing on the nearest point moves the mark to the next one.
+    {
+        World busy;
+        busy.generate(20261105);
+        busy.controlledCar = -1;
+        busy.player.p = busy.busStops[size_t(stop)] + Vec2{1.5, 0};
+        busy.player.height = busy.terrain.height(busy.player.p) + .85;
+        auto &walker = busy.people[0];
+        walker.dead = false;
+        walker.riding = -1;
+        walker.body.p = w.peaceSpot(route[0], spots[0]);
+        walker.body.height = busy.terrain.height(walker.body.p) + .85;
+        check(busy.startContract(JobKind::leaflets) && busy.job.route.sites[0] == route[0] &&
+                  busy.job.route.spots[0] > spots[0],
+              "the mark is put where somebody stands");
+    }
 }
 
 void peaceContracts(const std::filesystem::path &path)
@@ -457,6 +560,60 @@ void passengerContracts(const std::filesystem::path &path)
     taxi.health -= .13;
     w.servicesStep(.01);
     check(w.job.ride.scares == 1 && w.expectedPay() < originalPay, "collision reduces expected fare");
+    // Every further 12 % counts once, also when one blow brings two of them.
+    w.servicesStep(.01);
+    check(w.job.ride.scares == 1, "one blow is counted again and again");
+    // The moment the ride becomes late is said once; setting the passenger down away
+    // from the address and leaving the car for too long have their own words.
+    {
+        World late = w;
+        late.notice.clear();
+        late.time = late.job.deadline + .005;
+        late.servicesStep(.01);
+        check(late.notice == L"Опаздываем — заплатят половину", "a late ride is not announced");
+        late.notice.clear();
+        late.time += .01;
+        late.servicesStep(.01);
+        check(late.notice.empty(), "a late ride is announced again");
+        World dropped = w;
+        auto &cab = dropped.cars.at(dropped.controlledCar);
+        cab.body.v = {};
+        if (dropped.vehicleExit(cab) && (dropped.jobTarget() - cab.body.p).length() > 20)
+        {
+            dropped.interactJob();
+            check(dropped.job.kind == JobKind::none && dropped.notice == L"Высадили без оплаты",
+                  "a passenger set down early is not mentioned");
+        }
+        World left = w;
+        left.controlledCar = -1;
+        left.player.p = left.cars.at(left.job.ride.car).body.p + Vec2{3, 0};
+        left.servicesStep(25.5);
+        check(left.job.kind == JobKind::none && left.notice == L"Пассажир не дождался и ушёл",
+              "a passenger left alone does not give up");
+    }
+    {
+        World hard = w;
+        auto &struck = hard.cars.at(hard.controlledCar);
+        struck.health -= .25;
+        hard.servicesStep(.01);
+        hard.servicesStep(.01);
+        hard.servicesStep(.01);
+        check(hard.job.ride.scares == 3, "a hard blow frightens the passenger only once");
+        // The ride ends within eleven metres of the address, after 0.8 s at rest.
+        struck.body.p = hard.jobTarget() + Vec2{10.5, 0};
+        struck.body.v = {};
+        struck.body.height = hard.terrain.height(struck.body.p) + .8;
+        struck.lift = 0;
+        struck.body.roadLevel = 0;
+        if (hard.vehicleExit(struck))
+        {
+            hard.servicesStep(.45);
+            check(hard.job.kind == JobKind::taxi, "the ride ends at once");
+            hard.servicesStep(.45);
+            check(hard.job.kind == JobKind::none && hard.lastPay > 0,
+                  "a ride does not end ten metres from the address");
+        }
+    }
     w.addCrime(.1);
     w.addCrime(.1);
     check(w.job.ride.scares == 2, "same event does not double-charge passenger");

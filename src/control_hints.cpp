@@ -73,10 +73,9 @@ std::vector<ControlHint> controlHints(const World &world)
         hints.push_back({L"E", L"Посадить пассажира"});
     else if (job.passenger() && job.acquired && job.ride.car == world.controlledCar &&
              world.controlledCar >= 0 && world.cars[world.controlledCar].body.v.length() < .8)
-        hints.push_back(
-            {L"E", (world.jobTarget() - world.position()).length() < (job.kind == JobKind::patient ? 14 : 9)
-                       ? L"Завершить поездку"
-                       : L"Высадить без оплаты"});
+        hints.push_back({L"E", (world.jobTarget() - world.position()).length() < arriveRadius(job.kind)
+                                   ? L"Завершить поездку"
+                                   : L"Высадить без оплаты"});
     else if (world.hailerInReach() >= 0)
         hints.push_back({L"E", L"Взять пассажира"});
     else if (job.kind == JobKind::broadcast && !job.escaping() && world.controlledCar == job.actor)

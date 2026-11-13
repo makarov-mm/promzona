@@ -147,9 +147,9 @@ struct Mat4
         r.m[4] = -std::sin(a);
         return r;
     }
-    static Mat4 lookAt(Vec3 eye, Vec3 target)
+    static Mat4 lookAt(Vec3 eye, Vec3 target, Vec3 up = {0, 1, 0})
     {
-        auto f = (target - eye).unit(), s = cross(f, {0, 1, 0}).unit(), u = cross(s, f);
+        auto f = (target - eye).unit(), s = cross(f, up).unit(), u = cross(s, f);
         auto r = identity();
         r.m = {s.x, u.x, -f.x, 0, s.y,          u.y,          -f.y,        0,
                s.z, u.z, -f.z, 0, -dot(s, eye), -dot(u, eye), dot(f, eye), 1};

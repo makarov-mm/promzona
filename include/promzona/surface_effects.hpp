@@ -20,6 +20,20 @@ struct SurfaceMark
     MarkKind kind{};
     std::array<Vec3, 4> corners{};
 };
+// What a collision leaves behind for a minute and a half, as in the managed game: dark
+// strips along the flanks of the car, or a patch on the wall it struck.
+struct Scuff
+{
+    static constexpr double onCar = 100, onWall = 90;
+    // On a wall: the middle of the patch and whether the wall faces along x. Otherwise
+    // the id of the car.
+    bool wall{};
+    std::uint32_t car{};
+    Vec3 at;
+    bool facesX{};
+    double born{};
+    double duration() const { return wall ? onWall : onCar; }
+};
 struct WaterRipple
 {
     static constexpr double lifetime = 3.;
@@ -50,7 +64,7 @@ struct TireContact
     int level{};
     MarkKind kind{};
     bool active{};
-    double wetUntil{}, nextSqueal{}, nextSplash{};
+    double wetUntil{}, nextSqueal{}, nextSplash{}, nextPuff{};
     bool skidding{}, inPuddle{};
 };
 

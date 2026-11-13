@@ -108,13 +108,17 @@ int main()
             check(w.health == 1 && w.sounds.empty(), "civilian cannot fire through a wall");
             w.staticBodies.clear();
             aim(92);
-            check(w.sounds.size() == 3 && w.health < 1, "rifle fires a three-round burst then rests");
+            check(std::ranges::count(w.sounds, std::string{"automatic"}, &SoundEvent::name) == 3 &&
+                      std::ranges::count(w.sounds, std::string{"impact"}, &SoundEvent::name) == 3 &&
+                      w.sounds.size() == 6 && w.health < 1,
+                  "rifle fires a three-round burst then rests; each round that lands is heard");
             w.killPerson(shooter);
             auto count = w.pickups.size();
             w.killPerson(shooter);
             check(count == w.pickups.size() &&
-                      std::ranges::count_if(w.pickups, [](const Pickup &p)
-                                            { return p.weapon == WeaponId::automatic && p.dropped; }) == 1,
+                      std::ranges::count_if(w.pickups, [](const Pickup &drop)
+                                            { return drop.weapon == WeaponId::automatic && drop.dropped; }) ==
+                          1,
                   "armed civilian drops a single collectable rifle");
             auto hp = w.health;
             aim(200);

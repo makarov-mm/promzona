@@ -220,7 +220,10 @@ void World::arrestStep(double dt)
     clock.setHour(clock.hour + 3 + level);
     wanted = wantedCooldown = dispatchAt = 0;
     for (auto &c : cars)
-        c.responding = c.seesSuspect = c.firePlayerCaused = false;
+    {
+        standDown(c);
+        c.firePlayerCaused = false;
+    }
     for (auto &p : people)
     {
         p.alertUntil = p.aimSeconds = 0;

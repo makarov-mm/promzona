@@ -13,20 +13,132 @@ void World::splash(Vec2 point, double strength)
     ripples.push_back({point, time, strength});
     sounds.push_back({"splash", point, clamp(strength * .35, .12, .9)});
 
-    // A cosmetic burst must not advance the traffic or combat random stream.
-    Random spray(uint32_t(std::lround(time * 120)) ^ uint32_t(std::lround(point.x * 32)) ^
-                 (uint32_t(std::lround(point.z * 32)) << 16));
-    int drops = std::clamp(int(strength * 22), 5, 65);
-    for (int i = 0; i < drops && particles.size() < 5000; ++i)
+    // Drops rise from the surface and fall back through it to the bed (CityTraffic.Splash).
+    emit(Vec3{float(point.x), float(CityLayout::waterLevel + .08), float(point.z)},
+         terrain.bedHeight(point.x, point.z), ParticleKind::water, std::clamp(int(strength * 22), 5, 65),
+         std::min(7., 1 + strength * 2));
+}
+
+// Port of CityTraffic.Noise: xorshift, apart from the sequence the city is driven by.
+double World::effectNoise()
+{
+    effectSeed ^= effectSeed << 13;
+    effectSeed ^= effectSeed >> 17;
+    effectSeed ^= effectSeed << 5;
+    return (effectSeed + .5) / 4294967296.;
+}
+
+// Port of CityTraffic.Emit: a burst that spreads in a cone about the vertical.
+void World::emit(Vec3 at, double floor, ParticleKind kind, int count, double speed)
+{
+    using enum ParticleKind;
+    for (int i = 0; i < count && particles.size() < maxParticles; ++i)
     {
-        auto outward = forward(spray.next() * 2 * pi);
-        float speed = float((.45 + spray.next()) * std::sqrt(strength));
-        float up = float((1.6 + 1.6 * spray.next()) * std::sqrt(strength));
-        particles.push_back({{float(point.x), float(CityLayout::waterLevel + .035), float(point.z)},
-                             {float(outward.x) * speed, up, float(outward.z) * speed},
-                             {.62f, .83f, .86f},
-                             up / 3.f,
-                             float(.025 + .04 * strength)});
+        const double angle = effectNoise() * 2 * pi, spread = effectNoise();
+        Particle p;
+        p.kind = kind;
+        p.p = at;
+        p.floor = float(floor + .03);
+        const double rise = speed * (.3 + effectNoise());
+        p.v = {float(std::cos(angle) * speed * spread), float(rise), float(std::sin(angle) * speed * spread)};
+        p.span = p.life = float(kind == fire     ? .5 + effectNoise() * .5
+                                : kind == smoke  ? 2 + effectNoise() * 2
+                                : kind == debris ? .5 + effectNoise()
+                                : kind == water  ? 1.5
+                                                 : .3 + effectNoise() * .6);
+        p.size = float(kind == fire || kind == smoke ? .25 + effectNoise() * .4
+                       : kind == debris              ? .025
+                                                     : .035 + effectNoise() * .06);
+        particles.push_back(p);
+    }
+}
+
+void World::emit(Vec2 at, double above, int level, ParticleKind kind, int count, double speed)
+{
+    const double floor = surface(at, level);
+    emit(Vec3{float(at.x), float(floor + above), float(at.z)}, floor, kind, count, speed);
+}
+
+double World::floorBelow(Vec2 at, double y) const
+{
+    double floor = terrain.height(at);
+    if (const auto *level = levelAt(at))
+    {
+        const double deck = level->floor(terrain, at);
+        // In a tunnel the ground is overhead; a deck counts for whatever is on or above it.
+        if (level->tunnel ? y < floor - .5 : y >= deck - .3)
+            floor = deck;
+    }
+    return floor;
+}
+
+// Port of the particle loop of CityTraffic.AfterContacts.
+void World::stepParticles(double dt)
+{
+    const float step = float(dt);
+    for (auto &p : particles)
+    {
+        p.life -= step;
+        if (p.kind == ParticleKind::plain)
+        {
+            p.v.y -= step * 6;
+            p.p = p.p + p.v * step;
+            continue;
+        }
+        p.p = p.p + p.v * step;
+        if (p.kind == ParticleKind::flame)
+        {
+            p.v.y += 1.4f * step;
+            p.size += .55f * step;
+        }
+        else if (p.kind == ParticleKind::smoke)
+        {
+            p.v.y += .5f * step;
+            p.size += .22f * step;
+            p.v.x += .4f * step;
+        }
+        else
+            p.v.y -= 9.81f * step;
+        if (p.p.y < p.floor)
+        {
+            p.p.y = p.floor;
+            p.v.y *= -.22f;
+            p.v.x *= .8f;
+            p.v.z *= .8f;
+        }
+    }
+    std::erase_if(particles, [](const Particle &p) { return p.life <= 0; });
+    if (particles.size() > maxParticles)
+        particles.erase(particles.begin(),
+                        particles.begin() + static_cast<std::ptrdiff_t>(particles.size() - maxParticles));
+    std::erase_if(scuffs, [&](const Scuff &s) { return time - s.born >= s.duration(); });
+}
+
+// Port of the marks of CityTraffic.AfterContacts: a collision darkens the flanks of the
+// car and the nearest wall within reach of it.
+void World::addScuffs(const Car &car)
+{
+    if (scuffs.size() >= 96)
+        scuffs.erase(scuffs.begin());
+    scuffs.push_back({false, car.id, {}, false, time});
+    if (roofCells.empty())
+        return;
+    const Vec2 at = car.body.p;
+    for (auto index : roofCells[nearestNode(at)])
+    {
+        const auto &b = buildings[index];
+        const Vec2 nearest{clamp(at.x, b.p.x - b.half.x, b.p.x + b.half.x),
+                           clamp(at.z, b.p.z - b.half.z, b.p.z + b.half.z)};
+        if ((nearest - at).length() > car.body.halfH + 1)
+            continue;
+        const bool facesX = std::abs(at.x - b.p.x) / b.half.x > std::abs(at.z - b.p.z) / b.half.z;
+        const Vec2 wall = facesX ? Vec2{b.p.x + (at.x > b.p.x ? 1 : -1) * (b.half.x + .022), nearest.z}
+                                 : Vec2{nearest.x, b.p.z + (at.z > b.p.z ? 1 : -1) * (b.half.z + .022)};
+        if (scuffs.size() >= 96)
+            scuffs.erase(scuffs.begin());
+        scuffs.push_back(
+            {true, 0, {float(wall.x), float(terrain.height(wall) + .828), float(wall.z)}, facesX, time});
+        break;
     }
 }
 
@@ -42,7 +154,7 @@ void World::generatePuddles()
             Vec2 centre{layout.coordinate(i) + 1.8, layout.coordinate(j) + spacing * .5};
             if (!layout.urbanSite(centre, RoadPuddle::radiusX) || levelAt(centre, RoadPuddle::radiusX))
                 continue;
-            RoadPuddle puddle{centre};
+            RoadPuddle puddle{centre, {}};
             constexpr double x = RoadPuddle::radiusX, z = RoadPuddle::radiusZ;
             constexpr Vec2 offsets[]{{-x, -z}, {-x, z}, {x, z}, {x, -z}};
             for (size_t n = 0; n < puddle.corners.size(); ++n)
@@ -209,7 +321,7 @@ void World::updateTireMarks(Vec2 focus, double dt)
         bool sand =
             !body.roadLevel && !layout.bridge(rear) && layout.sandyGround(rear, layout.roadDistance(rear));
         bool skid = body.v.length2() > 20. && (car.braking || std::abs(dot(body.v, right)) > 2.);
-        bool wet = rain > .45 && (body.roadLevel || layout.roadDistance(rear) < layout.roadHalf());
+        bool wet = wetness > .45 && (body.roadLevel || layout.roadDistance(rear) < layout.roadHalf());
         if (wet)
             if (auto level = levelAt(rear))
                 wet = level->tunnel ? (body.roadLevel != level->id || !level->roof(rear.x))
@@ -259,6 +371,16 @@ void World::updateTireMarks(Vec2 focus, double dt)
                              : kind == MarkKind::sand ? 24.
                                                       : 40.,
                              body.roadLevel, kind});
+            // Tyres smoke in a hard slide and raise dust on sand, at the cadence of the
+            // managed skid clock.
+            if (distance < 9. && time >= contact.nextPuff && kind != MarkKind::wet)
+            {
+                contact.nextPuff = time + .08;
+                if (kind == MarkKind::sand ? effectNoise() < .14 : std::abs(dot(body.v, right)) > 4)
+                    emit(body.p, kind == MarkKind::sand ? .15 : .2, body.roadLevel,
+                         kind == MarkKind::sand ? ParticleKind::sand : ParticleKind::smoke,
+                         kind == MarkKind::sand ? 2 : 1, kind == MarkKind::sand ? 1.2 : .5);
+            }
         }
         contact.wheels[0] = wheels[0];
         contact.wheels[1] = wheels[1];

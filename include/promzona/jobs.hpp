@@ -39,9 +39,17 @@ enum class JobKind
     taxi,
     patient
 };
+// How near the address a ride ends: ArriveRadius of the managed game.
+constexpr double arriveRadius(JobKind kind)
+{
+    return kind == JobKind::patient ? 14 : 11;
+}
 struct PeaceRoute
 {
     std::array<int, 4> sites{-1, -1, -1, -1};
+    // The free point of pavement beside each place, by its number on the rings of
+    // World::peaceOffset; -1 is the place itself, as in saves from before the search.
+    std::array<int, 4> spots{-1, -1, -1, -1};
     int completed{};
     bool enabled{};
     double noise{}, soundAt{}, interactAt{};

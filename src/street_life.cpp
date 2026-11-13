@@ -77,17 +77,80 @@ void World::generateStreetLife()
     // densities keep the animals their saves were made with.
     const bool full = density == Density::full;
     const int strays = full ? 106 : 72, pigeonFlocks = full ? 120 : 32, loneBirds = full ? 54 : 10;
+    // As in the managed game the animals live on the pavements as well as in the parks:
+    // cats, dogs and lone birds wherever their block falls, a flock of pigeons in a park
+    // nearly four times out of five. The places come from a generator of their own. The
+    // main one decides how many animals there are, and a save made when they all lived
+    // in parks must still find the same number of each.
+    Random placement(seed ^ 0x6c8e9cf5u);
+    auto settle = [&](Vec2 park, bool lawn, int members) -> Perch
+    {
+        for (int attempt = 0; attempt < 12; ++attempt)
+        {
+            const auto perch = animalPerch(placement, lawn);
+            if (!perch)
+                break;
+            // A flock arrives whole or not at all: no bird inside a wall or on the road.
+            bool fits = true;
+            for (int n = 1; n < members && fits; ++n)
+            {
+                const Vec2 at = perch->at + flockOffset(n, perch->pavement);
+                fits = layout.urbanSite(at, .3) && !insideBuilding(at, terrain.height(at) + .4, .3) &&
+                       (!perch->pavement || layout.roadDistance(at) > layout.roadHalf() + .2);
+            }
+            if (fits)
+                return *perch;
+        }
+        return {park, false};
+    };
     for (int i = 0; i < strays; ++i)
-        add(i % 2 ? Species::cat : Species::dog, home(), -1, {});
+    {
+        const Vec2 park = home();
+        add(i % 2 ? Species::cat : Species::dog, settle(park, false, 1).at, -1, {});
+    }
     for (int i = 0; i < pigeonFlocks + loneBirds; ++i)
     {
-        Vec2 centre = home();
+        const Vec2 park = home();
         bool solo = i >= pigeonFlocks;
-        flocks.push_back({centre, false, time});
         int count = solo ? 1 : 6 + streetRandom.index(5);
+        const Perch perch = settle(park, !solo && placement.next() < .78, count);
+        flocks.push_back({perch.at, false, time});
         for (int n = 0; n < count; ++n)
-            add(solo ? Species::bird : Species::pigeon, centre, i, forward(n * 2.4) * (.65 * std::sqrt(n)));
+            add(solo ? Species::bird : Species::pigeon, perch.at, i, flockOffset(n, perch.pavement));
     }
+}
+std::optional<World::Perch> World::animalPerch(Random &source, bool lawn) const
+{
+    for (int attempt = 0; attempt < 40; ++attempt)
+    {
+        int i = source.index(nodes - 1), j = source.index(nodes - 1);
+        for (int k = 0; lawn && k < 30 && !layout.park(i, j); ++k)
+        {
+            i = source.index(nodes - 1);
+            j = source.index(nodes - 1);
+        }
+        const bool park = layout.park(i, j);
+        const Vec2 at = nodePoint(j * nodes + i) +
+                        Vec2{park ? 10 + source.next() * 16 : layout.sidewalk(), 10 + source.next() * 16};
+        const double radius = park ? .6 : .45;
+        if (!layout.urbanSite(at, radius) || levelAt(at, 2) ||
+            insideBuilding(at, terrain.height(at) + .4, radius))
+            continue;
+        if (!park)
+        {
+            // The pavement of a street that exists: not a lawn, a yard or the roadway.
+            const double fromRoad = layout.roadDistance(at) - layout.roadHalf();
+            if (fromRoad < .3 || fromRoad > 2.6)
+                continue;
+        }
+        return Perch{at, !park};
+    }
+    return std::nullopt;
+}
+Vec2 World::flockOffset(int member, bool pavement)
+{
+    return pavement ? Vec2{(member % 2) * .40, (member / 2) * .48}
+                    : forward(member * 2.4) * (.65 * std::sqrt(member));
 }
 
 void World::releaseScooter(int index, Vec2 velocity)

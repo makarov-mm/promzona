@@ -589,7 +589,7 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
             }
             controls.throttle = 0;
         }
-        stepVehicle(c, controls, dt, 1 - rain * .2);
+        stepVehicle(c, controls, dt, 1 - wetness * .2);
         c.checkTrafficAt = 0;
         return;
     }
@@ -782,7 +782,7 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
             double angle = wrap(std::atan2(aim.x, aim.z) - c.heading());
             controls.steering = clamp(
                 std::atan2(2 * c.wheelbase * std::sin(angle), std::max(1., aim.length())) / .62, -1., 1.);
-            stepVehicle(c, controls, dt, 1 - rain * .2);
+            stepVehicle(c, controls, dt, 1 - wetness * .2);
             c.along = line.wrapDistance(c.along + speed * dt);
             return;
         }
