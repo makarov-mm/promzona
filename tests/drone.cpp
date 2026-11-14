@@ -1,25 +1,27 @@
 #include "promzona/world.hpp"
 #include "json.hpp"
 #include <fstream>
-#include <iostream>
+#include <print>
 #include <chrono>
 #include <stdexcept>
-using namespace pz;
+#include <source_location>
+#include <format>
+using namespace Promzona;
 namespace
 {
-void check(bool condition, const char *message)
+void check(bool condition, const char *message, std::source_location where = std::source_location::current())
 {
     if (!condition)
-        throw std::runtime_error(message);
+        throw std::runtime_error(std::format("{} (line {})", message, where.line()));
 }
 void run()
 {
     World w;
     w.generate(20261105);
-    w.toggleDrone(0);
+    w.toggle_drone(0);
     check(!w.drone.active, "launch from car");
-    w.enterExit();
-    w.toggleDrone(0);
+    w.enter_exit();
+    w.toggle_drone(0);
     check(w.drone.active && w.drone.targets[0] != w.drone.targets[1], "launch or targets");
     auto pilot = w.player.p;
     PlayerInput flight;
@@ -41,41 +43,41 @@ void run()
     wall.halfW = .5;
     wall.halfH = 5;
     w.staticBodies.push_back(wall);
-    w.refreshDroneObstacles(wallStart);
+    w.refresh_drone_obstacles(wallStart);
     w.drone.velocity = {8, 0};
     PlayerInput alongWall;
     alongWall.walking = {1, 0};
     alongWall.collective = 1;
     for (int i = 0; i < 120; ++i)
-        w.stepDrone(alongWall, 1. / 120);
+        w.step_drone(alongWall, 1. / 120);
     check(w.drone.position.x < wallStart.x + .16 && w.drone.altitude > wallHeight + 4.9,
           "drone must climb along a wall without crossing it");
     check(w.drone.health < 1 && w.drone.health > .8, "only the initial hard contact should damage the drone");
     w.staticBodies.pop_back();
     w.drone.velocity = {};
     auto &b = w.buildings[w.drone.targets[0]];
-    w.refreshDroneObstacles(b.p);
+    w.refresh_drone_obstacles(b.p);
     check(!w.droneClear(b.p, w.terrain.height(b.p) + 2, .35), "collision with building");
-    const auto path = std::filesystem::temp_directory_path() /
-                      ("promzona-drone-" +
-                       std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+    const auto path =
+        std::filesystem::temp_directory_path() /
+        std::format("promzona-drone-{}.json", std::chrono::steady_clock::now().time_since_epoch().count());
     int initial = w.money;
     for (int n = 0; n < 3; ++n)
     {
         auto &roof = w.buildings[w.drone.targets[n]];
         w.drone.position = roof.p + Vec2{0, -2.5};
         w.drone.altitude = w.terrain.height(roof.p) + roof.height + 4;
-        w.refreshDroneObstacles(w.drone.position);
+        w.refresh_drone_obstacles(w.drone.position);
         PlayerInput scan;
         scan.shooting = true;
         scan.lookPitch = std::atan2(-3.3, 2.5);
         auto miss = scan;
         miss.lookHeading = pi;
         for (int i = 0; i < 40; ++i)
-            w.stepDrone(miss, 1. / 120);
+            w.step_drone(miss, 1. / 120);
         check(w.drone.scanTime == 0, "off-target scan accrued time");
         for (int i = 0; i < 241 && w.drone.scanned == n; ++i)
-            w.stepDrone(scan, 1. / 120);
+            w.step_drone(scan, 1. / 120);
         check(w.drone.scanned == n + 1, "failed roof scan");
         if (n == 0)
         {
@@ -90,7 +92,7 @@ void run()
         }
     }
     check(!w.drone.active && w.money == initial + 200 && w.drone.readyAt > w.time, "job reward/cooldown");
-    w.toggleDrone(0);
+    w.toggle_drone(0);
     check(!w.drone.active, "cooldown");
     w.save(path);
     World restored;
@@ -119,10 +121,10 @@ void run()
     std::filesystem::remove(path);
     std::filesystem::remove(path.string() + ".bak");
     w.time = w.drone.readyAt + 1;
-    w.toggleDrone(0);
+    w.toggle_drone(0);
     check(w.drone.active, "relaunch after cooldown");
     w.drone.battery = .001;
-    w.stepDrone({}, .01);
+    w.step_drone({}, .01);
     check(!w.drone.active && w.money == initial + 200, "battery depletion");
 }
 } // namespace
@@ -135,7 +137,7 @@ int main()
     }
     catch (const std::exception &e)
     {
-        std::cerr << e.what() << '\n';
+        std::println(stderr, "{}", e.what());
         return 1;
     }
 }

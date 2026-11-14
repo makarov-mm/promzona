@@ -1,7 +1,9 @@
 #include "promzona/city_mesh.hpp"
 #include "promzona/architecture.hpp"
 #include <set>
-namespace pz
+#include <ranges>
+
+namespace Promzona
 {
 namespace
 {
@@ -31,7 +33,7 @@ void box(MeshData &m, Vec3 p, Vec3 half, float uv = 1)
     quad(m, {a.x, b.y, b.z}, {b.x, b.y, b.z}, {b.x, b.y, a.z}, {a.x, b.y, a.z}, uv);
 }
 } // namespace
-CityChunk cityChunk(const World &w, double x0, double z0, double size, std::vector<LawnTile> *lawn)
+CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vector<LawnTile> *lawn)
 {
     CityChunk data;
     auto &l = w.layout;
@@ -212,8 +214,9 @@ CityChunk cityChunk(const World &w, double x0, double z0, double size, std::vect
                     for (int k = 0; k <= 288; ++k)
                         add(level.x - RoadLevel::length + k);
         std::ranges::sort(v);
-        v.erase(std::unique(v.begin(), v.end(), [](double a, double b) { return std::abs(a - b) < 1e-6; }),
-                v.end());
+        const auto repeated =
+            std::ranges::unique(v, [](double a, double b) { return std::abs(a - b) < 1e-6; });
+        v.erase(repeated.begin(), repeated.end());
         return v;
     };
     auto xs = cuts(x0, true), zs = cuts(z0, false);
@@ -310,13 +313,13 @@ CityChunk cityChunk(const World &w, double x0, double z0, double size, std::vect
                     const std::array<Vec2, 6> normals{
                         {{-1, 0}, {-1, .2}, {-.3, 1}, {.3, 1}, {1, .2}, {1, 0}}};
                     for (auto end : {stone.a, stone.b})
-                        for (size_t k = 0; k < profile.size(); ++k)
+                        for (const auto &[offset, normal] : std::views::zip(profile, normals))
                         {
                             Vertex v;
-                            v.position = point(end, profile[k].x, profile[k].z);
-                            v.normal = Vec3{float(side.x * normals[k].x), float(normals[k].z),
-                                            float(side.z * normals[k].x)}
-                                           .unit();
+                            v.position = point(end, offset.x, offset.z);
+                            v.normal =
+                                Vec3{float(side.x * normal.x), float(normal.z), float(side.z * normal.x)}
+                                    .unit();
                             mesh.vertices.push_back(v);
                         }
                     for (unsigned k = 0; k < 5; ++k)
@@ -402,7 +405,7 @@ CityChunk cityChunk(const World &w, double x0, double z0, double size, std::vect
                     };
                     auto top = at + Vec3{0, 2.2f, 0};
                     for (int n = 0; n < 12; ++n)
-                        addCityTriangle(data[n % 2 ? Paint : cloth], top, rim(n + 1), rim(n));
+                        add_city_triangle(data[n % 2 ? Paint : cloth], top, rim(n + 1), rim(n));
                 }
             }
     }
@@ -628,4 +631,4 @@ CityChunk cityChunk(const World &w, double x0, double z0, double size, std::vect
     }
     return data;
 }
-} // namespace pz
+} // namespace Promzona

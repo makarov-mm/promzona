@@ -1,15 +1,17 @@
 #include "promzona/world.hpp"
 #include <fstream>
-#include <iostream>
+#include <print>
 #include <set>
 #include <stdexcept>
-using namespace pz;
+#include <source_location>
+#include <format>
+using namespace Promzona;
 static int checks{};
-static void check(bool b, const char *what)
+static void check(bool b, const char *what, std::source_location where = std::source_location::current())
 {
     ++checks;
     if (!b)
-        throw std::runtime_error(what);
+        throw std::runtime_error(std::format("{} (line {})", what, where.line()));
 }
 void checkYards(const CityLayout &city)
 {
@@ -31,8 +33,7 @@ void checkYards(const CityLayout &city)
                 check(distance > city.roadHalf() && distance <= city.roadHalf() + 2.8,
                       "path reaches an actual sidewalk");
                 check(std::ranges::any_of(city.buildings,
-                                          [&](const Building &b)
-                                          {
+                                          [&](const Building &b) {
                                               return b.kind == BuildingKind::apartment &&
                                                      (apartmentDoor(b) - path.points.front()).length() < .001;
                                           }),
@@ -188,11 +189,11 @@ int main(int argc, char **argv)
             else
                 check(terrain.height(x, z) < CityLayout::waterLevel, "no invisible canal bridge");
         }
-        std::cout << checks << " layout checks passed; 12 original C# cities matched\n";
+        std::println("{} layout checks passed; 12 original C# cities matched", checks);
     }
     catch (const std::exception &e)
     {
-        std::cerr << "Layout check " << checks << ": " << e.what() << '\n';
+        std::println(stderr, "Layout check {}: {}", checks, e.what());
         return 1;
     }
 }

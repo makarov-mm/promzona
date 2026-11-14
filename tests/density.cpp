@@ -6,17 +6,19 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
+#include <print>
 #include <stdexcept>
 #include <utility>
+#include <source_location>
+#include <format>
 
-using namespace pz;
+using namespace Promzona;
 namespace
 {
-void require(bool ok, const char *message)
+void require(bool ok, const char *message, std::source_location where = std::source_location::current())
 {
     if (!ok)
-        throw std::runtime_error(message);
+        throw std::runtime_error(std::format("{} (line {})", message, where.line()));
 }
 constexpr double frame = 1. / 60;
 // Every generated actor stands somewhere it could have walked or driven to. A city that
@@ -82,11 +84,11 @@ int main()
                     cycleDensity(Density::low, -1) == Density::full &&
                     cycleDensity(Density::full, -1) == Density::high,
                 "density does not cycle");
-        require(densityFromCode("full", Density::low) == Density::full &&
-                    densityFromCode("high", Density::low) == Density::high &&
-                    densityFromCode("medium", Density::low) == Density::medium &&
-                    densityFromCode("low", Density::high) == Density::low &&
-                    densityFromCode("crowd", Density::medium) == Density::medium,
+        require(density_from_code("full", Density::low) == Density::full &&
+                    density_from_code("high", Density::low) == Density::high &&
+                    density_from_code("medium", Density::low) == Density::medium &&
+                    density_from_code("low", Density::high) == Density::low &&
+                    density_from_code("crowd", Density::medium) == Density::medium,
                 "density codes are wrong");
         const auto folder = std::filesystem::temp_directory_path() / "promzona-density";
         std::filesystem::create_directories(folder);
@@ -235,12 +237,12 @@ int main()
         }
         require(refused, "population of the wrong density was accepted");
         std::filesystem::remove_all(folder);
-        std::cout << "density tests passed\n";
+        std::println("density tests passed");
         return 0;
     }
     catch (const std::exception &e)
     {
-        std::cerr << "FAILED: " << e.what() << '\n';
+        std::println(stderr, "FAILED: {}", e.what());
         return 1;
     }
 }

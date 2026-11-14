@@ -3,8 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <ranges>
 
-namespace pz
+namespace Promzona
 {
 namespace
 {
@@ -74,10 +75,10 @@ bool World::startPeaceJob(JobKind kind)
             continue;
         next.route.sites[count] = i;
         next.route.spots[count++] = spot;
-        if (count == next.stopCount())
+        if (count == next.stop_count())
             break;
     }
-    if (count != next.stopCount())
+    if (count != next.stop_count())
     {
         notify(L"Поблизости мало подходящих площадок");
         return false;
@@ -92,7 +93,7 @@ bool World::startPeaceJob(JobKind kind)
 
 void World::interactPeaceJob()
 {
-    if (job.escaping() || time < job.route.interactAt)
+    if (job.escaping() || time < job.route.interact_at)
         return;
     if (job.kind == JobKind::leaflets)
     {
@@ -107,9 +108,9 @@ void World::interactPeaceJob()
             return;
         job.route.enabled = !job.route.enabled;
         if (job.route.enabled)
-            job.route.soundAt = time;
+            job.route.sound_at = time;
     }
-    job.route.interactAt = time + .35;
+    job.route.interact_at = time + .35;
 }
 
 void World::stepPeaceJob(double dt)
@@ -153,10 +154,10 @@ void World::stepPeaceJob(double dt)
             job.route.enabled = false;
         if (!job.route.enabled)
             return;
-        if (time >= job.route.soundAt)
+        if (time >= job.route.sound_at)
         {
             sounds.push_back({"peace_pa", car.body.p, .7, false});
-            job.route.soundAt = time + 7;
+            job.route.sound_at = time + 7;
         }
         job.route.noise += dt;
         if (job.route.noise >= 8)
@@ -192,16 +193,16 @@ bool World::validPeaceJob() const
 {
     const auto &r = job.route;
     bool leaflets = job.kind == JobKind::leaflets;
-    if (r.completed < 0 || r.completed > job.stopCount() || r.noise < 0 || r.noise >= 8 || r.soundAt < 0 ||
-        r.interactAt < 0 || job.stopped > (leaflets ? 3 : 30) || job.fare != (leaflets ? 300 : 500))
+    if (r.completed < 0 || r.completed > job.stop_count() || r.noise < 0 || r.noise >= 8 || r.sound_at < 0 ||
+        r.interact_at < 0 || job.stopped > (leaflets ? 3 : 30) || job.fare != (leaflets ? 300 : 500))
         return false;
-    for (int n = 0; n < job.stopCount(); ++n)
+    for (int n = 0; n < job.stop_count(); ++n)
     {
         int i = r.sites[n];
         if (!peacePlace(i) || r.spots[n] < -1 || r.spots[n] >= peaceSpots ||
             (r.spots[n] >= 0 && !peaceGround(peaceSpot(i, r.spots[n]), .5)))
             return false;
-        if (std::find(r.sites.begin(), r.sites.begin() + n, i) != r.sites.begin() + n)
+        if (std::ranges::contains(r.sites | std::views::take(n), i))
             return false;
     }
     if (job.escaping() ? (job.destination != -1 || r.enabled) : job.destination != r.sites[r.completed])
@@ -210,4 +211,4 @@ bool World::validPeaceJob() const
         return job.actor == -1;
     return job.actor >= 0 && job.actor < int(cars.size()) && civilian(cars[job.actor]);
 }
-} // namespace pz
+} // namespace Promzona

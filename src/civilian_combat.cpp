@@ -1,6 +1,6 @@
 #include "promzona/world.hpp"
 
-namespace pz
+namespace Promzona
 {
 WeaponId Person::civilianWeapon(std::uint32_t citySeed, std::uint32_t id)
 {
@@ -76,4 +76,4 @@ void World::civilianCombat(Person &p, double dt)
              .08f,
              .04f});
 }
-} // namespace pz
+} // namespace Promzona

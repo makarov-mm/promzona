@@ -9,9 +9,12 @@
 #include "layout.hpp"
 #include "road_levels.hpp"
 #include "vegetation.hpp"
+#include <cstdint>
 #include <filesystem>
 #include <functional>
-namespace pz
+#include <utility>
+
+namespace Promzona
 {
 class Terrain
 {
@@ -197,8 +200,8 @@ struct Particle
 };
 struct PlayerInput
 {
-    Input car;
-    Vec2 walking;
+    Input car{};
+    Vec2 walking{};
     bool running{}, shooting{};
     double collective{};
     double lookHeading{}, lookPitch{};
@@ -315,8 +318,8 @@ struct World
     bool useScooter();
     void riderIntent(Person &person, Vec2 &direction, double &speed);
     void updateScooters(double dt);
-    void stepWildlife(double dt);
-    void scareWildlife(Vec2 origin, double height, double lethalRadius);
+    void step_wildlife(double dt);
+    void scare_wildlife(Vec2 origin, double height, double lethalRadius);
     // A place for an animal, and whether it is a pavement rather than the lawn of a park.
     struct Perch
     {
@@ -330,8 +333,8 @@ struct World
     // The place of the n-th member of a flock around its home: a spiral on a lawn, two
     // files along a pavement.
     static Vec2 flockOffset(int member, bool pavement);
-    Perch landingSite(Vec2 near, Vec2 away);
-    void takeFlight(int flock, Vec2 from, Vec2 away);
+    Perch landing_site(Vec2 near, Vec2 away);
+    void take_flight(int flock, Vec2 from, Vec2 away);
     std::vector<TransitLine> lines;
     // When the driver of a trolleybus that has left its wires is told so again.
     double wiresNoticeAt{};
@@ -372,10 +375,10 @@ struct World
     int hailerInReach() const;
     bool waitingForTaxi(int actor) const;
     ReconDrone drone;
-    void toggleDrone(double heading);
-    void stopDrone(const wchar_t *message, double delay);
-    void stepDrone(const PlayerInput &input, double dt);
-    void refreshDroneObstacles(Vec2 centre);
+    void toggle_drone(double heading);
+    void stop_drone(const wchar_t *message, double delay);
+    void step_drone(const PlayerInput &input, double dt);
+    void refresh_drone_obstacles(Vec2 centre);
     bool droneClear(Vec2 point, double height, double radius) const;
     int jobsCompleted{}, jobsFailed{}, lastPay{}, seriesStage{}, seriesCompleted{};
     std::int64_t jobEarnings{};
@@ -480,11 +483,11 @@ struct World
     double lastCrimeAt{-100}, lastPoliceSightAt{-100}, policeSightCheckAt{};
     int pedestrianImpacts{};
     static constexpr double fatalImpactSpeed = 5.5;
-    bool carTouches(const Car &car, Vec2 point, double margin) const;
-    void strikePerson(Person &person, const Car &car, double closingSpeed, bool playerDriving);
+    static bool car_touches(const Car &car, Vec2 point, double margin);
+    void strike_person(Person &person, const Car &car, double closingSpeed, bool playerDriving);
     // The nearest spot off the carriageway where somebody hurt in the road can wait.
     Vec2 kerbside(Vec2 from) const;
-    void strikePlayer(const Car &car, double closingSpeed);
+    void strike_player(const Car &car, double closingSpeed);
     bool detectImpact(Person &person, const Car &car, bool playerDriving);
     void detectPlayerImpact(std::span<const Car *const> traffic);
     void hurtPlayer(double amount);
@@ -508,8 +511,8 @@ struct World
     bool renewCar(int car);
     void renewCity();
     // Unhurried and frightened speed of a walker, metres per second.
-    static double walkingPace(const Person &person);
-    static double fleeingPace(const Person &person);
+    static double walking_pace(const Person &person);
+    static double fleeing_pace(const Person &person);
     double nextRoleStep{};
     size_t roleCursor{};
     int rolesTaken{}, rolesLeft{}, dutiesEnded{};
@@ -517,12 +520,12 @@ struct World
     Random roleRandom;
     Vec2 towel{};
     int towelGuests{};
-    size_t roleQuota(Person::Role role) const;
-    bool roleGround(Person::Role role, Vec2 at) const;
-    bool roleCandidate(int actor) const;
-    bool takeRole(int actor, Person::Role role, bool unseen);
-    void leaveRole(Person &person);
-    void anchorWalk(Person &person);
+    size_t role_quota(Person::Role role) const;
+    bool role_ground(Person::Role role, Vec2 at) const;
+    bool role_candidate(int actor) const;
+    bool take_role(int actor, Person::Role role, bool unseen);
+    void leave_role(Person &person);
+    void anchor_walk(Person &person) const;
     // The pavements run 9.1 m either side of the middle of a street, and people walk from
     // corner to corner of the junctions: across a street, or along the block to the next.
     static constexpr double walkLine = 9.1;
@@ -530,25 +533,34 @@ struct World
     {
         return nodePoint(node) + Vec2{sx * walkLine, sz * walkLine};
     }
-    // Which legs can be walked at each junction. Bits 0 and 1: across the north-south street
-    // on the south and on the north side; 2 and 3: across the east-west street on the west
-    // and on the east side; 4 and 5: the block towards +x on the south and north pavement;
-    // 6 and 7: the block towards +z on the west and east pavement.
+    // Which legs can be walked at each junction. Every kind of leg has two bits: the lower
+    // for the south or west side, the upper for the north or east side.
+    enum class WalkLeg : std::uint8_t
+    {
+        acrossNorthSouth = 1 << 0, // across the north-south street, on the south or north side
+        acrossEastWest = 1 << 2,   // across the east-west street, on the west or east side
+        blockEast = 1 << 4,        // the block towards +x, on the south or north pavement
+        blockNorth = 1 << 6,       // the block towards +z, on the west or east pavement
+    };
+    static constexpr std::uint8_t walkLegBit(WalkLeg leg, bool upperSide)
+    {
+        return static_cast<std::uint8_t>(std::to_underlying(leg) << (upperSide ? 1 : 0));
+    }
     std::vector<std::uint8_t> walkLegs;
     void buildWalkLegs();
     bool crossingLights(int node, bool alongX, int side) const;
-    bool walkSignal(int node, bool alongX, double seconds) const;
-    void chooseWalk(Person &person);
-    bool placeOnBlock(Person &person, int from, int to, int side, double along);
-    Vec2 walkAim(const Person &person) const;
-    Vec2 roadward(Vec2 at) const;
-    void roleIntent(Person &person, Vec2 &direction, double &speed);
-    void settleRoles();
-    void stepRoles();
+    bool walk_signal(int node, bool alongX, double seconds) const;
+    void choose_walk(Person &person);
+    bool place_on_block(Person &person, int from, int to, int side, double along) const;
+    static Vec2 walk_aim(const Person &person);
+    static Vec2 roadward(Vec2 at);
+    void role_intent(Person &person, Vec2 &direction, double &speed) const;
+    void settle_roles();
+    void step_roles();
     // Seconds a walker has to wait before stepping off the kerb in front of it; zero
     // away from a kerb, at a corner without lights and while the walk signal lasts.
-    double kerbWait(const Person &person) const;
-    bool onCrossing(const Person &person, bool caught) const;
+    double kerb_wait(const Person &person) const;
+    bool on_crossing(const Person &person, bool caught) const;
     bool firing{}, aiming{};
     double playerBurnUntil{}, fireClock{}, nextFlameSound{};
     double playerDistance{};
@@ -581,20 +593,20 @@ struct World
         int car{-1}, side{};
         double progress{}, deadline{};
     } vehicleEntry;
-    static Vec2 driverDoor(const Car &car, int side);
+    static Vec2 driver_door(const Car &car, int side);
     bool vehicleSpace(Vec2 at, double height, const Car *ignore, bool includePlayer) const;
-    bool entryPath(const Car &car, Vec2 door) const;
-    bool unloadCrew(Car &car);
-    void stepEntry(PlayerInput &input, double dt);
-    void enterExit();
+    bool entry_path(const Car &car, Vec2 door) const;
+    bool unload_crew(Car &car);
+    void step_entry(PlayerInput &input, double dt);
+    void enter_exit();
     void generateServices();
-    void generateShops();
+    void generate_shops();
     // Bus shelters, by their roadside signs: on the west pavement of a street that runs
     // north, half-way along the block. The second list gives the stop of the block that
     // leaves a node towards +z, or -1.
     std::vector<Vec2> busStops;
     std::vector<int> busStopOfNode;
-    void generateBusStops();
+    void generate_bus_stops();
     // The shelter stands behind its sign.
     static constexpr Vec2 shelter(Vec2 sign) { return {sign.x - .8, sign.z}; }
     // A bus at its stop, or pulling up to it: the speed it may still do.
@@ -621,18 +633,18 @@ struct World
     Vec2 peaceSpot(int place, int spot) const { return peacePoint(place) + peaceOffset(spot); }
     // Dry land of the city, clear of its edge and of the canals by the margin.
     bool peaceGround(Vec2 at, double margin) const;
-    int marketInReach() const;
-    int garageInReach() const;
+    int market_in_reach() const;
+    int garage_in_reach() const;
     int ownedGarage{-1}, openMarket{-1};
     static constexpr int garagePrice = 400, garageCapacity = 3;
     static constexpr double pillHealing = .35;
     bool spawnPickup(bool energy);
-    int ownedVehicleCount() const;
-    int garageQuote() const;
-    bool serviceGarage();
-    void useOwnedGarage();
-    int shopPrice(ShopItem item) const;
-    bool buyAtMarket(ShopItem item);
+    int owned_vehicle_count() const;
+    int garage_quote() const;
+    bool service_garage();
+    void use_owned_garage();
+    int shop_price(ShopItem item) const;
+    bool buy_at_market(ShopItem item);
     int nearestSite(ServiceKind kind, Vec2 from) const;
     int counterInReach(bool parkedAllowed) const;
     bool buyFood();
@@ -706,11 +718,11 @@ struct World
     double nextRescueScan{}, nextRescueDispatch{};
     size_t casualtyCursor{};
     const Rescue *ambulanceCall(int car) const;
-    const Rescue *paramedicCall(int actor) const;
-    void routeAmbulance(Rescue &call);
-    int ambulanceTurn(const Rescue &call, int node, int previous);
-    void updateRescues();
-    void medicIntent(int actor, Vec2 &direction, double &speed);
+    const Rescue *paramedic_call(int actor) const;
+    void route_ambulance(Rescue &call) const;
+    int ambulance_turn(const Rescue &call, int node, int previous);
+    void update_rescues();
+    void medic_intent(int actor, Vec2 &direction, double &speed) const;
     int pursuitNext(int node, int previous);
     bool deployResponder(int kind);
     void responseFire(Car &car);
@@ -720,9 +732,9 @@ struct World
     void toggleHelicopterLanding();
     double recoveryReadyAt{};
     bool recover();
-    bool safeRecoveryPose(const Car &car, Vec2 at, double heading) const;
-    std::optional<Vec2> playerVehicleExit(const Car &car) const;
-    bool safeExitPoint(const Car &car, Vec2 at) const;
+    bool safe_recovery_pose(const Car &car, Vec2 at, double heading) const;
+    std::optional<Vec2> player_vehicle_exit(const Car &car) const;
+    bool safe_exit_point(const Car &car, Vec2 at) const;
     void shoot(double heading, double pitch = 0);
     void explode(Vec2 p, double y, double strength = 1, bool vehicleBlast = false, bool playerCaused = false);
     void destroyCar(Car &car);
@@ -742,7 +754,7 @@ struct World
     void addCrime(double severity);
     void reportCrime(double severity, double radius = 45, bool sight = true);
     int wantedLevel() const { return wanted <= .001 ? 0 : int(std::ceil(wanted)); }
-    std::function<void()> captureSave(const std::filesystem::path &path) const;
+    [[nodiscard]] std::function<void()> captureSave(const std::filesystem::path &path) const;
     void save(const std::filesystem::path &path) const;
     void load(const std::filesystem::path &path);
     ManagedImport importManaged(const std::filesystem::path &file, Density population = Density::low);
@@ -779,4 +791,4 @@ struct World
     bool tryChangeLane(Car &car, int destination);
     Vec2 pickupSite();
 };
-} // namespace pz
+} // namespace Promzona

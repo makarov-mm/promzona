@@ -1,7 +1,8 @@
 #pragma once
 #include "assets.hpp"
 #include <array>
-namespace pz
+
+namespace Promzona
 {
 struct World;
 enum class TreeKind
@@ -23,4 +24,4 @@ std::vector<TreePlant> planTrees(const World &world);
 using TreeMesh = std::array<MeshData, 2>;
 void appendTree(TreeMesh &mesh, const TreePlant &plant, bool far);
 constexpr float treeLodStart = 85, treeLodEnd = 115, treeDrawDistance = 620;
-} // namespace pz
+} // namespace Promzona

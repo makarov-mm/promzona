@@ -1,13 +1,17 @@
 #include "promzona/world.hpp"
 #include <chrono>
-#include <iostream>
-using namespace pz;
+#include <print>
+#include <source_location>
+#include <format>
+#include <exception>
+#include <stdexcept>
+using namespace Promzona;
 namespace
 {
-void check(bool ok, const char *s)
+void check(bool ok, const char *s, std::source_location where = std::source_location::current())
 {
     if (!ok)
-        throw std::runtime_error(s);
+        throw std::runtime_error(std::format("{} (line {})", s, where.line()));
 }
 void passengerJourney(World &w, Car &car, const std::filesystem::path &save)
 {
@@ -74,7 +78,7 @@ void passengerJourney(World &w, Car &car, const std::filesystem::path &save)
           "pedestrian must approach an open door before boarding");
 
     car.dwell = 0;
-    w.enterExit();
+    w.enter_exit();
     check(w.transitPassenger() && w.transitExitRequested, "exit between stops");
     w.save(save);
     World restored;
@@ -111,7 +115,7 @@ void test(std::uint32_t seed)
 {
     World w;
     w.generate(seed);
-    std::cout << "City " << seed << " lines " << w.lines.size() << '\n';
+    std::println("City {} lines {}", seed, w.lines.size());
     check(w.lines.size() == 4, "missing municipal circuit");
     for (const auto &line : w.lines)
     {
@@ -143,9 +147,9 @@ void test(std::uint32_t seed)
     }
     if (seed != 17)
         return;
-    auto save = std::filesystem::temp_directory_path() /
-                ("pz-transit-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
-                 ".json");
+    auto save =
+        std::filesystem::temp_directory_path() /
+        std::format("pz-transit-{}.json", std::chrono::steady_clock::now().time_since_epoch().count());
     w.save(save);
     World loaded;
     try
@@ -460,7 +464,7 @@ int main()
     }
     catch (const std::exception &e)
     {
-        std::cerr << e.what() << '\n';
+        std::println(stderr, "{}", e.what());
         return 1;
     }
 }

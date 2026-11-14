@@ -27,7 +27,10 @@
 #include <map>
 #include <sstream>
 #include <unordered_map>
-namespace pz
+#include <format>
+#include <ranges>
+
+namespace Promzona
 {
 using namespace gl;
 namespace
@@ -87,7 +90,7 @@ GLuint program(const std::string &vertex, const std::string &fragment)
 std::string readShader(const std::filesystem::path &file, int depth = 0)
 {
     static constexpr std::string_view directive = "#include \"";
-    std::istringstream source(readText(file));
+    std::istringstream source(read_text(file));
     std::string text, line;
     while (std::getline(source, line))
     {
@@ -658,14 +661,14 @@ struct Renderer::Impl
                 break;
             }
         }
-        scene = program(readText(root / "Shaders/Native/scene.vert"),
+        scene = program(read_text(root / "Shaders/Native/scene.vert"),
                         readShader(root / "Shaders/Native/scene.frag"));
-        ui = program(readText(root / "Shaders/Native/ui.vert"), readText(root / "Shaders/Native/ui.frag"));
-        effectShader = program(readText(root / "Shaders/Native/effects.vert"),
+        ui = program(read_text(root / "Shaders/Native/ui.vert"), read_text(root / "Shaders/Native/ui.frag"));
+        effectShader = program(read_text(root / "Shaders/Native/effects.vert"),
                                readShader(root / "Shaders/Native/effects.frag"));
         effects.initialize(effectShader);
         sky =
-            program(readText(root / "Shaders/Native/sky.vert"), readShader(root / "Shaders/Native/sky.frag"));
+            program(read_text(root / "Shaders/Native/sky.vert"), readShader(root / "Shaders/Native/sky.frag"));
         skyUniforms = {
             GetUniformLocation(sky, "uRight"),
             GetUniformLocation(sky, "uUp"),
@@ -706,8 +709,8 @@ struct Renderer::Impl
                                                         "uInstanced", "uSurface",  "uEmissive", "uAlpha",
                                                         "uRoughness", "uMetallic", "uTint"};
         static_assert(std::size(constantNames) == size_t(Constant::count));
-        for (size_t i = 0; i < constants.size(); ++i)
-            constants[i].location = GetUniformLocation(scene, constantNames[i]);
+        for (auto &&[constant, name] : std::views::zip(constants, constantNames))
+            constant.location = GetUniformLocation(scene, name);
         modelLocation = GetUniformLocation(scene, "uModel");
         glGenTextures(2, probeCubes.data());
         for (const GLuint faces : probeCubes)
@@ -739,10 +742,10 @@ struct Renderer::Impl
         if (CheckFramebufferStatus(FRAMEBUFFER) != FRAMEBUFFER_COMPLETE)
             throw std::runtime_error("Reflection probe framebuffer incomplete");
         BindFramebuffer(FRAMEBUFFER, 0);
-        const auto fullscreen = readText(root / "Shaders/Native/fullscreen.vert");
-        post.initialize(program(fullscreen, readText(root / "Shaders/Native/glow.frag")),
-                        program(fullscreen, readText(root / "Shaders/Native/resolve.frag")),
-                        program(fullscreen, readText(root / "Shaders/Native/occlusion.frag")));
+        const auto fullscreen = read_text(root / "Shaders/Native/fullscreen.vert");
+        post.initialize(program(fullscreen, read_text(root / "Shaders/Native/glow.frag")),
+                        program(fullscreen, read_text(root / "Shaders/Native/resolve.frag")),
+                        program(fullscreen, read_text(root / "Shaders/Native/occlusion.frag")));
         glGenTextures(1, &shadowTexture);
         glBindTexture(GL_TEXTURE_2D, shadowTexture);
         glTexImage2D(GL_TEXTURE_2D, 0, DEPTH_COMPONENT24, SunShadow::resolution, SunShadow::resolution, 0,
@@ -766,7 +769,7 @@ struct Renderer::Impl
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         const auto menuPath = root / "Textures/menu-city.png";
-        const auto art = loadImage(menuPath);
+        const auto art = load_image(menuPath);
         menuAspect = float(art.width) / art.height;
         menuArt = uploadTexture(menuPath, art);
         glGenTextures(GLsizei(hudTextures.size()), hudTextures.data());
@@ -791,7 +794,7 @@ struct Renderer::Impl
         for (int i = 0; i < 2; i++)
         {
             auto name = i ? "woman" : "man";
-            auto s = loadSkin(root / (std::string("Models/PeopleSkinned/") + name + ".cityskin"));
+            auto s = load_skin(root / (std::string("Models/PeopleSkinned/") + name + ".cityskin"));
             markStandingPose(s);
             skin[i].upload(s.mesh);
             patrolCap[i].upload(policeCap(s));
@@ -800,21 +803,21 @@ struct Renderer::Impl
             peopleTexture[i] = texture(root / (std::string("Textures/People/") + name + "-palette.png"));
         }
         constexpr const char *badges[]{"fist", "pistol", "rifle", "launcher", "flame", "cannon", "mg"};
-        for (size_t i = 0; i < weaponArt.size(); ++i)
+        for (auto &&[picture, badge] : std::views::zip(weaponArt, badges))
         {
             // The badge is decoration: without the file the panel shows the name and rounds only.
             try
             {
-                weaponArt[i] = loadImage(root / "Textures/Hud" / (std::string(badges[i]) + ".png"));
+                picture = load_image(root / "Textures/Hud" / std::format("{}.png", badge));
             }
             catch (const std::exception &)
             {
-                weaponArt[i] = {};
+                picture = {};
             }
         }
         const char *animalNames[] = {"cat-ginger", "cat-calico", "labrador", "puppy", "pigeon"};
-        for (size_t i = 0; i < animalRigs.size(); ++i)
-            loadModel(animalRigs[i].model, root / "Models/AnimalsSkinned" / animalNames[i], &animalRigs[i]);
+        for (auto &&[rig, name] : std::views::zip(animalRigs, animalNames))
+            loadModel(rig.model, root / "Models/AnimalsSkinned" / name, &rig);
         buildFixtureModels();
         MeshData frame, rubber, trim;
         box(frame, {0, .19f, -.06f}, {.13f, .035f, .49f});
@@ -951,7 +954,7 @@ struct Renderer::Impl
         for (size_t k = 0; k < serviceLettering.size(); ++k)
             serviceLettering[k] = lettering(localize(L"ГАЗОВАЯ СЛУЖБА", Language(k)), 3.4f / .36f);
         serviceLetters = model.lods.front().size();
-        boxed(model, letters, {.07f, .14f, .27f}, .7f).color = serviceLettering[size_t(language)];
+        boxed(model, letters, {.07f, .14f, .27f}, .7f).color = serviceLettering[std::to_underlying(language)];
         wheels(model, .96f, .36f, 1.35f, .35f, .19f);
         lamps(model, .67f, .84f, 2.11f, -2.06f, {.14f, .12f, .02f});
     }
@@ -995,7 +998,7 @@ struct Renderer::Impl
     }
     void loadAmbulance(Model &model, const std::filesystem::path &dir)
     {
-        auto meta = nlohmann::json::parse(readText(dir / "manifest.json")).at("ambulance");
+        auto meta = nlohmann::json::parse(read_text(dir / "manifest.json")).at("ambulance");
         model.readHinges(meta);
         for (const auto &w : meta.at("wheels"))
         {
@@ -1006,8 +1009,8 @@ struct Renderer::Impl
         for (const char *name : {"body", "left", "right"})
         {
             auto file = dir / (std::string("ambulance-") + name + ".glb");
-            auto mesh = loadGlb(file);
-            auto image = uploadTexture(file, decodeImage(mesh.embeddedColor));
+            auto mesh = load_glb(file);
+            auto image = uploadTexture(file, decode_image(mesh.embeddedColor));
             // The articulated exporter stores wheel membership in the palette V coordinate.
             std::vector<MeshData> groups(model.wheels.size() + 1);
             for (auto index : mesh.indices)
@@ -1037,7 +1040,7 @@ struct Renderer::Impl
     }
     void loadModel(Model &model, const std::filesystem::path &path, AnimalRig *rig = nullptr)
     {
-        auto j = nlohmann::json::parse(readText(path / "manifest.json"));
+        auto j = nlohmann::json::parse(read_text(path / "manifest.json"));
         if (rig)
         {
             auto &clips = j.at("clips");
@@ -1060,7 +1063,7 @@ struct Renderer::Impl
                 MeshData data;
                 if (rig)
                 {
-                    auto skinData = loadSkin(file);
+                    auto skinData = load_skin(file);
                     if (skinData.poses < 256)
                         throw std::runtime_error("Incomplete wildlife animation");
                     if (!rig->palette)
@@ -1068,12 +1071,12 @@ struct Renderer::Impl
                     data = std::move(skinData.mesh);
                 }
                 else
-                    data = loadGlb(file);
+                    data = load_glb(file);
                 b.mesh.upload(data);
                 b.part = part.value("part", 0);
                 int mat = part.at("material");
                 b.color =
-                    data.embeddedColor.empty() ? white : uploadTexture(file, decodeImage(data.embeddedColor));
+                    data.embeddedColor.empty() ? white : uploadTexture(file, decode_image(data.embeddedColor));
                 if (mat < 0 && j.value("farSurfaceAlpha", false))
                 {
                     b.surface = 14;
@@ -1181,7 +1184,7 @@ struct Renderer::Impl
         }
         using K = World::FixtureKind;
         auto parts = [&](K kind) -> std::pair<MeshData &, MeshData &>
-        { return {enamel[size_t(kind)], iron[size_t(kind)]}; };
+        { return {enamel[std::to_underlying(kind)], iron[std::to_underlying(kind)]}; };
         auto [slats, legs] = parts(K::bench);
         for (int n = 0; n < 4; ++n)
             box(slats, {0, -.02f, -.18f + n * .12f}, {1, .035f, .050f});
@@ -1285,7 +1288,7 @@ struct Renderer::Impl
         auto it = textures.find(file);
         if (it != textures.end())
             return it->second;
-        return uploadTexture(file, loadImage(file));
+        return uploadTexture(file, load_image(file));
     }
     GLuint uploadTexture(const std::filesystem::path &key, const Image &im)
     {
@@ -1493,7 +1496,7 @@ struct Renderer::Impl
                                  x >= world.layout.railStart() && x <= world.layout.railEnd() &&
                                  std::abs(z - world.layout.railZ()) < 1.95))
                                 continue;
-                            if (yard && yard->edgeDistance(at) < -.12 + .46 * rng.next())
+                            if (yard && yard->edge_distance(at) < -.12 + .46 * rng.next())
                                 continue;
                             const float yaw = float(rng.next() * 2 * pi);
                             grassInstances.push_back({x, y, z, .62f + .54f * float(rng.next()),
@@ -1695,7 +1698,7 @@ struct Renderer::Impl
         if (!detailAnchor || (*detailAnchor - eye).length() >= 4)
         {
             detailAnchor = eye;
-            detailCandidates = detailOrder(cells, eye, detailPrefetchDistance);
+            detailCandidates = detail_order(cells, eye, detailPrefetchDistance);
             detailIdle = false;
             evict(0);
         }
@@ -1808,7 +1811,7 @@ struct Renderer::Impl
     }
     void setFlag(Constant which, int value)
     {
-        auto &slot = constants[size_t(which)];
+        auto &slot = constants[std::to_underlying(which)];
         if (slot.known && slot.value[0] == float(value))
             return;
         Uniform1i(slot.location, value);
@@ -1817,7 +1820,7 @@ struct Renderer::Impl
     }
     void setScalar(Constant which, float value)
     {
-        auto &slot = constants[size_t(which)];
+        auto &slot = constants[std::to_underlying(which)];
         if (slot.known && slot.value[0] == value)
             return;
         Uniform1f(slot.location, value);
@@ -1826,7 +1829,7 @@ struct Renderer::Impl
     }
     void setColour(Constant which, Vec3 value)
     {
-        auto &slot = constants[size_t(which)];
+        auto &slot = constants[std::to_underlying(which)];
         if (slot.known && slot.value[0] == value.x && slot.value[1] == value.y && slot.value[2] == value.z)
             return;
         Uniform3f(slot.location, value.x, value.y, value.z);
@@ -1934,14 +1937,14 @@ struct Renderer::Impl
         int top = h - 18 - (row + 1) * 33 - 4;
         rect(left, top, right - left, (row + 1) * 33 + 4, RGB(14, 23, 21));
         rect(left, top, right - left, 2, RGB(83, 124, 94));
-        for (size_t i = 0; i < hints.size(); ++i)
+        for (const auto &[hint, item] : std::views::zip(hints, items))
         {
-            auto [x, line, cap] = items[i];
+            auto [x, line, cap] = item;
             int y = top + 5 + line * 33;
             rect(x, y, cap, 27, RGB(122, 153, 128));
             rect(x + 1, y + 1, cap - 2, 25, RGB(35, 49, 42));
-            draw(x + 6, y + 1, hints[i].key, RGB(226, 238, 217), false);
-            draw(x + cap + 6, y + 1, hints[i].action, RGB(205, 214, 203), false);
+            draw(x + 6, y + 1, hint.key, RGB(226, 238, 217), false);
+            draw(x + cap + 6, y + 1, hint.action, RGB(205, 214, 203), false);
         }
         return top;
     }
@@ -2106,7 +2109,7 @@ void Renderer::language(Language language)
     impl_->language = language;
     if (impl_->serviceLetters != size_t(-1))
         impl_->cars[gasVanModel].lods.front()[impl_->serviceLetters].color =
-            impl_->serviceLettering[size_t(language)];
+            impl_->serviceLettering[std::to_underlying(language)];
 }
 void Renderer::graphics(const GraphicsPreferences &settings)
 {
@@ -2221,7 +2224,7 @@ void Renderer::prepare(const World &world)
     auto &normals = r.normals;
     auto &orm = r.orm;
     auto &signs = r.signs;
-    auto manifest = nlohmann::json::parse(readText(r.root / "Textures/manifest.json"));
+    auto manifest = nlohmann::json::parse(read_text(r.root / "Textures/manifest.json"));
     for (size_t i = 0; i < walls.size(); ++i)
     {
         const auto &m = manifest[10 + i];
@@ -2247,8 +2250,7 @@ void Renderer::prepare(const World &world)
         // Without the photograph a hole is still a darker patch of the road.
         try
         {
-            r.potholeArt[i] =
-                r.texture(r.root / "Textures/Road" / ("pothole_" + std::to_string(i + 1) + ".png"));
+            r.potholeArt[i] = r.texture(r.root / "Textures/Road" / std::format("pothole_{}.png", i + 1));
         }
         catch (const std::exception &)
         {
@@ -2328,17 +2330,17 @@ void Renderer::prepare(const World &world)
 void Renderer::render(const World &world, const View &view, int w, int h)
 {
     auto &r = *impl_;
-    r.weaponSight = view.weaponSight;
+    r.weaponSight = view.weapon_sight;
     const bool post = r.mode != SceneMode::original;
     const int sceneWidth = r.mode == SceneMode::scaled ? std::max(1, (w * 3 + 2) / 4) : w;
     const int sceneHeight = r.mode == SceneMode::scaled ? std::max(1, (h * 3 + 2) / 4) : h;
     if (post)
         r.post.resize(sceneWidth, sceneHeight);
-    frameTrace.enter(FrameTrace::sectors);
+    frame_trace.enter(FrameTrace::sectors);
     r.updateSectors(view.eye);
-    frameTrace.enter(FrameTrace::details);
+    frame_trace.enter(FrameTrace::details);
     r.updateDetails(view.eye);
-    frameTrace.enter(FrameTrace::prepare);
+    frame_trace.enter(FrameTrace::prepare);
     r.timer.begin();
     float day = float(world.clock.daylight()), rain = float(world.rain);
     // The sky and the haze of the managed game for this hour and weather.
@@ -2356,9 +2358,9 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     const float nearPlane = std::clamp(view.distance * .01f, .12f, 8.f);
     const float farPlane = std::max(650.f, range + view.distance + 100.f);
     const auto projection = Mat4::perspective(float(pi / 3), float(w) / h, nearPlane, farPlane);
-    auto vp = projection * Mat4::lookAt(view.eye, view.target);
+    auto vp = projection * Mat4::look_at(view.eye, view.target);
     Vec3 sun{float(std::cos((world.clock.hour - 6) * pi / 12)), float(world.clock.sunHeight()), .3f};
-    auto shadow = sunShadow(view.weaponSight ? view.eye : view.target, sun);
+    auto shadow = sunShadow(view.weapon_sight ? view.eye : view.target, sun);
     if (!view.shadows || r.graphics.quality == 0)
         shadow.strength = 0;
     UniformMatrix4fv(r.uniform("uShadowMatrix"), 1, GL_FALSE, shadow.matrix.m.data());
@@ -2499,7 +2501,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         const bool depthPass = pass == 0, probePass = pass == 1, viewPass = pass == 2;
         if ((depthPass && shadow.strength <= 0) || (probePass && probeFace < 0))
             continue;
-        frameTrace.enter(depthPass ? FrameTrace::shadow : probePass ? FrameTrace::probe : FrameTrace::scene);
+        frame_trace.enter(depthPass ? FrameTrace::shadow : probePass ? FrameTrace::probe : FrameTrace::scene);
         const Vec3 eye = probePass ? probeEye : view.eye;
         const Mat4 &passMatrix = depthPass ? shadow.matrix : probePass ? probeMatrix : vp;
         const float passRange = probePass ? ReflectionProbe::farPlane : range;
@@ -2576,8 +2578,8 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         glBindTexture(GL_TEXTURE_2D, r.yardMask);
         Uniform1i(r.uniform("uYardMask"),8);
         ActiveTexture(TEXTURE0);
-        Uniform1f(r.uniform("uDetailStart"), buildingDetailStart * detailScale);
-        Uniform1f(r.uniform("uDetailEnd"), buildingDetailEnd * detailScale);
+        Uniform1f(r.uniform("uDetailStart"), building_detail_start * detailScale);
+        Uniform1f(r.uniform("uDetailEnd"), building_detail_end * detailScale);
         ActiveTexture(TEXTURE0 + 4);
         glBindTexture(GL_TEXTURE_2D, r.rug);
         ActiveTexture(TEXTURE0);
@@ -2597,7 +2599,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         {
             // Facade details are too small for the sun map and for a face of the probe.
             if ((viewPass || (!b.detail && (probePass || b.surface != 4))) &&
-                visible(b.centre, b.radius, b.detail ? buildingDetailEnd * detailScale : range))
+                visible(b.centre, b.radius, b.detail ? building_detail_end * detailScale : range))
             {
                 if (depthPass)
                     ++r.shadowBatches;
@@ -2616,7 +2618,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 r.draw(b, Mat4::identity());
             }
         };
-        if (viewPass) frameTrace.enter(FrameTrace::buildings);
+        if (viewPass) frame_trace.enter(FrameTrace::buildings);
         // The standing city is drawn surface by surface, not sector by sector: all of
         // its road, then all of its pavement. The batches of one surface share their
         // textures and constants, so only the first of a run has to set them.
@@ -2632,7 +2634,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             for (const auto &[id, batches] : r.detailMeshes)
                 for (const auto &b : batches)
                     drawScenery(b);
-        if (viewPass) frameTrace.enter(FrameTrace::fixtures);
+        if (viewPass) frame_trace.enter(FrameTrace::fixtures);
         for (auto &instances : r.fixtureInstances)
             instances.clear();
         for (auto id : r.visibleFixtures)
@@ -2667,7 +2669,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 }
                 continue;
             }
-            r.fixtureInstances[size_t(f.kind)].push_back(
+            r.fixtureInstances[std::to_underlying(f.kind)].push_back(
                 {at.x, at.y, at.z, 1, std::sin(yaw), std::cos(yaw), std::sin(roll), std::cos(roll)});
         }
         struct Finish
@@ -2707,7 +2709,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 }
             }
         }
-        if (viewPass) frameTrace.enter(FrameTrace::trees);
+        if (viewPass) frame_trace.enter(FrameTrace::trees);
         if (viewPass && r.graphics.quality > 0)
             r.drawGrass(world, eye);
         for (auto &instances : r.treeInstances)
@@ -2724,7 +2726,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             std::array<float, 8> instance{
                 t.foot.x,        t.foot.y,        t.foot.z, t.height / 8,
                 std::sin(angle), std::cos(angle), angle,    float(t.seed % 97) / 97};
-            int base = (int(t.kind) * 3 + int(t.seed % 3)) * 2;
+            int base = (std::to_underlying(t.kind) * 3 + int(t.seed % 3)) * 2;
             if (distance - radius < treeLodEnd)
                 r.treeInstances[base].push_back(instance);
             if (distance + radius > treeLodStart)
@@ -2758,7 +2760,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 }
             }
         }
-        if (viewPass) frameTrace.enter(FrameTrace::actors);
+        if (viewPass) frame_trace.enter(FrameTrace::actors);
         if (probePass)
         {
             // The probe holds the city that stands still and the sky, as in the managed
@@ -2783,7 +2785,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             if (!visible(p, 4, 200))
                 continue;
             const auto &model = r.foodModels[site.kind == ServiceKind::kiosk ? 0 : 1];
-            const auto lod = std::min<size_t>(model.lods.size() - 1, (p - view.eye).length() > 65 ? 1 : 0);
+            const auto lod = std::min(model.lods.size() - 1, (p - view.eye).length() > 65 ? 1uz : 0uz);
             const auto transform = Mat4::translate(p) * Mat4::yaw(float(pi));
             for (const auto &batch : model.lods[lod])
                 r.draw(batch, transform);
@@ -2798,18 +2800,18 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 continue;
             const float distance = (p - view.eye).length();
             const auto &lods = r.busShelter.lods;
-            const auto lod = std::min<size_t>(lods.size() - 1, distance > 150 ? 2 : distance > 65 ? 1 : 0);
+            const auto lod = std::min(lods.size() - 1, distance > 150 ? 2uz : distance > 65 ? 1uz : 0uz);
             const auto transform = Mat4::translate(p) * Mat4::yaw(float(pi * .5));
             for (const auto &batch : lods[lod])
                 r.draw(batch, transform);
         }
         if (viewPass)
         {
-            frameTrace.enter(FrameTrace::sky);
+            frame_trace.enter(FrameTrace::sky);
             // Before anything translucent: glass does not write depth.
             r.drawSky(air, sunRay, view.target - view.eye, {0, 1, 0}, float(std::tan(pi / 6)), float(w) / h,
                       float(world.time), false);
-            frameTrace.enter(FrameTrace::actors);
+            frame_trace.enter(FrameTrace::actors);
         }
         auto vehicleTransform = [](const Car &c)
         {
@@ -2965,7 +2967,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         for (auto &p : world.people)
         {
             const int index = int(&p - world.people.data());
-            auto look = appearance(p, world.paramedicCall(index) != nullptr);
+            auto look = appearance(p, world.paramedic_call(index) != nullptr);
             // The arresting officer is a militiaman from the moment the patrol stops.
             if (index == world.patrol.officer && !look.officer())
                 look = appearance(p.body.id, p.style, Person::Uniform::police);
@@ -2986,7 +2988,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                    &world.cars[world.controlledCar]);
         // Light road vehicles use the existing seated rig. Only nearby cabins
         // need a driver mesh; full-size opaque and public-service cabins have their own layout.
-        if (viewPass) frameTrace.enter(FrameTrace::vehicles);
+        if (viewPass) frame_trace.enter(FrameTrace::vehicles);
         for (const auto &car : world.cars)
         {
             bool driving = int(car.id) == world.controlledCar && !world.transitPassenger();
@@ -3101,7 +3103,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 Uniform1i(r.uniform("uCoat"), 0);
             }
         }
-        if (viewPass) frameTrace.enter(FrameTrace::animals);
+        if (viewPass) frame_trace.enter(FrameTrace::animals);
         for (const auto &s : world.scooters)
         {
             bool fallen = s.rider == Scooter::free;
@@ -3133,10 +3135,10 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 continue;
             const auto &rig = r.animalRigs[a.variant];
             float distance = (at - view.eye).length();
-            size_t lod = std::min<size_t>(distance < 14 && !depthPass ? 0
-                                          : distance < 40             ? 1
-                                                                      : 2,
-                                          rig.model.lods.size() - 1);
+            size_t lod = std::min(distance < 14 && !depthPass ? 0uz
+                                  : distance < 40             ? 1uz
+                                                              : 2uz,
+                                  rig.model.lods.size() - 1);
             int clip = dead || stunned                                ? 0
                        : a.flock >= 0 && world.flocks[a.flock].flying ? 3
                        : a.velocity.length2() > 4                     ? 2
@@ -3161,7 +3163,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         }
         Uniform1i(r.uniform("uSkin"), 0);
     } // sun/camera geometry passes
-    frameTrace.enter(FrameTrace::effects);
+    frame_trace.enter(FrameTrace::effects);
     Frustum effectFrustum(vp);
     auto visible = [&](Vec3 p, float radius, float objectRange)
     {
@@ -3280,7 +3282,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         Uniform1i(r.effectUniforms.probeRoofed, probeUnderRoof(probeCentre));
     }
     r.effects.draw(r.effectShader, world, view, vp, r.graphics.effects);
-    frameTrace.enter(FrameTrace::post);
+    frame_trace.enter(FrameTrace::post);
     if (post)
         // Contact shading follows the quality setting, as in the managed game: none at
         // the lowest, eight samples at the middle one and twelve at the highest.
@@ -3435,7 +3437,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             {
                 constexpr std::array labels{L"МИКРОРАЙОН", L"СТАРЫЕ ДВОРЫ",        L"САДОВЫЙ ПОСЁЛОК",
                                             L"ЦЕНТР",      L"ГАРАЖНЫЙ КООПЕРАТИВ", L"ПРОМЗОНА"};
-                label = labels[size_t(layout.district(i, j))];
+                label = labels[std::to_underlying(layout.district(i, j))];
             }
             // In a very short window the labels would run into the status box.
             if (my - 64 >= energyTop + 30)
@@ -3444,7 +3446,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         // The street has a line of its own: beside the clock it ran under the key hints.
         if (my - 36 >= energyTop + 30)
             r.text(mx, my - 36, streetAt(focus, World::nodes, World::spacing), RGB(196, 205, 188));
-        r.minimap.copyView(focus, r.mapPixels);
+        r.minimap.copy_view(focus, r.mapPixels);
         BITMAPINFO mapInfo{};
         mapInfo.bmiHeader = {sizeof(BITMAPINFOHEADER), ms, -ms, 1, 32, BI_RGB};
         SetDIBitsToDevice(r.uiDC, mx, my, ms, ms, 0, 0, 0, ms, r.mapPixels.data(), &mapInfo, DIB_RGB_COLORS);
@@ -3576,7 +3578,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         }
         const auto hints = jobsOpen
             ? std::vector<ControlHint>{{L"1–8", L"Выбрать заказ"}, {L"J / Esc", L"Закрыть"}}
-            : controlHints(*world);
+            : control_hints(*world);
         int hintTop = r.hintBar(hints, w, h);
         if (world->energySeconds > 0)
             r.text(35, energyTop,
@@ -3595,7 +3597,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             std::wstring status = title;
             if (j.peace())
                 status = std::wstring(j.kind == JobKind::leaflets ? L"Листовки" : L"Громкоговоритель") +
-                         L"   " + std::to_wstring(j.route.completed) + L"/" + std::to_wstring(j.stopCount()) +
+                         L"   " + std::to_wstring(j.route.completed) + L"/" + std::to_wstring(j.stop_count()) +
                          L"   " + std::to_wstring(int(j.stopped)) +
                          (j.kind == JobKind::leaflets ? L"/3 с" : L"/30 с");
             if (j.escaping())
@@ -3638,7 +3640,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
                 L"Таблетки", L"Энергетик"};
             for (int i = 0; i < 4; ++i)
             {
-                int price = world->shopPrice(static_cast<ShopItem>(i));
+                int price = world->shop_price(static_cast<ShopItem>(i));
                 auto color = price > world->money ? RGB(159, 148, 139) : RGB(232, 229, 211);
                 r.text(left + 20, top + 54 + 34 * i, L"[" + std::to_wstring(i + 1) + L"]  " + names[i],
                        color);
@@ -3688,7 +3690,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
     else if (!message.empty())
         r.text(25, menu ? h - 30 : 196, message, RGB(224, 172, 91));
     GdiFlush(); // Finish drawing into the DIB before OpenGL reads its memory.
-    frameTrace.enter(FrameTrace::hudUpload);
+    frame_trace.enter(FrameTrace::hudUpload);
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -3730,4 +3732,4 @@ void Renderer::screenshot(const std::filesystem::path &file, int w, int h)
     if (!out)
         throw std::runtime_error("Screenshot write failed");
 }
-} // namespace pz
+} // namespace Promzona

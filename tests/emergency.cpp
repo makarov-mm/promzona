@@ -1,13 +1,17 @@
 #include "promzona/world.hpp"
 #include <chrono>
-#include <iostream>
-using namespace pz;
+#include <print>
+#include <source_location>
+#include <format>
+#include <exception>
+#include <stdexcept>
+using namespace Promzona;
 namespace
 {
-void check(bool condition, const char *message)
+void check(bool condition, const char *message, std::source_location where = std::source_location::current())
 {
     if (!condition)
-        throw std::runtime_error(message);
+        throw std::runtime_error(std::format("{} (line {})", message, where.line()));
 }
 void drop(World &w, int who, Vec2 at)
 {
@@ -19,8 +23,7 @@ void drop(World &w, int who, Vec2 at)
 int main()
 {
     auto path = std::filesystem::temp_directory_path() /
-                ("pz-rescue-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
-                 ".json");
+                std::format("pz-rescue-{}.json", std::chrono::steady_clock::now().time_since_epoch().count());
     try
     {
         World w;
@@ -38,10 +41,10 @@ int main()
         auto endpoint = World::nodePoint(it->routeTo);
         Vec2 at = endpoint + Vec2{7, 4};
         drop(w, who, at);
-        w.updateRescues();
+        w.update_rescues();
         check(w.rescues[0].car < 0, "ambulance dispatched instantly");
         w.time = 8;
-        w.updateRescues();
+        w.update_rescues();
         auto &r = w.rescues[0];
         check(r.stage == World::RescueStage::driving && r.patient == who && w.people[r.medic].riding == r.car,
               "missing crew or wrong patient");
@@ -76,15 +79,15 @@ int main()
         for (int i = 90; i < 93; ++i)
             drop(w, i, initial + Vec2{double(i - 90), 3});
         w.time += 9;
-        w.updateRescues();
+        w.update_rescues();
         w.time += 3;
-        w.updateRescues();
+        w.update_rescues();
         check(w.rescues[1].car >= 0 && w.rescues[0].car != w.rescues[1].car &&
                   w.rescues[0].patient != w.rescues[1].patient && w.rescues[0].medic != w.rescues[1].medic,
               "incident queue duplicated an ambulance or patient");
         int medic = r.medic;
         w.controlledCar = r.car;
-        w.updateRescues();
+        w.update_rescues();
         check(w.people[medic].riding < 0 && w.people[who].dead, "stealing the ambulance healed the patient");
         std::filesystem::remove(path);
         {
@@ -159,7 +162,7 @@ int main()
                 for (int tick = 0; tick < int(seconds * 4); ++tick)
                 {
                     city.time += .25;
-                    city.updateRescues();
+                    city.update_rescues();
                 }
             };
             check((city.people[fallen].body.p - c.body.p).length() < 45,
@@ -178,13 +181,13 @@ int main()
                       city.people[fallen].rescueAfter > city.time + 200,
                   "a crew kept driving round a patient it could not stop beside");
         }
-        std::cout << "Ambulance dispatch, treatment, reboarding, queue limits, lights and save/load passed\n";
+        std::println("Ambulance dispatch, treatment, reboarding, queue limits, lights and save/load passed");
         return 0;
     }
     catch (const std::exception &e)
     {
         std::filesystem::remove(path);
-        std::cerr << e.what() << '\n';
+        std::println(stderr, "{}", e.what());
         return 1;
     }
 }

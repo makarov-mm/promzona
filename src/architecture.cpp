@@ -1,5 +1,5 @@
 #include "promzona/architecture.hpp"
-namespace pz
+namespace Promzona
 {
 namespace
 {
@@ -80,7 +80,7 @@ void districtBuilding(CityChunk &data, const BuildingPlan &p, int style)
             { return point(float(std::cos(t)) * r, y, float(std::sin(t)) * r); };
             auto A = rim(a, top, hi), B = rim(b, top, hi);
             face(data[mat], rim(b, bottom, lo), rim(a, bottom, lo), A, B, 1, 2);
-            addCityTriangle(data[mat], point(0, top, 0), B, A);
+            add_city_triangle(data[mat], point(0, top, 0), B, A);
         }
     };
     auto pitchedRoof = [&](float eave, int material)
@@ -91,8 +91,8 @@ void districtBuilding(CityChunk &data, const BuildingPlan &p, int style)
         auto l = point(-ex, h, 0), r = point(ex, h, 0);
         face(data[material], a, l, r, b, ex, ez);
         face(data[material], d, c, r, l, ex, ez);
-        addCityTriangle(data[material], a, d, l);
-        addCityTriangle(data[material], c, b, r);
+        add_city_triangle(data[material], a, d, l);
+        add_city_triangle(data[material], c, b, r);
     };
     using K = BuildingKind;
     switch (p.kind)
@@ -177,9 +177,9 @@ void districtBuilding(CityChunk &data, const BuildingPlan &p, int style)
                         auto c = rim(k + 1, -.09f), d = rim(k, -.09f);
                         face(data[Metal], d, c, b, a);
                         if (wheel > 0)
-                            addCityTriangle(data[Metal], centre + Vec3{0, 0, .09f}, a, b);
+                            add_city_triangle(data[Metal], centre + Vec3{0, 0, .09f}, a, b);
                         else
-                            addCityTriangle(data[Metal], centre - Vec3{0, 0, .09f}, c, d);
+                            add_city_triangle(data[Metal], centre - Vec3{0, 0, .09f}, c, d);
                     }
                 }
             }
@@ -367,4 +367,4 @@ void buildingDetails(CityChunk &data, const BuildingPlan &p)
         }
     }
 }
-} // namespace pz
+} // namespace Promzona

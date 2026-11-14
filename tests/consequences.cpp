@@ -1,16 +1,18 @@
 #include "promzona/world.hpp"
 #include <chrono>
 #include <filesystem>
-#include <iostream>
+#include <print>
 #include <stdexcept>
+#include <source_location>
+#include <format>
 
-using namespace pz;
+using namespace Promzona;
 namespace
 {
-void require(bool ok, const char *message)
+void require(bool ok, const char *message, std::source_location where = std::source_location::current())
 {
     if (!ok)
-        throw std::runtime_error(message);
+        throw std::runtime_error(std::format("{} (line {})", message, where.line()));
 }
 constexpr double frame = 1. / 60;
 // An ordinary walker: not riding, waiting, delivering or walking with friends.
@@ -21,7 +23,7 @@ size_t plainWalker(const World &w, size_t skip = size_t(-1))
         const auto &p = w.people[i];
         if (i != skip && p.riding < 0 && p.waitingLine < 0 && !p.courier && !p.inCompany &&
             p.ownedScooter < 0 && !p.dead && p.sidearm == WeaponId::none && i != size_t(w.patrol.officer) &&
-            !w.paramedicCall(int(i)))
+            !w.paramedic_call(int(i)))
             return i;
     }
     throw std::runtime_error("no plain walker in the city");
@@ -91,19 +93,18 @@ int main()
             const auto fell = p.injuryHome;
             car.body.v = {};
             while (p.knockedUntil > w.time)
-                w.step({{0, 0, true, true}}, frame);
+                w.step({.car = {0, 0, true, true}}, frame);
             double fastest = 0;
             for (int i = 0; i < 600; ++i)
             {
-                w.step({{0, 0, true, true}}, frame);
+                w.step({.car = {0, 0, true, true}}, frame);
                 fastest = std::max(fastest, p.body.v.length());
             }
             require(!p.dead && fastest < 1.2 && (p.body.p - fell).length() < 6,
                     "survivor limps about the spot");
-            const auto file =
-                std::filesystem::temp_directory_path() /
-                ("promzona-injury-" +
-                 std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+            const auto file = std::filesystem::temp_directory_path() /
+                              std::format("promzona-injury-{}.json",
+                                          std::chrono::steady_clock::now().time_since_epoch().count());
             w.save(file);
             World restored;
             restored.load(file);
@@ -151,22 +152,22 @@ int main()
             // The player on foot: a slow car hurts, a fast one kills, god mode protects.
             World w;
             w.generate(seed);
-            w.enterExit();
+            w.enter_exit();
             require(w.controlledCar < 0, "player is on foot");
             const auto &car = w.cars[0];
-            w.strikePlayer(car, 4);
+            w.strike_player(car, 4);
             require(w.health < 1 && w.health > .5 && w.playerKnockedUntil > w.time,
                     "slow car knocks the player down");
             const double hurt = w.health;
-            w.strikePlayer(car, 4);
+            w.strike_player(car, 4);
             require(w.health == hurt, "no second hit while lying");
             w.playerKnockedUntil = 0;
             w.godMode = true;
-            w.strikePlayer(car, 30);
+            w.strike_player(car, 30);
             w.hurtPlayer(.9);
             require(w.health == hurt && w.playerKnockedUntil == 0, "god mode ignores damage");
             w.godMode = false;
-            w.strikePlayer(car, 14);
+            w.strike_player(car, 14);
             require(w.health == 0, "fast car is fatal on foot");
         }
         {
@@ -199,7 +200,7 @@ int main()
                         w.pickups[before + 1].energy,
                     "supplies appear as pickups");
             require((w.pickups[before].p - w.position()).length() < 46, "supplies appear near the player");
-            w.enterExit();
+            w.enter_exit();
             w.health = .4;
             w.player.p = w.pickups[before].p;
             w.player.height = w.terrain.height(w.player.p) + .85;
@@ -263,12 +264,12 @@ int main()
             w.step(climb, frame);
             require(!w.helicopterLanding, "ascending cancels the assisted landing");
         }
-        std::cout << "Consequence tests passed\n";
+        std::println("Consequence tests passed");
         return 0;
     }
     catch (const std::exception &e)
     {
-        std::cerr << "Consequence test failed: " << e.what() << '\n';
+        std::println(stderr, "Consequence test failed: {}", e.what());
         return 1;
     }
 }

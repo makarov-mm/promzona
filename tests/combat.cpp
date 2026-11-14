@@ -1,23 +1,25 @@
 #include "promzona/world.hpp"
-#include <iostream>
+#include <print>
 #include <limits>
 #include <stdexcept>
-using namespace pz;
+#include <source_location>
+using namespace Promzona;
 namespace
 {
 int checks{}, failures{};
-void check(bool value, const char *name)
+void check(bool value, const char *name, std::source_location where = std::source_location::current())
 {
     checks++;
     if (!value)
     {
         failures++;
-        std::cerr << "FAIL " << name << '\n';
+        std::println(stderr, "FAIL {} (line {})", name, where.line());
     }
 }
-void near(double value, double expected, const char *name)
+void near(double value, double expected, const char *name,
+          std::source_location where = std::source_location::current())
 {
-    check(std::abs(value - expected) < 1e-8, name);
+    check(std::abs(value - expected) < 1e-8, name, where);
 }
 Body box(Vec2 p, Vec2 half, double height = 1, double extent = 2)
 {
@@ -130,11 +132,11 @@ int main()
             w.controlledCar = 0;
             auto previous = w.player.p;
             w.staticBodies.push_back(box({0, 0}, {6, 6}, 1, 4));
-            w.enterExit();
+            w.enter_exit();
             check(w.controlledCar == 0 && (w.player.p - previous).length() == 0,
                   "blocked doors keep driver and position intact");
             w.staticBodies.clear();
-            w.enterExit();
+            w.enter_exit();
             check(w.controlledCar < 0 && (w.player.p - previous).length() > 1,
                   "driver exits on a clear side");
         }
@@ -268,6 +270,6 @@ int main()
     {
         check(false, e.what());
     }
-    std::cout << checks << " combat checks, " << failures << " failures\n";
+    std::println("{} combat checks, {} failures", checks, failures);
     return failures ? 1 : 0;
 }

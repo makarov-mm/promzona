@@ -1,8 +1,9 @@
 #include "promzona/world.hpp"
 #include <deque>
 #include <limits>
+#include <cstddef>
 
-namespace pz
+namespace Promzona
 {
 namespace
 {
@@ -161,10 +162,10 @@ void World::addCrime(double severity)
     if (!std::isfinite(severity) || severity <= 0 || health <= 0)
         return;
     if (job.passenger() && job.acquired && job.ride.car == controlledCar && job.ride.scares < 3 &&
-        time - job.ride.crimeAt > .01)
+        time - job.ride.crime_at > .01)
     {
         ++job.ride.scares;
-        job.ride.crimeAt = time;
+        job.ride.crime_at = time;
         notify(L"Пассажир испуган. Оплата снижена");
     }
     wanted = wantedFromPoints(wantedPoints(wanted) + severity);
@@ -256,7 +257,7 @@ void World::vehicleImpact(Car &c, double hit, Vec2 change)
     if (c.recovering)
         return;
     if (hit > 1.5 && std::isfinite(hit))
-        c.applyImpactRotation(change);
+        c.apply_impact_rotation(change);
     if (!std::isfinite(hit) || hit <= 1.5 || c.impactCooldown > 0)
         return;
     c.impactCooldown = .4;
@@ -309,7 +310,7 @@ void World::explode(Vec2 p, double y, double strength, bool vehicleBlast, bool p
     {
         auto b = pending.front();
         pending.pop_front();
-        scareWildlife(b.p, b.y, 5. * b.strength);
+        scare_wildlife(b.p, b.y, 5. * b.strength);
         sounds.push_back({"explosion", b.p, b.vehicle ? 1. : .95});
         if (playerCaused)
             reportCrime(.45, 80, false);
@@ -388,7 +389,7 @@ void World::shoot(double heading, double pitch)
     double y =
         controlledCar >= 0 ? cars[controlledCar].body.height + (mounted ? 1.45 : .3) : player.height + .47;
     if (w)
-        scareWildlife(start, y, 0);
+        scare_wildlife(start, y, 0);
     double slope = std::tan(clamp(pitch, -1.2, 1.2));
     reportCrime(w ? .055 : .015, w ? 60 : 5, false);
     if (w && w->id == WeaponId::flamethrower)
@@ -642,4 +643,4 @@ void World::combatStep(double dt)
     if (playerBurnUntil > time)
         hurtPlayer(.065 * elapsed);
 }
-} // namespace pz
+} // namespace Promzona

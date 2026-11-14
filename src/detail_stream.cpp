@@ -1,8 +1,9 @@
 #include "promzona/detail_stream.hpp"
 #include <map>
 #include <stdexcept>
+#include <ranges>
 
-namespace pz
+namespace Promzona
 {
 size_t meshBytes(const MeshData &m)
 {
@@ -15,16 +16,15 @@ size_t chunkBytes(const CityChunk &c)
         n += meshBytes(m);
     return n;
 }
-std::vector<size_t> detailOrder(std::span<const DetailCell> cells, Vec3 eye, float range)
+std::vector<size_t> detail_order(std::span<const DetailCell> cells, Vec3 eye, float range)
 {
     std::vector<std::pair<float, size_t>> ranked;
     for (size_t i = 0; i < cells.size(); ++i)
         if (auto distance = cells[i].distance(eye); distance <= range)
             ranked.emplace_back(distance, i);
     std::ranges::sort(ranked);
-    std::vector<size_t> result;
-    for (const auto &[distance, id] : ranked)
-        result.push_back(id);
+    std::vector<size_t> result(ranked.size());
+    std::ranges::copy(ranked | std::views::values, result.begin());
     return result;
 }
 void DetailResidency::add(size_t id, size_t bytes)
@@ -77,25 +77,21 @@ DetailStream::DetailStream(const World &world)
         cells_.push_back({(low + high) * .5f, (high - low).length() * .5f, std::move(plans)});
     }
     wanted_.resize(cells_.size());
-    worker_ = std::thread([this] { run(); });
+    worker_ = std::jthread([this](std::stop_token stop) { run(std::move(stop)); });
 }
 DetailStream::~DetailStream()
 {
-    {
-        std::lock_guard lock(mutex_);
-        stopping_ = true;
-        jobs_.clear();
-    }
-    wake_.notify_all();
-    if (worker_.joinable())
-        worker_.join();
+    // The worker uses every other member, so it is stopped here and not by the order in
+    // which the members happen to be declared.
+    worker_.request_stop();
+    worker_.join();
 }
 void DetailStream::request(std::span<const size_t> ids)
 {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (error_)
         std::rethrow_exception(error_);
-    std::fill(wanted_.begin(), wanted_.end(), false);
+    std::ranges::fill(wanted_, false);
     for (auto id : ids)
     {
         if (id >= cells_.size())
@@ -125,7 +121,7 @@ void DetailStream::request(std::span<const size_t> ids)
 }
 std::unique_ptr<DetailStream::Packet> DetailStream::poll()
 {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     if (error_)
         std::rethrow_exception(error_);
     if (ready_.empty())
@@ -138,10 +134,15 @@ std::unique_ptr<DetailStream::Packet> DetailStream::poll()
 }
 DetailStream::Stats DetailStream::stats() const
 {
-    std::lock_guard lock(mutex_);
-    return {jobs_.size(), ready_.size(), readyBytes_, built_, discarded_, active_ != size_t(-1)};
+    std::scoped_lock lock(mutex_);
+    return {.queued = jobs_.size(),
+            .ready = ready_.size(),
+            .readyBytes = readyBytes_,
+            .built = built_,
+            .discarded = discarded_,
+            .busy = active_.has_value()};
 }
-void DetailStream::run()
+void DetailStream::run(std::stop_token stop)
 {
     try
     {
@@ -150,8 +151,8 @@ void DetailStream::run()
             size_t id;
             {
                 std::unique_lock lock(mutex_);
-                wake_.wait(lock, [&] { return stopping_ || (!jobs_.empty() && ready_.size() < maxReady); });
-                if (stopping_)
+                wake_.wait(lock, stop, [&] { return !jobs_.empty() && ready_.size() < maxReady; });
+                if (stop.stop_requested())
                     return;
                 id = jobs_.front();
                 jobs_.pop_front();
@@ -167,10 +168,10 @@ void DetailStream::run()
             }
             packet->bytes = chunkBytes(packet->geometry);
             {
-                std::lock_guard lock(mutex_);
-                active_ = size_t(-1);
+                std::scoped_lock lock(mutex_);
+                active_.reset();
                 ++built_;
-                if (stopping_)
+                if (stop.stop_requested())
                     return;
                 if (wanted_[id])
                 {
@@ -184,9 +185,9 @@ void DetailStream::run()
     }
     catch (...)
     {
-        std::lock_guard lock(mutex_);
-        active_ = size_t(-1);
+        std::scoped_lock lock(mutex_);
+        active_.reset();
         error_ = std::current_exception();
     }
 }
-} // namespace pz
+} // namespace Promzona

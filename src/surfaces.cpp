@@ -1,5 +1,6 @@
 #include "promzona/world.hpp"
-namespace pz
+
+namespace Promzona
 {
 const RoadLevel *World::levelById(int id) const
 {
@@ -30,10 +31,7 @@ double World::surface(Vec2 p, int level) const
 }
 bool World::openCut(Vec2 p, double margin) const
 {
-    for (const auto &s : roadLevels)
-        if (s.open(p, margin))
-            return true;
-    return false;
+    return std::ranges::any_of(roadLevels, [&](const RoadLevel &s) { return s.open(p, margin); });
 }
 int World::selectLevel(Vec2 p, int previous, double foot) const
 {
@@ -113,7 +111,7 @@ std::optional<Vec2> World::vehicleExit(const Car &car, std::optional<Vec2> towar
         {
             Vec2 at =
                 car.body.p + rotate({side * (car.body.halfW + .9), along * car.body.halfH}, car.body.angle);
-            if (!safeExitPoint(car, at))
+            if (!safe_exit_point(car, at))
                 continue;
             return at;
         }
@@ -264,4 +262,4 @@ int World::chooseWalkNext(int n, int previous, Random *source)
         std::erase(options, previous);
     return options.empty() ? n : options[(source ? *source : random).index(int(options.size()))];
 }
-} // namespace pz
+} // namespace Promzona

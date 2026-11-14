@@ -1,6 +1,8 @@
 #include "promzona/audio.hpp"
 #include <fstream>
-namespace pz
+#include <stdexcept>
+
+namespace Promzona
 {
 AudioLevels AudioLevels::load(const std::filesystem::path &path)
 {
@@ -17,7 +19,7 @@ bool AudioLevels::save(const std::filesystem::path &path) const
     return bool(file << master << ' ' << radio << '\n' << std::flush);
 }
 // Port of CityAudio.Spatial: right on screen is forward cross world-up.
-StereoGain spatialAudio(Vec2 source, Vec2 listener, double heading, double gain)
+StereoGain spatial_audio(Vec2 source, Vec2 listener, double heading, double gain)
 {
     auto d = source - listener;
     double distance = d.length();
@@ -26,7 +28,7 @@ StereoGain spatialAudio(Vec2 source, Vec2 listener, double heading, double gain)
     double level = gain / (1 + distance * .10 + distance * distance * .0015);
     return {float(level * std::sqrt((1 - pan) * .5)), float(level * std::sqrt((1 + pan) * .5))};
 }
-std::vector<float> readWave(const std::filesystem::path &path)
+std::vector<float> read_wave(const std::filesystem::path &path)
 {
     auto length = std::filesystem::file_size(path);
     if (length < 44 || length > 64 * 1024 * 1024)
@@ -83,7 +85,7 @@ AudioMixer::AudioMixer(const std::filesystem::path &directory)
     if (!directory.empty() && std::filesystem::is_directory(directory))
         for (auto &entry : std::filesystem::directory_iterator(directory))
             if (entry.path().extension() == ".wav")
-                addClip(entry.path().stem().string(), readWave(entry.path()));
+                addClip(entry.path().stem().string(), read_wave(entry.path()));
 }
 void AudioMixer::addClip(std::string name, std::vector<float> samples)
 {
@@ -102,7 +104,7 @@ void AudioMixer::trim()
 {
     while (voices_.size() >= maxVoices)
     {
-        auto it = std::find_if(voices_.begin(), voices_.end(), [](auto &v) { return !v.loop; });
+        auto it = std::ranges::find_if(voices_, [](auto &v) { return !v.loop; });
         if (it == voices_.end())
             it = voices_.begin();
         voices_.erase(it);
@@ -123,7 +125,7 @@ void AudioMixer::play(const SoundEvent &event)
     v.speaker = event.speaker;
     v.source = event.source;
     v.gain = event.gain;
-    v.pan = spatialAudio(v.ui ? listener_ : v.source, listener_, heading_, v.gain);
+    v.pan = spatial_audio(v.ui ? listener_ : v.source, listener_, heading_, v.gain);
     voices_.push_back(v);
 }
 void AudioMixer::update(World &world, double cameraHeading)
@@ -158,15 +160,14 @@ void AudioMixer::update(World &world, double cameraHeading)
         {
             v.touched = false;
             if (!v.loop)
-                v.pan = spatialAudio(v.ui ? listener_ : v.source, listener_, heading_, v.gain);
+                v.pan = spatial_audio(v.ui ? listener_ : v.source, listener_, heading_, v.gain);
         }
         auto loop = [&](int id, std::string_view name, StereoGain pan, double rate)
         {
             auto clip = clips_.find(name);
             if (clip == clips_.end())
                 return;
-            auto voice =
-                std::find_if(voices_.begin(), voices_.end(), [&](auto &v) { return v.loop && v.id == id; });
+            auto voice = std::ranges::find_if(voices_, [&](auto &v) { return v.loop && v.id == id; });
             if (voice == voices_.end())
             {
                 trim();
@@ -195,7 +196,7 @@ void AudioMixer::update(World &world, double cameraHeading)
             const auto *medical = c.kind == 4 ? world.ambulanceCall(c.id) : nullptr;
             if ((c.responding && c.kind != 12 && c.kind != 13 && c.kind != 14) ||
                 (medical && medical->stage == World::RescueStage::driving && !medical->braking))
-                loop(0x10000 + int(c.id), "siren", spatialAudio(c.body.p, listener_, heading_, .26), 1);
+                loop(0x10000 + int(c.id), "siren", spatial_audio(c.body.p, listener_, heading_, .26), 1);
             if (distance >= 55 * 55 || (count == engines.size() && distance >= distances.back()))
                 continue;
             if (count < engines.size())
@@ -214,7 +215,7 @@ void AudioMixer::update(World &world, double cameraHeading)
         {
             const auto &c = *engines[i];
             double gain = int(c.id) == world.controlledCar ? .38 : .24;
-            loop(int(c.id), "engine", spatialAudio(c.body.p, listener_, heading_, gain),
+            loop(int(c.id), "engine", spatial_audio(c.body.p, listener_, heading_, gain),
                  .75 + std::min(1.5, c.body.v.length() * .05));
         }
         if (world.rain > .01)
@@ -262,7 +263,7 @@ void AudioMixer::mix(std::span<float> stereo)
     if (stereo.size() % 2)
         throw std::invalid_argument("Stereo buffer must contain pairs");
     std::lock_guard lock(mutex_);
-    std::fill(stereo.begin(), stereo.end(), 0.f);
+    std::ranges::fill(stereo, 0.f);
     if (!playing_)
         return;
     if (!worldPaused_)
@@ -311,4 +312,4 @@ void AudioMixer::mix(std::span<float> stereo)
     for (auto &sample : stereo)
         sample = std::tanh(sample * (levels_.master * .008f));
 }
-} // namespace pz
+} // namespace Promzona

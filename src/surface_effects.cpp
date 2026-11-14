@@ -1,6 +1,8 @@
 #include "promzona/world.hpp"
+#include <cstddef>
+#include <ranges>
 
-namespace pz
+namespace Promzona
 {
 void World::splash(Vec2 point, double strength)
 {
@@ -157,10 +159,10 @@ void World::generatePuddles()
             RoadPuddle puddle{centre, {}};
             constexpr double x = RoadPuddle::radiusX, z = RoadPuddle::radiusZ;
             constexpr Vec2 offsets[]{{-x, -z}, {-x, z}, {x, z}, {x, -z}};
-            for (size_t n = 0; n < puddle.corners.size(); ++n)
+            for (auto &&[corner, offset] : std::views::zip(puddle.corners, offsets))
             {
-                Vec2 p = centre + offsets[n];
-                puddle.corners[n] = {float(p.x), float(terrain.height(p) + .024), float(p.z)};
+                Vec2 p = centre + offset;
+                corner = {float(p.x), float(terrain.height(p) + .024), float(p.z)};
             }
             puddleCells[j * nodes + i] = int(puddles.size());
             puddles.push_back(puddle);
@@ -304,10 +306,8 @@ void World::updateTireMarks(Vec2 focus, double dt)
         std::erase_if(surfaceMarks, [&](const auto &m) { return time >= m.born + m.duration; });
 
     tireContacts.resize(cars.size());
-    for (size_t i = 0; i < cars.size(); ++i)
+    for (auto &&[car, contact] : std::views::zip(std::as_const(cars), tireContacts))
     {
-        auto &contact = tireContacts[i];
-        const auto &car = cars[i];
         const auto &body = car.body;
         if (car.kind == 9 || car.kind == 12 || car.falling || !car.grounded() ||
             (body.p - focus).length2() > 85 * 85 || body.v.length2() < 2.)
@@ -389,4 +389,4 @@ void World::updateTireMarks(Vec2 focus, double dt)
         contact.active = true;
     }
 }
-} // namespace pz
+} // namespace Promzona

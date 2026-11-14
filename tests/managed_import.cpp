@@ -1,17 +1,19 @@
 #include "promzona/world.hpp"
 #include <filesystem>
 #include <fstream>
-#include <iostream>
+#include <print>
 #include <sstream>
 #include <stdexcept>
+#include <source_location>
+#include <format>
 
-using namespace pz;
+using namespace Promzona;
 namespace
 {
-void require(bool ok, const char *message)
+void require(bool ok, const char *message, std::source_location where = std::source_location::current())
 {
     if (!ok)
-        throw std::runtime_error(message);
+        throw std::runtime_error(std::format("{} (line {})", message, where.line()));
 }
 // A save as System.Text.Json writes it for the managed game: PascalCase members, enum
 // dictionary keys as names, enum values as numbers, actor state as loose dictionaries.
@@ -456,8 +458,8 @@ int main()
                 }
             full.people = people + "]";
             report = w.importManaged(write(full.text()), Density::full);
-            std::cout << "whole city: " << report.cars << " of " << ordinary << " cars and " << report.people
-                      << " of " << afoot << " passers-by put back\n";
+            std::println("whole city: {} of {} cars and {} of {} passers-by put back", report.cars, ordinary,
+                         report.people, afoot);
             require(report.samePlan && report.cars > ordinary / 2 && report.people > afoot / 2,
                     "most of a saved city was not put back");
             // Nothing stands in anything else: a seat is eight metres from the next.
@@ -525,12 +527,12 @@ int main()
         }
         require(thrown, "missing file accepted");
         std::filesystem::remove_all(folder);
-        std::cout << "managed import tests passed\n";
+        std::println("managed import tests passed");
         return 0;
     }
     catch (const std::exception &e)
     {
-        std::cerr << "FAILED: " << e.what() << '\n';
+        std::println(stderr, "FAILED: {}", e.what());
         return 1;
     }
 }

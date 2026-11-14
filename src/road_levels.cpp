@@ -1,6 +1,7 @@
 #include "promzona/world.hpp"
 #include <bit>
-namespace pz
+
+namespace Promzona
 {
 double RoadLevel::centreZ(double px) const
 {
@@ -113,33 +114,30 @@ std::vector<RoadLevel> generateRoadLevels(CityLayout &l, std::uint32_t seed)
         for (int i = col - 4; i < col + 4; ++i)
         {
             if (std::abs(i + .5 - col) > 1.5)
-                l.setRoad(i, row, 1, false);
+                l.set_road(i, row, 1, false);
             if (std::abs(i - col) > 1.5 && i > col - 4)
-                l.setRoad(i, row, 0, false);
+                l.set_road(i, row, 0, false);
         }
         // Keep safe, continuous bypass streets along both sides of every reserved corridor.
         for (int i = col - 4; i <= col + 4; ++i)
         {
-            l.setRoad(i, row - 1, 0, true);
-            l.setRoad(i, row + 1, 0, true);
+            l.set_road(i, row - 1, 0, true);
+            l.set_road(i, row + 1, 0, true);
             if (i < col + 4)
             {
-                l.setRoad(i, row - 1, 1, true);
-                l.setRoad(i, row + 1, 1, true);
-                l.setRoad(i, row + 2, 1, true);
+                l.set_road(i, row - 1, 1, true);
+                l.set_road(i, row + 1, 1, true);
+                l.set_road(i, row + 2, 1, true);
             }
         }
     }
     auto reserved = [&](const Building &b)
     {
         // Conservative footprint reservation also covers beams and lateral grading.
-        for (const auto &s : levels)
-            if (s.reserved(b.p, b.half.length()))
-                return true;
-        return false;
+        return std::ranges::any_of(levels, [&](const auto &s) { return s.reserved(b.p, b.half.length()); });
     };
     std::erase_if(l.buildings, reserved);
     std::erase_if(l.furniture, reserved);
     return levels;
 }
-} // namespace pz
+} // namespace Promzona

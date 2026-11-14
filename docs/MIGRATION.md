@@ -346,3 +346,70 @@ god, пять звёзд. До правок, на углу у съезда, от
 Не проверено в этом этапе: сборка MSVC, `native_assets`, `tools/smoke.ps1` на Windows, время кадра
 на видеокарте. Поведение экипажей с C# по одинаковым сценам не сверялось: правила взяты из кода
 C#, числа получены на нативной модели.
+
+Проход по коду 14.11.2026: стандарт, средства C++23, поиск ошибок. Исходное состояние — папка на
+ПК на 15:31 14.11 (после этапа 10 на ПК добавлены дворы, газоны, дальние материалы, сценарии
+`yard-*`, `lawn`, `far-vehicle`; начато переименование в `namespace Promzona` и snake_case).
+
+Стандарт. Обе сборки на ПК уже идут с `/std:c++latest`: CMake 4.3.1 переводит
+`CMAKE_CXX_STANDARD 23` в этот ключ, в `Promzona.vcxproj` стоит `stdcpplatest`; компилятор —
+MSVC 14.52.37025, C++23 в нём реализован целиком, C++26 почти нет. Ключи сборки не менялись.
+
+Исправлено:
+- тесты не собирались после переименования (`pz` → `Promzona`, 61 функция): в `Promzona.vcxproj`
+  их нет, поэтому сборка из среды этого не показывала; тесты приведены к новым именам;
+- `SectorStream::stats().busy` после замены сравнения на `std::cmp_not_equal(active_, -1)` был
+  истинным всегда (`active_` — `size_t`), тест потоковой загрузки на этом падал; номер строящейся
+  ячейки теперь `std::optional<size_t>` в обоих потоках;
+- девять предупреждений MSVC C4804 в `src/roles.cpp` (сдвиг на `bool`): биты `walkLegs` получили
+  имена (`World::WalkLeg`, `World::walkLegBit`), раскладка закреплена `static_assert`;
+- `src/vehicle_entry.cpp` не собирался GCC и Clang без `<utility>`; ещё в 28 файлах заголовки
+  стандартной библиотеки приходили только через чужие заголовки — подключены явно;
+- файл значка называется `PROMZONA.ico`, а CMake, проект и `.rc` называли его `Promzona.ico`;
+- комментарии `} // namespace pz` в 65 файлах; параметр `aiming` в `src/civilian_cover.cpp`
+  закрывал `World::aiming`; поля без начальных значений (`ServiceSite::kind`, `Building::height`,
+  `ContactWorld::Contact::a/b`, `PlayerInput::car/walking`).
+
+Средства языка и библиотеки:
+- `std::jthread`, `std::stop_token` и `std::condition_variable_any` в `SectorStream` и
+  `DetailStream` вместо флага остановки и ручного `join`;
+- `std::views::zip` в одиннадцати циклах по двум параллельным контейнерам; оставшиеся алгоритмы с
+  парами итераторов переведены на `std::ranges` (`contains`, `iota`, `partial_sort` с проекцией,
+  `unique`, `upper_bound`…), `views::reverse`, `views::take`, `views::values`;
+- `std::to_underlying` вместо приведения перечислений к целому (50 мест);
+- `std::format` там, где строка собиралась из `std::to_string` и не переводится (12 мест; коды
+  HRESULT и OpenGL теперь шестнадцатеричные); `resize_and_overwrite` в `wide`/`utf8`; литералы `uz`;
+- тесты: `std::println` вместо потоков, `std::source_location` в `check`/`require` (сообщение о
+  провале называет строку), `std::format` для имён временных файлов;
+- `[[nodiscard]]` на результатах, которые нельзя терять: `poll`, `build`, `pack`, `planSectors`,
+  `trim`, `captureSave`, `saveLanguage`, `saveDensity`, `AudioLevels::save`, `SaveSlots::completed`.
+
+Не делалось:
+- русские строки по-прежнему склеиваются: перевод идёт по фразам каталога, и `std::format` с
+  местами подстановки изменил бы сами фразы;
+- индексные циклы не переведены на `views::enumerate`: индекс почти везде служит номером
+  участника (`int(i) == controlledCar`);
+- `roadDistance`, `Footpath::edgeDistance` и сортировка пар в физике оставлены без адаптеров и
+  проекций: в отладочной сборке MSVC они обходятся дороже простого цикла;
+- `import std` и модули (нужна перестройка сборки, здесь не проверить); `std::print` в самой
+  игре, `ranges::to`, `flat_map`, `mdspan`, `generator` (их нет в GCC 13 из MinGW-w64, которым
+  проверяется EXE); `std::expected` (ошибки везде идут исключениями);
+- начатые на ПК переименование в snake_case и замена `int(x)` на `static_cast` не продолжались;
+- `SectorStream` и `DetailStream` по-прежнему повторяют друг друга (очередь, выдача, остановка).
+
+Проверка этого прохода. MSVC не собирался: всё проверено в облачной среде до записи на ПК.
+GCC 14.2 и Clang 20 с `-Wall -Wextra -Wpedantic -Wshadow` собирают ядро и тесты без
+предупреждений; CTest (GCC 14) — 23 из 23. Тестам теперь нужен `<print>`: GCC 14 или MSVC.
+Санитайзеры GCC 14 вместе с `_GLIBCXX_ASSERTIONS`: адреса и неопределённое поведение — 23 группы
+из 23 на состоянии ПК и семь на окончательном коде (`native_core`, `streaming`, `people`,
+`drone`, `transit`, `front_end`, `environment`); неопределённое поведение с проверкой приведения
+вещественных к целым — 23 из 23 на окончательном коде; гонки — `streaming` и `front_end`.
+Замечаний нет. clang-tidy 20 (bugprone, performance, modernize, часть misc, cppcoreguidelines и
+readability) по всем 51 единицам трансляции, включая файлы Windows, и cppcheck 2.13 дефектов не
+показали. MinGW-w64 GCC 13 собирает EXE и `native_assets` без предупреждений; `native_assets`
+впервые пройден под Wine, на сокращённом наборе с дальними материалами ПК: 354 GLB, 17 скинов,
+153 изображения, 51 WAV. Сценарии под Wine с программным OpenGL: состояние ПК — `day`, `drive`,
+`streaming`, `pursuit`, `crowd`, `wreckage`; EXE с `_GLIBCXX_ASSERTIONS` на промежуточной сборке —
+те же шесть и `settings`, `save-slots`, `job-board`, `console`, на окончательной — `day`,
+`far-vehicle`, `lawn`, `yard-car-day`, `people`, `transit`, `drone`. Все прошли; остальные
+сценарии не запускались. Не проверено: сборка MSVC с `/W4`, `tools/smoke.ps1`, время кадра.

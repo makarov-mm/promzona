@@ -4,16 +4,18 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
+#include <print>
 #include <stdexcept>
+#include <source_location>
+#include <format>
 
-using namespace pz;
+using namespace Promzona;
 namespace
 {
-void require(bool ok, const char *message)
+void require(bool ok, const char *message, std::source_location where = std::source_location::current())
 {
     if (!ok)
-        throw std::runtime_error(message);
+        throw std::runtime_error(std::format("{} (line {})", message, where.line()));
 }
 constexpr double frame = 1. / 60;
 double away(const World &w, Vec2 p)
@@ -358,12 +360,12 @@ int main()
         auto backup = file;
         backup += ".bak";
         std::filesystem::remove(backup);
-        std::cout << "renewal tests passed\n";
+        std::println("renewal tests passed");
         return 0;
     }
     catch (const std::exception &e)
     {
-        std::cerr << "FAILED: " << e.what() << '\n';
+        std::println(stderr, "FAILED: {}", e.what());
         return 1;
     }
 }

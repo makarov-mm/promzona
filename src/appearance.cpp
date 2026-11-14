@@ -1,7 +1,7 @@
 #include "promzona/appearance.hpp"
 #include <stdexcept>
 
-namespace pz
+namespace Promzona
 {
 namespace
 {
@@ -99,4 +99,4 @@ void markStandingPose(SkinData &skin)
                   (joint >= firstArmJoint && joint <= lastArmJoint ? 1.f : 0.f);
     }
 }
-} // namespace pz
+} // namespace Promzona

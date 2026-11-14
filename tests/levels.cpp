@@ -1,21 +1,25 @@
 #include "promzona/city_mesh.hpp"
-#include <iostream>
+#include <print>
 #include <fstream>
 #include <queue>
 #include <stdexcept>
-using namespace pz;
+#include <source_location>
+#include <format>
+#include <iterator>
+using namespace Promzona;
 namespace
 {
 int checks{};
-void check(bool v, const char *text)
+void check(bool v, const char *text, std::source_location where = std::source_location::current())
 {
     ++checks;
     if (!v)
-        throw std::runtime_error(text);
+        throw std::runtime_error(std::format("{} (line {})", text, where.line()));
 }
-void near(double a, double b, double tolerance, const char *text)
+void near(double a, double b, double tolerance, const char *text,
+          std::source_location where = std::source_location::current())
 {
-    check(std::abs(a - b) < tolerance, text);
+    check(std::abs(a - b) < tolerance, text, where);
 }
 void place(World &w, Car &c, Vec2 p, int level)
 {
@@ -45,12 +49,12 @@ void checkRecovery(World &w)
     check(w.recover(), "stationary vehicle rescued from tunnel cutting");
     const Vec2 road = car.body.p;
     check((road - origin).length() < 180 && (road - origin).length() > 1 && car.body.roadLevel == 0 &&
-              w.safeRecoveryPose(car, road, car.heading()),
+              w.safe_recovery_pose(car, road, car.heading()),
           "rescue lands on a clear, nearby street");
     check(car.health == .43 && car.fireTime == 1.2 && w.money == 57 && w.wanted == 2.4,
           "recovery preserves damage, fire, cash and pursuit");
     check(!w.recover(), "cannot restart lift midway");
-    car.settleAttitude(.9, true);
+    car.settle_attitude(.9, true);
     check(car.recovering && car.lift > 1 && std::abs(car.roll) > .1,
           "overturned car lifts and rotates visibly");
     const auto file = std::filesystem::current_path() / "promzona-recovery-test.json";
@@ -62,33 +66,33 @@ void checkRecovery(World &w)
     near(resumed.rightingTime, car.rightingTime, 1e-8, "load resumes same frame of lift");
     for (int tick = 0; tick < 200; ++tick)
     {
-        car.settleAttitude(1. / 120, true);
-        resumed.settleAttitude(1. / 120, true);
+        car.settle_attitude(1. / 120, true);
+        resumed.settle_attitude(1. / 120, true);
         near(resumed.roll, car.roll, 1e-8, "saved lift completes identically");
     }
     check(!car.recovering && car.grounded() && !loaded.recover(), "cooldown survives load and landing");
     Body obstacle = car.body;
     obstacle.angle += .41;
     w.staticBodies.push_back(obstacle);
-    check(!w.safeRecoveryPose(car, road, car.heading()), "overlapping rotated hull blocks return");
+    check(!w.safe_recovery_pose(car, road, car.heading()), "overlapping rotated hull blocks return");
     w.staticBodies.pop_back();
 
     Car struck;
-    struck.applyImpactRotation({8, 0});
+    struck.apply_impact_rotation({8, 0});
     check(struck.rollRate > 0 && struck.pitchRate == 0, "side impact rolls chassis");
-    struck.applyImpactRotation({0, -8});
+    struck.apply_impact_rotation({0, -8});
     check(struck.pitchRate < 0, "rearward impulse pitches chassis");
     struck.roll = pi;
     struck.rollRate = struck.pitchRate = 0;
     for (int tick = 0; tick < 470; ++tick)
-        struck.settleAttitude(1. / 120, true);
+        struck.settle_attitude(1. / 120, true);
     check(!struck.recovering, "no instant automatic recovery");
     for (int tick = 0; tick < 20; ++tick)
-        struck.settleAttitude(1. / 120, true);
+        struck.settle_attitude(1. / 120, true);
     check(struck.recovering, "stationary overturned player car starts righting after four seconds");
     struck.destroy();
     for (int tick = 0; tick < 520; ++tick)
-        struck.settleAttitude(1. / 120, true);
+        struck.settle_attitude(1. / 120, true);
     check(!struck.recovering, "wreck cannot self-right");
 
     // Block all ordinary door positions; the emergency exit must still be in the tunnel.
@@ -106,9 +110,9 @@ void checkRecovery(World &w)
     }
     check(!w.vehicleExit(car), "both rows of normal exits are obstructed");
     car.body.v = {1.8, 0};
-    check(!w.playerVehicleExit(car), "cannot jump over blocked doors at speed");
+    check(!w.player_vehicle_exit(car), "cannot jump over blocked doors at speed");
     car.body.v = {};
-    w.enterExit();
+    w.enter_exit();
     check(w.controlledCar < 0 && w.player.roadLevel == tunnel.id && (w.player.p - centre).length() <= 10.01,
           "F finds a nearby tunnel-floor exit");
     near(w.player.height, w.surface(w.player.p, tunnel.id) + .85, 1e-8, "emergency exit height follows road");
@@ -237,9 +241,8 @@ void localDrive(World &w, const RoadLevel &s, bool east)
         near(c.body.height - .8, s.floor(w.terrain, c.body.p), .06, "physical AI follows deck profile");
     }
     if (!finished)
-        std::cerr << "stalled " << s.id << " east=" << east << " at " << c.body.p.x << "," << c.body.p.z
-                  << " speed=" << c.body.v.length() << " route=" << c.routeDistance
-                  << " maxError=" << maxError << '\n';
+        std::println(stderr, "stalled {} east={} at {},{} speed={} route={} maxError={}", s.id, east,
+                     c.body.p.x, c.body.p.z, c.body.v.length(), c.routeDistance, maxError);
     check(finished, "AI exits level and continues into junction");
     check(maxError < 3.4, "AI stays in its lane with wall clearance");
 }
@@ -292,19 +295,19 @@ int main()
                 auto &car = w.cars[0];
                 place(w, car, p, s.id);
                 w.controlledCar = 0;
-                w.enterExit();
+                w.enter_exit();
                 check(w.controlledCar == -1 && w.player.roadLevel == s.id,
                       "exit vehicle stays inside tunnel");
                 near(w.player.height - .85, s.floor(w.terrain, w.player.p), .001,
                      "feet meet the sloped tunnel road at the actual exit point");
                 check(std::abs(w.player.height - .85 - floor) < .3, "exit does not teleport onto district");
-                w.enterExit();
+                w.enter_exit();
                 check(w.vehicleEntry.car == 0 && w.controlledCar < 0, "approach starts inside tunnel");
                 // This geometry fixture deliberately removes the traffic and pedestrians.
                 for (int tick = 0; tick < 150 && w.vehicleEntry.car >= 0; ++tick)
                 {
                     PlayerInput in{};
-                    w.stepEntry(in, 1. / 120);
+                    w.step_entry(in, 1. / 120);
                     w.player.p += in.walking * (2.7 / 120);
                 }
                 check(w.controlledCar == 0, "vehicle in same tunnel can be entered");
@@ -312,7 +315,7 @@ int main()
                 w.player.p = p;
                 w.player.roadLevel = 0;
                 w.player.height = ground + .85;
-                w.enterExit();
+                w.enter_exit();
                 check(w.controlledCar == -1, "cannot enter vehicle through tunnel roof");
                 auto mesh = cityChunk(w, s.x - 144, s.z - 12, 144);
                 int roadVertices = 0;
@@ -373,11 +376,11 @@ int main()
         check(loaded.layout.revision() == 0 && loaded.roadLevels.size() == 4 &&
                   loaded.layout.buildings.size() == legacy.layout.buildings.size(),
               "pre-revision saves reconstruct the original map");
-        std::cout << checks << " multilevel checks passed\n";
+        std::println("{} multilevel checks passed", checks);
     }
     catch (const std::exception &e)
     {
-        std::cerr << "Level check " << checks << ": " << e.what() << '\n';
+        std::println(stderr, "Level check {}: {}", checks, e.what());
         return 1;
     }
 }

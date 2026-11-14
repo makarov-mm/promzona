@@ -1,7 +1,7 @@
 #pragma once
 #include "core.hpp"
 
-namespace pz
+namespace Promzona
 {
 struct TransitLine
 {
@@ -21,4 +21,4 @@ struct TransitLine
         return position + perpendicular(forward(heading)) * (kind == 9 ? 7.2 : 3.9);
     }
 };
-} // namespace pz
+} // namespace Promzona

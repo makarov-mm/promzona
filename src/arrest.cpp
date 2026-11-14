@@ -1,6 +1,6 @@
 #include "promzona/world.hpp"
 
-namespace pz
+namespace Promzona
 {
 void World::updatePatrol()
 {
@@ -123,7 +123,7 @@ void World::updatePatrol()
             if ((candidate.body.p - suspect.p).length2() > 130 * 130 && candidate.sidearm == WeaponId::none &&
                 !candidate.dead && candidate.riding < 0 && candidate.ownedScooter < 0 && !candidate.courier &&
                 !candidate.inCompany && candidate.burnUntil <= time && i != conversation.actor &&
-                !paramedicCall(i) && (job.kind == JobKind::none || i != job.actor))
+                !paramedic_call(i) && (job.kind == JobKind::none || i != job.actor))
             {
                 patrol.officer = i;
                 break;
@@ -196,7 +196,7 @@ void World::arrestStep(double dt)
     if (job.kind != JobKind::none)
         finishJob(false);
     if (drone.active)
-        stopDrone(L"Связь с дроном прервана", 20);
+        stop_drone(L"Связь с дроном прервана", 20);
     vehicleEntry = {};
     releaseScooter(playerScooter, {});
     if (controlledCar >= 0 && !transitPassenger())
@@ -236,4 +236,4 @@ void World::arrestStep(double dt)
     notify(L"Задержание · штраф $" + std::to_wstring(lastFine) + L" · прошло " + std::to_wstring(3 + level) +
            (level == 1 ? L" часа" : L" часов"));
 }
-} // namespace pz
+} // namespace Promzona

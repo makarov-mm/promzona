@@ -1,6 +1,7 @@
 #include "promzona/physics.hpp"
 #include <stdexcept>
-namespace pz
+
+namespace Promzona
 {
 static std::array<Vec2, 4> corners(const Body &b)
 {
@@ -204,8 +205,8 @@ void ContactWorld::step(std::span<Body *> bodies, double dt, Vec2 gravity)
                     candidates.emplace_back(a, b);
                 }
             }
-    std::sort(candidates.begin(), candidates.end(),
-              [](auto a, auto b) { return pair(*a.first, *a.second) < pair(*b.first, *b.second); });
+    std::ranges::sort(candidates,
+                      [](auto a, auto b) { return pair(*a.first, *a.second) < pair(*b.first, *b.second); });
     candidatePairs = candidates.size();
     for (auto [a, b] : candidates)
         collide(*a, *b);
@@ -305,4 +306,4 @@ void ContactWorld::step(std::span<Body *> bodies, double dt, Vec2 gravity)
                 b->sleepTimer = 0;
         }
 }
-} // namespace pz
+} // namespace Promzona

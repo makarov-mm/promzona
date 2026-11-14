@@ -2,25 +2,29 @@
 #include "promzona/animation.hpp"
 #include "promzona/audio.hpp"
 #include <fstream>
-#include <iostream>
+#include <print>
 #include <limits>
 #include <set>
 #include <sstream>
+#include <source_location>
+#include <exception>
+#include <iterator>
 
-using namespace pz;
+using namespace Promzona;
 int failures = 0, checks = 0;
-void check(bool condition, const char *name)
+void check(bool condition, const char *name, std::source_location where = std::source_location::current())
 {
     ++checks;
     if (!condition)
     {
         ++failures;
-        std::cerr << "FAIL " << name << '\n';
+        std::println(stderr, "FAIL {} (line {})", name, where.line());
     }
 }
-void near(double a, double b, double tolerance, const char *name)
+void near(double a, double b, double tolerance, const char *name,
+          std::source_location where = std::source_location::current())
 {
-    check(std::isfinite(a) && std::abs(a - b) <= tolerance, name);
+    check(std::isfinite(a) && std::abs(a - b) <= tolerance, name, where);
 }
 Car vehicle()
 {
@@ -84,11 +88,11 @@ int main(int argc, char **argv)
         near(path.closestDistance(middle.first), path.length() * .5, 1e-10, "path inverse query");
         auto c = vehicle();
         for (int i = 0; i < 600; i++)
-            stepVehicle(c, {1, 0, false, false}, 1. / 120);
+            step_vehicle(c, {1, 0, false, false}, 1. / 120);
         check(c.body.v.z > 15, "engine accelerates");
         double initial = c.body.v.length();
         for (int i = 0; i < 360; i++)
-            stepVehicle(c, {0, 0, false, true}, 1. / 120);
+            step_vehicle(c, {0, 0, false, true}, 1. / 120);
         check(c.body.v.length() < initial * .1, "handbrake stops within 3 seconds");
         c.destroy();
         c.body.impulse({5000, 0});
@@ -165,8 +169,8 @@ int main(int argc, char **argv)
         // Only pedestrians on the street are eligible for these test events.
         const auto firstWalker =
             std::ranges::find_if(world.people, [](const auto &p) { return p.riding < 0; });
-        const auto secondWalker = std::find_if(std::next(firstWalker), world.people.end(),
-                                               [](const auto &p) { return p.riding < 0; });
+        const auto secondWalker = std::ranges::find_if(std::next(firstWalker), world.people.end(),
+                                                       [](const auto &p) { return p.riding < 0; });
         const auto victim = firstWalker - world.people.begin();
         const auto witness = secondWalker - world.people.begin();
         world.people[victim].dead = true;
@@ -382,7 +386,7 @@ int main(int argc, char **argv)
                 v.body.angle = angle;
                 v.body.w = w;
                 for (int i = 0; i < steps; i++)
-                    stepVehicle(v, {throttle, steer, bool(brake), bool(hand)}, dt, traction);
+                    step_vehicle(v, {throttle, steer, bool(brake), bool(hand)}, dt, traction);
                 near(v.body.v.x, outX, 1e-9, "C# parity Vx");
                 near(v.body.v.z, outZ, 1e-9, "C# parity Vz");
                 near(v.body.w, outW, 1e-9, "C# parity yaw");
@@ -395,6 +399,6 @@ int main(int argc, char **argv)
     {
         check(false, e.what());
     }
-    std::cout << checks << " checks, " << failures << " failures\n";
+    std::println("{} checks, {} failures", checks, failures);
     return failures ? 1 : 0;
 }

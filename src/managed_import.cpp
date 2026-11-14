@@ -12,7 +12,7 @@
 #include <string>
 #include <unordered_set>
 
-namespace pz
+namespace Promzona
 {
 namespace
 {
@@ -216,7 +216,7 @@ int seatCars(World &w, const json &saved)
         Car car;
         car.id = old.id;
         car.body.id = old.body.id;
-        fitVehicle(car, old.model);
+        fit_vehicle(car, old.model);
         car.body.friction = .5;
         car.laneIndex = place.lane;
         car.routeFrom = place.from;
@@ -418,8 +418,8 @@ ManagedImport World::importManaged(const std::filesystem::path &file, Density po
             // Zero rounds still means the weapon is owned in the managed game.
             auto ammo = next.inventory.capture();
             auto owned = next.inventory.ownership();
-            ammo[size_t(id)] = count;
-            owned[size_t(id)] = true;
+            ammo[std::to_underlying(id)] = count;
+            owned[std::to_underlying(id)] = true;
             next.inventory.restore(ammo, owned);
             ++report.weapons;
         }
@@ -464,7 +464,7 @@ ManagedImport World::importManaged(const std::filesystem::path &file, Density po
             model && fleet[*model].kind != own.kind)
         {
             const Car before = own;
-            fitVehicle(own, *model);
+            fit_vehicle(own, *model);
             const double reach = std::hypot(own.body.halfW, own.body.halfH) + .6;
             if (std::ranges::any_of(next.cars,
                                     [&](const Car &other)
@@ -546,4 +546,4 @@ ManagedImport World::importManaged(const std::filesystem::path &file, Density po
     *this = std::move(next);
     return report;
 }
-} // namespace pz
+} // namespace Promzona

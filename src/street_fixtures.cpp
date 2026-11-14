@@ -1,6 +1,6 @@
 #include "promzona/world.hpp"
 
-namespace pz
+namespace Promzona
 {
 namespace
 {
@@ -35,7 +35,7 @@ double groundOffset(Kind kind)
 
 void World::registerFixture(Body &body, FixtureKind kind)
 {
-    const auto &shape = shapes[size_t(kind)];
+    const auto &shape = shapes[std::to_underlying(kind)];
     body.circle = shape.round;
     body.radius = shape.halfWidth;
     body.halfW = shape.halfWidth;
@@ -111,7 +111,7 @@ void World::generateStreetFurniture()
 
     auto place = [&](Kind kind, Vec2 p, double angle)
     {
-        const auto &shape = shapes[size_t(kind)];
+        const auto &shape = shapes[std::to_underlying(kind)];
         double c = std::abs(std::cos(angle)), s = std::abs(std::sin(angle));
         Vec2 half = shape.round ? Vec2{shape.halfWidth, shape.halfWidth}
                                 : Vec2{c * shape.halfWidth + s * shape.halfDepth,
@@ -185,7 +185,7 @@ void World::supportFixture(StreetFixture &f)
     auto &b = staticBodies[f.body];
     double foot = b.height - b.verticalExtent * .5;
     b.roadLevel = selectLevel(b.p, b.roadLevel, foot);
-    const auto &shape = shapes[size_t(f.kind)];
+    const auto &shape = shapes[std::to_underlying(f.kind)];
     double c = std::abs(std::cos(f.tilt)), s = std::abs(std::sin(f.tilt));
     b.verticalExtent = c * shape.height + s * 2 * shape.halfWidth;
     b.halfW = c * shape.halfWidth + s * shape.height * .5;
@@ -307,4 +307,4 @@ void World::updateFixtures(Vec2 focus, double dt)
         staticQueryCount = size_t(-1);
     }
 }
-} // namespace pz
+} // namespace Promzona

@@ -1,13 +1,17 @@
 #include "promzona/world.hpp"
-#include <iostream>
+#include <print>
 #include <chrono>
-using namespace pz;
+#include <source_location>
+#include <format>
+#include <exception>
+#include <stdexcept>
+using namespace Promzona;
 namespace
 {
-void check(bool ok, const char *message)
+void check(bool ok, const char *message, std::source_location where = std::source_location::current())
 {
     if (!ok)
-        throw std::runtime_error(message);
+        throw std::runtime_error(std::format("{} (line {})", message, where.line()));
 }
 void dispatch(World &w, int level)
 {
@@ -93,9 +97,9 @@ void arrestTest()
     check(w.patrol.hold == 0, "moving suspect still in custody");
     w.player.v = {};
     advance(45);
-    auto path = std::filesystem::temp_directory_path() /
-                ("promzona-booking-" +
-                 std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+    auto path =
+        std::filesystem::temp_directory_path() /
+        std::format("promzona-booking-{}.json", std::chrono::steady_clock::now().time_since_epoch().count());
     w.save(path);
     World resumed;
     try
@@ -148,30 +152,30 @@ void vehicleEntryTest()
                                           {
                                               if (c.kind != 3 || c.body.roadLevel || w.levelAt(c.body.p, 14))
                                                   return false;
-                                              w.player.p = World::driverDoor(c, -1);
+                                              w.player.p = World::driver_door(c, -1);
                                               w.player.height = w.surface(w.player.p, 0) + .85;
-                                              return w.entryPath(c, w.player.p);
+                                              return w.entry_path(c, w.player.p);
                                           });
     check(candidate != w.cars.end(), "missing accessible patrol car in fixture");
     auto &car = *candidate;
     const int id = int(car.id);
     car.body.v = {5, 0};
-    w.enterExit();
+    w.enter_exit();
     check(w.vehicleEntry.car != id, "boarded a moving vehicle");
     w.vehicleEntry = {};
     car.body.v = {};
-    w.enterExit();
+    w.enter_exit();
     check(w.vehicleEntry.car == id && w.controlledCar == -1, "expected approach to patrol door");
     PlayerInput input;
     input.walking = {1, 0};
-    w.stepEntry(input, .1);
+    w.step_entry(input, .1);
     check(w.vehicleEntry.car < 0 && !car.driverless, "walking failed to cancel entry");
-    w.enterExit();
+    w.enter_exit();
     input = {};
-    w.stepEntry(input, .4);
+    w.step_entry(input, .4);
     check(w.controlledCar < 0 && car.doorOpen > .4, "transferred before the door opened");
     input.shooting = true;
-    w.stepEntry(input, .01);
+    w.step_entry(input, .01);
     check(w.vehicleEntry.car < 0, "shooting failed to cancel entry");
 
     // Both sides blocked: nobody disembarks and there is no partial crime/transfer.
@@ -189,21 +193,21 @@ void vehicleEntryTest()
         wall.p = car.body.p + rotate({side * (car.body.halfW + 2.), 0}, car.body.angle);
         w.staticBodies.push_back(wall);
     }
-    check(!w.unloadCrew(car) && !car.driverless && !w.wanted, "blocked crew partially committed");
+    check(!w.unload_crew(car) && !car.driverless && !w.wanted, "blocked crew partially committed");
     w.staticBodies.resize(originalSize);
-    w.enterExit();
+    w.enter_exit();
     input = {};
     for (int i = 0; i < 130 && w.controlledCar < 0; ++i)
-        w.stepEntry(input, .01);
+        w.step_entry(input, .01);
     auto cops = [&] { return std::ranges::count(w.people, Person::Uniform::police, &Person::uniform); };
     check(w.controlledCar == id && cops() == 2 && car.driverless && w.wanted > 0, "patrol crew not ejected");
-    w.enterExit();
+    w.enter_exit();
     check(w.controlledCar < 0 && car.driverless, "empty vehicle restored AI driver on exit");
     double crime = w.wanted;
-    check(w.unloadCrew(car) && cops() == 2 && w.wanted == crime, "duplicate crew or crime on re-entry");
-    auto path = std::filesystem::temp_directory_path() /
-                ("promzona-carjack-" +
-                 std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+    check(w.unload_crew(car) && cops() == 2 && w.wanted == crime, "duplicate crew or crime on re-entry");
+    auto path =
+        std::filesystem::temp_directory_path() /
+        std::format("promzona-carjack-{}.json", std::chrono::steady_clock::now().time_since_epoch().count());
     w.save(path);
     World resumed;
     try
@@ -230,9 +234,9 @@ void test()
     auto &armour = w.cars[tank];
     check(armour.kind == 11 && armour.summoned && armour.mass == 32000, "wrong summoned tank");
     w.controlledCar = -1;
-    w.player.p = World::driverDoor(armour, -1);
+    w.player.p = World::driver_door(armour, -1);
     w.player.height = armour.body.height;
-    w.enterExit();
+    w.enter_exit();
     for (int tick = 0; tick < 150 && w.vehicleEntry.car >= 0; ++tick)
         w.step({}, 1. / 120);
     check(w.controlledCar == tank, "tank cannot be boarded");
@@ -260,9 +264,9 @@ void test()
         node = next;
     }
     check(node == w.pursuitNode, "police route did not reach suspect");
-    auto path = std::filesystem::temp_directory_path() /
-                ("promzona-pursuit-" +
-                 std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+    auto path =
+        std::filesystem::temp_directory_path() /
+        std::format("promzona-pursuit-{}.json", std::chrono::steady_clock::now().time_since_epoch().count());
     w.save(path);
     World loaded;
     try
@@ -727,8 +731,8 @@ void trafficTest()
         auto checkReload = [&]
         {
             auto path = std::filesystem::temp_directory_path() /
-                        ("promzona-rejoin-" +
-                         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+                        std::format("promzona-rejoin-{}.json",
+                                    std::chrono::steady_clock::now().time_since_epoch().count());
             w.save(path);
             resumed.load(path);
             std::filesystem::remove(path);
@@ -766,11 +770,11 @@ int main()
         trafficTest();
         arrestTest();
         vehicleEntryTest();
-        std::cout << "Dispatch, routes, save, mounted gun, flight, wreck and release passed\n";
+        std::println("Dispatch, routes, save, mounted gun, flight, wreck and release passed");
     }
     catch (const std::exception &e)
     {
-        std::cerr << e.what() << '\n';
+        std::println(stderr, "{}", e.what());
         return 1;
     }
 }

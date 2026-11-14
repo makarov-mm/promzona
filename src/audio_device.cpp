@@ -2,7 +2,9 @@
 #include <windows.h>
 #include <mmsystem.h>
 #include <thread>
-namespace pz
+#include <format>
+
+namespace Promzona
 {
 struct AudioDevice::Impl
 {
@@ -31,7 +33,7 @@ struct AudioDevice::Impl
         if (result != MMSYSERR_NOERROR)
         {
             output = nullptr;
-            failure = "No stereo audio output: " + std::to_string(result);
+            failure = std::format("No stereo audio output: {}", result);
             return;
         }
         for (auto &b : buffers)
@@ -90,4 +92,4 @@ const std::string &AudioDevice::error() const
 {
     return impl_->failure;
 }
-} // namespace pz
+} // namespace Promzona

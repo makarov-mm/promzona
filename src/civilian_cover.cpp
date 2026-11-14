@@ -1,6 +1,6 @@
 #include "promzona/world.hpp"
 
-namespace pz
+namespace Promzona
 {
 bool World::coverAllowsAim(Person &p, std::span<const Car *const> traffic, Vec2 &direction, double &speed)
 {
@@ -32,7 +32,7 @@ bool World::coverAllowsAim(Person &p, std::span<const Car *const> traffic, Vec2 
         cover.searchAt = time + 1.7 + (p.body.id % 5) * .13;
         double best = 12;
         // All candidate walks and sight lines lie inside the local contact neighbourhood.
-        auto blocked = [&](Vec2 from, Vec2 to, double y1, double y2, double clearance, bool aiming)
+        auto blocked = [&](Vec2 from, Vec2 to, double y1, double y2, double clearance, bool lineOfFire)
         {
             auto delta = to - from;
             double length = std::max(.001, delta.length());
@@ -46,7 +46,7 @@ bool World::coverAllowsAim(Person &p, std::span<const Car *const> traffic, Vec2 
                 return rayPrism(from, ray, y1, slope, box, length) <= length;
             };
             for (const Car *car : traffic)
-                if ((!aiming || &car->body != &target) && crosses(car->body))
+                if ((!lineOfFire || &car->body != &target) && crosses(car->body))
                     return true;
             for (size_t index : nearbyStaticBodies)
                 if (crosses(staticBodies[index]))
@@ -56,7 +56,7 @@ bool World::coverAllowsAim(Person &p, std::span<const Car *const> traffic, Vec2 
                 double t = double(i) / steps;
                 auto point = from + delta * t;
                 if (scenerySolid(point, y1 + (y2 - y1) * t, clearance) ||
-                    (!aiming && openCut(point, clearance)))
+                    (!lineOfFire && openCut(point, clearance)))
                     return true;
             }
             return false;
@@ -130,4 +130,4 @@ bool World::coverAllowsAim(Person &p, std::span<const Car *const> traffic, Vec2 
     cover.holdUntil = 0;
     return false;
 }
-} // namespace pz
+} // namespace Promzona

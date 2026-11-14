@@ -1,8 +1,9 @@
 #include "promzona/world.hpp"
 #include "promzona/minimap.hpp"
 #include "promzona/names.hpp"
+#include <format>
 
-namespace pz
+namespace Promzona
 {
 namespace
 {
@@ -57,7 +58,7 @@ void World::scarePerson(Person &p, Vec2 origin, double fear)
     if (speak && (position() - p.body.p).length2() < 65 * 65)
     {
         const int count = p.inCompany ? 6 : 8;
-        auto clip = std::string(p.inCompany ? "tough_fear_" : "fear_") + std::to_string(p.body.id % count);
+        auto clip = std::format("{}{}", p.inCompany ? "tough_fear_" : "fear_", p.body.id % count);
         sounds.push_back({clip, p.body.p, .59, false, int(&p - people.data())});
         p.voiceAt = time + 5.;
     }
@@ -86,9 +87,9 @@ void World::socialIntent(Person &p, Vec2 &dir, double &speed)
         {
             // Use a separate sequence: recording selection must not change city traffic.
             Random voice(seed ^ (p.body.id * 2654435761u) ^ unsigned(std::fmod(time, 86400.)));
-            if (p.idleVoiceAt > 0 && p.voiceAt <= time && !paramedicCall(int(&p - people.data())))
+            if (p.idleVoiceAt > 0 && p.voiceAt <= time && !paramedic_call(int(&p - people.data())))
             {
-                auto clip = std::string(p.inCompany ? "tough_" : "elder_") + std::to_string(voice.index(6));
+                auto clip = std::format("{}{}", p.inCompany ? "tough_" : "elder_", voice.index(6));
                 sounds.push_back({clip, p.body.p, .5, false, int(&p - people.data())});
             }
             p.idleVoiceAt = time + 30. + 60. * voice.next();
@@ -271,7 +272,7 @@ bool World::talk()
         const auto &p = people[i];
         auto delta = p.body.p - player.p;
         double d = delta.length();
-        if (d < .01 || d > nearest || i == patrol.officer || paramedicCall(i) ||
+        if (d < .01 || d > nearest || i == patrol.officer || paramedic_call(i) ||
             dot(delta, facing) < d * .35 || p.dead || p.knockedUntil > time || p.riding >= 0 ||
             (p.ownedScooter >= 0 && scooters[p.ownedScooter].rider == i) ||
             p.body.roadLevel != player.roadLevel || std::abs(p.body.height - player.height) > .9 ||
@@ -370,4 +371,4 @@ bool World::talk()
         }
     return true;
 }
-} // namespace pz
+} // namespace Promzona

@@ -1,7 +1,7 @@
 #include "promzona/world.hpp"
 #include <limits>
 
-namespace pz
+namespace Promzona
 {
 void World::generateServices()
 {
@@ -182,7 +182,7 @@ void World::clinicRespawn(Vec2 fallen)
     openMarket = -1;
     releaseScooter(playerScooter, {});
     if (drone.active)
-        stopDrone(L"Связь с дроном прервана", 20);
+        stop_drone(L"Связь с дроном прервана", 20);
     int index = nearestSite(ServiceKind::clinic, fallen);
     player.p = index < 0 ? Vec2{7, 7} : sites[index].entrance;
     player.p = clearEntrance(player.p).value_or(player.p);
@@ -209,7 +209,7 @@ void World::interactJob()
         openMarket = -1;
         return;
     }
-    if (int market = marketInReach(); market >= 0)
+    if (int market = market_in_reach(); market >= 0)
     {
         openMarket = market;
         return;
@@ -230,7 +230,7 @@ void World::interactJob()
         interactPassengerJob();
         return;
     }
-    if (serviceGarage())
+    if (service_garage())
         return;
     if (job.passenger())
     {
@@ -342,7 +342,7 @@ bool World::startContract(JobKind kind)
             auto &p = people[i];
             double score =
                 std::abs((p.body.p - position()).length() - 150) + (p.sidearm == WeaponId::none ? 100 : 0);
-            if (i != patrol.officer && !paramedicCall(i) && !p.dead && !p.courier && p.ownedScooter < 0 &&
+            if (i != patrol.officer && !paramedic_call(i) && !p.dead && !p.courier && p.ownedScooter < 0 &&
                 p.riding < 0 && !waitingForTaxi(i) && !p.body.roadLevel && score < best)
             {
                 actor = i;
@@ -423,7 +423,7 @@ void World::finishJob(bool success, const wchar_t *failure)
 void World::servicesStep(double dt)
 {
     updateHailers();
-    if (openMarket >= 0 && marketInReach() != openMarket)
+    if (openMarket >= 0 && market_in_reach() != openMarket)
         openMarket = -1;
     energySeconds = std::max(0., energySeconds - dt);
     if (controlledCar < 0 && !player.roadLevel && health < 1)
@@ -512,9 +512,9 @@ bool World::validJob() const
     case JobKind::patient:
         if (job.actor < 0 || job.actor >= int(people.size()) || job.ride.car < -1 ||
             job.ride.car >= int(cars.size()) || (job.acquired && job.ride.car < 0) || job.ride.away < 0 ||
-            job.ride.boardBy < 0 || job.ride.scares < 0 || job.ride.scares > 3 ||
-            !(job.ride.healthAtLastScare >= 0 && job.ride.healthAtLastScare <= 1) ||
-            !std::isfinite(job.ride.crimeAt))
+            job.ride.board_by < 0 || job.ride.scares < 0 || job.ride.scares > 3 ||
+            !(job.ride.health_at_last_scare >= 0 && job.ride.health_at_last_scare <= 1) ||
+            !std::isfinite(job.ride.crime_at))
             return false;
         if (job.ride.car >= 0 &&
             (cars[job.ride.car].responding || cars[job.ride.car].line >= 0 || cars[job.ride.car].kind > 2))
@@ -540,4 +540,4 @@ bool World::validJob() const
         return false;
     }
 }
-} // namespace pz
+} // namespace Promzona

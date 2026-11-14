@@ -1,11 +1,10 @@
 #include "post_processing.hpp"
 #include <algorithm>
 #include <cmath>
-#include <iomanip>
+#include <format>
 #include <iterator>
-#include <sstream>
 
-namespace pz
+namespace Promzona
 {
 using namespace gl;
 void PostProcessing::initialize(GLuint glowProgram, GLuint resolveProgram, GLuint occlusionProgram)
@@ -204,16 +203,14 @@ std::string SceneTimer::report() const
     auto samples = milliseconds_;
     if (samples.empty())
         return "scene GPU: no samples";
-    std::sort(samples.begin(), samples.end());
+    std::ranges::sort(samples);
     auto percentile = [&](double p) { return samples[size_t(std::ceil(samples.size() * p)) - 1]; };
-    std::ostringstream out;
-    out << std::fixed << std::setprecision(2) << "scene GPU: samples=" << samples.size()
-        << " median_ms=" << percentile(.5) << " p95_ms=" << percentile(.95);
-    return out.str();
+    return std::format("scene GPU: samples={} median_ms={:.2f} p95_ms={:.2f}", samples.size(), percentile(.5),
+                       percentile(.95));
 }
 SceneTimer::~SceneTimer()
 {
     if (ids_[0])
         DeleteQueries(GLsizei(ids_.size()), ids_.data());
 }
-} // namespace pz
+} // namespace Promzona

@@ -12,20 +12,22 @@
 #include <chrono>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
+#include <print>
 #include <limits>
 #include <map>
 #include <stdexcept>
 #include <string>
-using namespace pz;
+#include <source_location>
+#include <format>
+using namespace Promzona;
 namespace
 {
 int checks{};
-void check(bool ok, const char *message)
+void check(bool ok, const char *message, std::source_location where = std::source_location::current())
 {
     ++checks;
     if (!ok)
-        throw std::runtime_error(message);
+        throw std::runtime_error(std::format("{} (line {})", message, where.line()));
 }
 Vec3 project(const Mat4 &m, Vec3 p)
 {
@@ -207,10 +209,9 @@ void weather()
             w.step({}, frame);
         check(w.rain < .01 && w.wetness > .5 && w.wetness < .6, "the street is wet a minute after the rain");
 
-        const auto file =
-            std::filesystem::temp_directory_path() /
-            ("promzona-weather-" +
-             std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+        const auto file = std::filesystem::temp_directory_path() /
+                          std::format("promzona-weather-{}.json",
+                                      std::chrono::steady_clock::now().time_since_epoch().count());
         w.rain = .25;
         w.save(file);
         World restored;
@@ -553,8 +554,7 @@ void hudAndMap()
     world.playerScooter = -1;
     world.drone.active = true;
     check(offers(L"K", L"Вернуться") && !offers(L"J", L"Заказы"), "drone controls take precedence");
-    auto clinic = std::find_if(world.sites.begin(), world.sites.end(),
-                               [](const auto &s) { return s.kind == ServiceKind::clinic; });
+    auto clinic = std::ranges::find(world.sites, ServiceKind::clinic, &ServiceSite::kind);
     check(clinic != world.sites.end(), "seed contains a clinic");
     Minimap map;
     map.rebuild(world);
@@ -580,7 +580,7 @@ void hudAndMap()
                   "minimap coastline follows the physical waterline on each shore");
         }
     map.copyView({10000, -10000}, pixels);
-    check(std::all_of(pixels.begin(), pixels.end(), [](auto p) { return p == 0x2b5565; }),
+    check(std::ranges::all_of(pixels, [](auto p) { return p == 0x2b5565; }),
           "outside atlas draws open water");
 }
 void streetFixtures()
@@ -636,8 +636,8 @@ void streetFixtures()
     check(bag != world.fixtures.end(), "bag near hydrant");
     auto &bagBody = world.staticBodies.at(bag->body);
     auto distant =
-        std::find_if(bag + 1, world.fixtures.end(), [&](const auto &other)
-                     { return other.kind == Kind::bag && (other.home - bag->home).length() > 160; });
+        std::ranges::find_if(bag + 1, world.fixtures.end(), [&](const auto &other)
+                             { return other.kind == Kind::bag && (other.home - bag->home).length() > 160; });
     check(distant != world.fixtures.end(), "remote bag generated");
     world.nearbyStaticBodies = {bag->body, distant->body};
     for (int i = 0; i < 120; ++i)
@@ -810,7 +810,7 @@ void placement()
         }
         for (int count : kinds)
             check(count > 0, "all tree species represented");
-        std::cout << "seed " << seed << ": " << world.trees.size() << " trees\n";
+        std::println("seed {}: {} trees", seed, world.trees.size());
     }
 }
 // Port of the particles of the managed game and of what throws them.
@@ -1057,12 +1057,12 @@ int main()
         streetFixtures();
         geometry();
         placement();
-        std::cout << checks << " environment checks passed\n";
+        std::println("{} environment checks passed", checks);
         return 0;
     }
     catch (const std::exception &e)
     {
-        std::cerr << e.what() << '\n';
+        std::println(stderr, "{}", e.what());
         return 1;
     }
 }

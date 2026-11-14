@@ -1,16 +1,18 @@
 #include "promzona/city_mesh.hpp"
 #include <chrono>
-#include <iostream>
+#include <print>
 #include <stdexcept>
-using namespace pz;
+#include <source_location>
+#include <format>
+using namespace Promzona;
 namespace
 {
 int checks{};
-void check(bool value, const char *message)
+void check(bool value, const char *message, std::source_location where = std::source_location::current())
 {
     ++checks;
     if (!value)
-        throw std::runtime_error(message);
+        throw std::runtime_error(std::format("{} (line {})", message, where.line()));
 }
 void pathClear(const World &w, const Path &path, int level = 0)
 {
@@ -37,16 +39,16 @@ void pathClear(const World &w, const Path &path, int level = 0)
                 auto cutting = w.levelAt(p, .3);
                 if (cutting && cutting->open(p, .3) && std::abs(p.x - cutting->x) < RoadLevel::length - 12)
                 {
-                    std::cerr << "cut at " << p.x << "," << p.z << " level=" << cutting->id
-                              << " center=" << cutting->x << "," << cutting->z << '\n';
+                    std::println(stderr, "cut at {},{} level={} center={},{}", p.x, p.z, cutting->id,
+                                 cutting->x, cutting->z);
                     check(false, "ordinary traffic never crosses an open cutting");
                 }
             }
             auto cutting = w.levelAt(p, .3);
             if (cutting && cutting->open(p, .3) && std::abs(p.x - cutting->x) < RoadLevel::length - 12)
             {
-                std::cerr << "cut at " << p.x << "," << p.z << " level=" << cutting->id
-                          << " center=" << cutting->x << "," << cutting->z << '\n';
+                std::println(stderr, "cut at {},{} level={} center={},{}", p.x, p.z, cutting->id, cutting->x,
+                             cutting->z);
                 check(false, "ordinary traffic never crosses an open cutting");
             }
         }
@@ -89,10 +91,9 @@ void distantQueueAndSave()
         if (!merged && active.laneIndex == 1 && active.body.p.z > origin.z + CityLayout::lane + .3)
         {
             check(w.time >= 2 && active.routePhase == 0, "driver waits for the obstruction before merging");
-            auto saved =
-                std::filesystem::temp_directory_path() /
-                ("promzona-merge-" +
-                 std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+            auto saved = std::filesystem::temp_directory_path() /
+                         std::format("promzona-merge-{}.json",
+                                     std::chrono::steady_clock::now().time_since_epoch().count());
             auto position = active.body.p;
             double along = active.routeDistance, cooldown = active.nextLaneDecision;
             w.save(saved);
@@ -317,18 +318,18 @@ int main()
                                     : w.layout.roadDistance(ai.body.p));
             check(std::isfinite(ai.body.p.x) && std::isfinite(ai.body.p.z), "finite local traffic");
         }
-        std::cout << "Local traffic: transitions=" << transitions << " distance=" << distance
-                  << " maxRoadError=" << maxError << '\n';
+        std::println("Local traffic: transitions={} distance={} maxRoadError={}", transitions, distance,
+                     maxError);
         check(!ai.destroyed, "autonomous drive survives normal route");
         check(transitions > 30 && distance > 500,
               "local car continues through junctions instead of circling endpoint");
         check(maxError < w.layout.roadHalf(), "local car stays on carriageway");
         laneChecks(w);
-        std::cout << checks << " traffic/geometry checks passed\n";
+        std::println("{} traffic/geometry checks passed", checks);
     }
     catch (const std::exception &e)
     {
-        std::cerr << "Traffic check " << checks << ": " << e.what() << '\n';
+        std::println(stderr, "Traffic check {}: {}", checks, e.what());
         return 1;
     }
 }

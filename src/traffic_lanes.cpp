@@ -1,6 +1,6 @@
 #include "promzona/world.hpp"
 
-namespace pz
+namespace Promzona
 {
 namespace
 {
@@ -111,10 +111,7 @@ template <class Visit> bool eachCarNear(const World &w, Vec2 centre, double radi
 {
     if (w.trafficCells.empty() || w.nextTrafficCar.size() != w.cars.size())
     {
-        for (const auto &c : w.cars)
-            if (!visit(c))
-                return false;
-        return true;
+        return std::ranges::all_of(w.cars, visit);
     }
     bool open = true;
     nearby(w, centre, radius,
@@ -829,4 +826,4 @@ void World::senseTraffic(Car &c, bool local)
     if (random.next() >= .65 || !tryChangeLane(c, 1 - c.laneIndex))
         c.nextLaneDecision = time + 1.5;
 }
-} // namespace pz
+} // namespace Promzona

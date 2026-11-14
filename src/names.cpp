@@ -2,7 +2,7 @@
 #include <array>
 #include <cmath>
 
-namespace pz
+namespace Promzona
 {
 namespace
 {
@@ -144,4 +144,4 @@ std::wstring streetAt(Vec2 point, int nodes, double spacing)
     const double dx = std::abs(point.x - (low + i * spacing)), dz = std::abs(point.z - (low + j * spacing));
     return dx <= dz ? streetLabel(i) : avenueLabel(j);
 }
-} // namespace pz
+} // namespace Promzona

@@ -1,7 +1,7 @@
 #include "promzona/world.hpp"
 #include <limits>
 
-namespace pz
+namespace Promzona
 {
 namespace
 {
@@ -20,7 +20,7 @@ Vec2 World::passengerDoor(const Car &c, Vec2 from) const
 bool World::canTakePassengerJob(int actor) const
 {
     const auto &p = people.at(actor);
-    return p.waitingLine < 0 && actor != patrol.officer && !paramedicCall(actor) && !p.dead &&
+    return p.waitingLine < 0 && actor != patrol.officer && !paramedic_call(actor) && !p.dead &&
            p.knockedUntil <= time && p.ownedScooter < 0 && !p.courier && !p.inCompany && p.riding < 0 &&
            p.health > 0 && !p.body.roadLevel && p.burnUntil <= time && p.fear <= 0 &&
            layout.urbanSite(p.body.p) && !levelAt(p.body.p, 2) &&
@@ -48,7 +48,7 @@ int World::hailerInReach() const
         return -1;
     int best = -1;
     double distance = 8 * 8;
-    for (auto h : hailers)
+    for (const auto &h : hailers)
     {
         if (h.actor < 0 || time >= h.until)
             continue;
@@ -83,7 +83,7 @@ void World::updateHailers()
     // Port of the managed MaintainHailers: somebody at a bus stop 45 to 210 m away, at the
     // kerb between the shelter and the road. The managed game makes a new person there; the
     // population here is fixed, and whoever is walking past the stop goes over to it.
-    const size_t start = (size_t(time / 3) * 53) % std::max<size_t>(1, busStops.size());
+    const size_t start = (size_t(time / 3) * 53) % std::max(1uz, busStops.size());
     for (size_t k = 0; k < busStops.size(); ++k)
     {
         const Vec2 stop = busStops[(start + k) % busStops.size()];
@@ -231,7 +231,7 @@ void World::interactPassengerJob()
         const auto &car = cars[controlledCar];
         if (!car.grounded() || car.body.roadLevel || car.body.v.length() >= .8 || !vehicleExit(car))
             return;
-        finishJob((jobTarget() - car.body.p).length() < arriveRadius(job.kind), L"Высадили без оплаты");
+        finishJob((jobTarget() - car.body.p).length() < arrive_radius(job.kind), L"Высадили без оплаты");
         return;
     }
     if (controlledCar < 0 || job.ride.car >= 0)
@@ -250,7 +250,7 @@ void World::interactPassengerJob()
         return;
     }
     job.ride.car = controlledCar;
-    job.ride.boardBy = time + 14;
+    job.ride.board_by = time + 14;
     notify(L"Подождите, пока пассажир подойдёт к двери");
 }
 
@@ -272,7 +272,7 @@ void World::stepPassengerJob(double dt)
     }
     if (!job.acquired)
     {
-        if (controlledCar != job.ride.car || time > job.ride.boardBy || c.body.v.length() > 2 ||
+        if (controlledCar != job.ride.car || time > job.ride.board_by || c.body.v.length() > 2 ||
             (p.body.p - c.body.p).length() > 13)
         {
             job.ride.car = -1;
@@ -291,7 +291,7 @@ void World::stepPassengerJob(double dt)
         const double length = (jobTarget() - c.body.p).length();
         job.fare = passengerFare(job.kind, length);
         job.deadline = time + (job.kind == JobKind::taxi ? 45 + length / 7 : 40 + length / 8);
-        job.ride.healthAtLastScare = c.health;
+        job.ride.health_at_last_scare = c.health;
         notify(job.kind == JobKind::patient ? L"Везите пациента в поликлинику"
                                             : L"Пассажир в салоне. Адрес на карте");
         return;
@@ -307,15 +307,15 @@ void World::stepPassengerJob(double dt)
     job.ride.away = 0;
     // Every further 12 % of damage since boarding frightens the passenger once more, as
     // in the managed game: one hard blow can count twice.
-    if (job.ride.scares < 3 && job.ride.healthAtLastScare - c.health > .12)
+    if (job.ride.scares < 3 && job.ride.health_at_last_scare - c.health > .12)
     {
         ++job.ride.scares;
         notify(L"Пассажир испугался удара. Оплата снижена");
-        job.ride.healthAtLastScare -= .12;
+        job.ride.health_at_last_scare -= .12;
     }
-    job.ride.healthAtLastScare = std::max(c.health, job.ride.healthAtLastScare);
+    job.ride.health_at_last_scare = std::max(c.health, job.ride.health_at_last_scare);
     bool parked = c.grounded() && !c.body.roadLevel && c.body.v.length() < .8 &&
-                  (c.body.p - jobTarget()).length() < arriveRadius(job.kind);
+                  (c.body.p - jobTarget()).length() < arrive_radius(job.kind);
     job.stopped = parked ? job.stopped + dt : 0;
     if (job.stopped > .8 && vehicleExit(c))
         finishJob(true);
@@ -343,4 +343,4 @@ void World::releasePassenger(const Job &trip, bool delivered)
     if (delivered && trip.kind == JobKind::patient)
         p.health = 1;
 }
-} // namespace pz
+} // namespace Promzona

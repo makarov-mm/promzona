@@ -1,17 +1,21 @@
 #include "promzona/world.hpp"
 #include "promzona/game_console.hpp"
 #include "json.hpp"
-#include <iostream>
+#include <print>
 #include <fstream>
 #include <chrono>
+#include <source_location>
+#include <format>
+#include <exception>
+#include <stdexcept>
 
-using namespace pz;
+using namespace Promzona;
 namespace
 {
-void check(bool ok, const char *message)
+void check(bool ok, const char *message, std::source_location where = std::source_location::current())
 {
     if (!ok)
-        throw std::runtime_error(message);
+        throw std::runtime_error(std::format("{} (line {})", message, where.line()));
 }
 void visit(World &w, int i)
 {
@@ -59,7 +63,7 @@ void test(World &w)
     {
         const double wantedBefore = w.wanted;
         const auto afoot = std::ranges::count_if(w.people, [](const Person &p) { return p.riding < 0; });
-        check(w.cars[actor].driverless && w.unloadCrew(w.cars[actor]) && w.wanted == wantedBefore &&
+        check(w.cars[actor].driverless && w.unload_crew(w.cars[actor]) && w.wanted == wantedBefore &&
                   std::ranges::count_if(w.people, [](const Person &p) { return p.riding < 0; }) == afoot,
               "taking the car of a contract is a carjacking");
     }
@@ -121,31 +125,32 @@ void shopAndGarage(const std::filesystem::path &path)
     w.inventory.clear();
     w.interactJob();
     check(w.openMarket == market, "E opens the counter on foot");
-    check(!w.buyAtMarket(ShopItem::pistol) && w.money == 119, "no charge for a refused purchase");
+    check(!w.buy_at_market(ShopItem::pistol) && w.money == 119, "no charge for a refused purchase");
     w.money = 600;
-    check(w.buyAtMarket(ShopItem::pistol) && w.money == 480 && w.inventory.ammo(WeaponId::pistol) == 30,
+    check(w.buy_at_market(ShopItem::pistol) && w.money == 480 && w.inventory.ammo(WeaponId::pistol) == 30,
           "first pistol includes ammunition");
     for (int i = 0; i < 30; ++i)
         w.inventory.consume(WeaponId::pistol);
-    check(w.buyAtMarket(ShopItem::pistol) && w.money == 440 && w.inventory.ammo(WeaponId::pistol) == 30,
+    check(w.buy_at_market(ShopItem::pistol) && w.money == 440 && w.inventory.ammo(WeaponId::pistol) == 30,
           "empty owned pistol receives the ammunition price");
-    check(w.buyAtMarket(ShopItem::automatic) && w.money == 90 && w.inventory.ammo(WeaponId::automatic) == 30,
+    check(w.buy_at_market(ShopItem::automatic) && w.money == 90 &&
+              w.inventory.ammo(WeaponId::automatic) == 30,
           "automatic sold with thirty rounds");
     w.health = .7;
-    check(w.buyAtMarket(ShopItem::pills) && w.health == 1 && w.money == 65, "pills restore health");
-    check(!w.buyAtMarket(ShopItem::pills) && w.money == 65, "full health does not cost money");
-    check(w.buyAtMarket(ShopItem::energy) && w.energySeconds == 25 && w.money == 50, "energy purchase");
-    check(!w.buyAtMarket(ShopItem::energy) && w.money == 50, "active energy cannot be bought twice");
+    check(w.buy_at_market(ShopItem::pills) && w.health == 1 && w.money == 65, "pills restore health");
+    check(!w.buy_at_market(ShopItem::pills) && w.money == 65, "full health does not cost money");
+    check(w.buy_at_market(ShopItem::energy) && w.energySeconds == 25 && w.money == 50, "energy purchase");
+    check(!w.buy_at_market(ShopItem::energy) && w.money == 50, "active energy cannot be bought twice");
     w.player.height += 4;
     w.servicesStep(.1);
-    check(w.openMarket < 0 && !w.buyAtMarket(ShopItem::energy), "leaving the counter closes the shop");
+    check(w.openMarket < 0 && !w.buy_at_market(ShopItem::energy), "leaving the counter closes the shop");
 
     const int garage = w.nearestSite(ServiceKind::garage, {});
     visit(w, garage);
-    w.useOwnedGarage();
+    w.use_owned_garage();
     check(w.ownedGarage < 0 && w.money == 50, "insufficient funds leave ownership unchanged");
     w.money = 500;
-    w.useOwnedGarage();
+    w.use_owned_garage();
     check(w.ownedGarage == garage && w.money == 100, "garage purchased at its entrance");
     w.controlledCar = 0;
     auto &car = w.cars[0];
@@ -155,12 +160,12 @@ void shopAndGarage(const std::filesystem::path &path)
     car.body.roadLevel = -1;
     car.health = .5;
     w.wanted = 2;
-    check(!w.serviceGarage(), "upper street workshop ignores traffic on another level");
+    check(!w.service_garage(), "upper street workshop ignores traffic on another level");
     car.body.roadLevel = 0;
     car.body.v = {3, 0};
-    check(!w.serviceGarage(), "moving vehicle cannot buy service");
+    check(!w.service_garage(), "moving vehicle cannot buy service");
     car.body.v = {};
-    check(w.garageQuote() == 90, "scaled repair and respray have one quote");
+    check(w.garage_quote() == 90, "scaled repair and respray have one quote");
     w.money = 89;
     w.interactJob();
     check(car.health == .5 && car.paint == 0 && w.wanted > 0 && w.money == 89,
@@ -171,8 +176,8 @@ void shopAndGarage(const std::filesystem::path &path)
     w.interactJob();
     check(w.money == 10, "serviced car is not billed again");
     auto population = w.cars.size();
-    w.useOwnedGarage();
-    check(w.controlledCar < 0 && car.personal && w.ownedVehicleCount() == 1 && w.cars.size() == population,
+    w.use_owned_garage();
+    check(w.controlledCar < 0 && car.personal && w.owned_vehicle_count() == 1 && w.cars.size() == population,
           "parking retains the same physical vehicle");
     w.save(path);
     World restored;
@@ -197,7 +202,7 @@ void shopAndGarage(const std::filesystem::path &path)
             other.personal = true;
             ++count;
         }
-    w.useOwnedGarage();
+    w.use_owned_garage();
     check(count == 3 && w.controlledCar == 0 && !car.personal,
           "fourth car refused without ejecting its driver");
 }
@@ -687,7 +692,7 @@ void hailAtStop(const std::filesystem::path &path)
     p.body.p = stop + Vec2{.2, -6};
     p.body.height = w.terrain.height(p.body.p) + .85;
     p.body.v = {};
-    w.anchorWalk(p);
+    w.anchor_walk(p);
     w.hailers = {};
     w.nextHail = 0;
     w.updateHailers();
@@ -724,9 +729,9 @@ void hailAtStop(const std::filesystem::path &path)
 
 int main()
 {
-    auto path = std::filesystem::temp_directory_path() /
-                ("promzona-jobs-" +
-                 std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".json");
+    auto path =
+        std::filesystem::temp_directory_path() /
+        std::format("promzona-jobs-{}.json", std::chrono::steady_clock::now().time_since_epoch().count());
     try
     {
         careerSeries(path);
@@ -807,13 +812,13 @@ int main()
         }
         check(rejected && resumed.job.kind == JobKind::none, "invalid target rejected atomically");
         std::filesystem::remove(path);
-        std::cout << "Native services, contracts and save migration passed\n";
+        std::println("Native services, contracts and save migration passed");
         return 0;
     }
     catch (const std::exception &e)
     {
         std::filesystem::remove(path);
-        std::cerr << e.what() << '\n';
+        std::println(stderr, "{}", e.what());
         return 1;
     }
 }

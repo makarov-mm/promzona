@@ -1,6 +1,6 @@
 #include "promzona/world.hpp"
 
-namespace pz
+namespace Promzona
 {
 void World::generateStreetLife()
 {
@@ -277,4 +277,4 @@ void World::updateScooters(double dt)
             }
     }
 }
-} // namespace pz
+} // namespace Promzona

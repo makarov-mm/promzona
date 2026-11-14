@@ -3,7 +3,7 @@
 #include <deque>
 #include <limits>
 
-namespace pz
+namespace Promzona
 {
 namespace
 {
@@ -270,7 +270,7 @@ bool World::deployResponder(int kind)
         Car car;
         car.id = static_cast<unsigned>(slot);
         car.body.id = 0x60000000u + car.id;
-        fitVehicle(car, responderModel(kind));
+        fit_vehicle(car, responderModel(kind));
         car.kind = kind;
         car.responding = true;
         car.routeFrom = from;
@@ -318,7 +318,7 @@ bool World::spawnVehicle(unsigned model)
     if (slot == cars.size() && size_t(std::ranges::count(cars, true, &Car::summoned)) >= maxSpawnVehicles)
         return false;
     Car candidate;
-    fitVehicle(candidate, model);
+    fit_vehicle(candidate, model);
     double best = 60 * 60;
     int start = nearestNode(focus);
     for (int z = std::max(0, start / nodes - 2); z <= std::min(nodes - 1, start / nodes + 2); ++z)
@@ -481,4 +481,4 @@ void World::toggleHelicopterLanding()
     if (c.kind == 12 && !c.destroyed && !c.recovering && c.lift >= .05)
         helicopterLanding = !helicopterLanding;
 }
-} // namespace pz
+} // namespace Promzona

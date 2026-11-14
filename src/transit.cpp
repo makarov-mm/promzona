@@ -3,7 +3,7 @@
 #include <queue>
 #include <stdexcept>
 
-namespace pz
+namespace Promzona
 {
 namespace
 {
@@ -161,7 +161,7 @@ TransitLine makeLine(const World &world, std::span<const int> nodes, int kind)
         if (best <= .25)
             continue;
         // Keep the original stop count/order and only consider straight streets nearby.
-        for (auto it = std::lower_bound(midpoints.begin(), midpoints.end(), scheduled - 72.);
+        for (auto it = std::ranges::lower_bound(midpoints, scheduled - 72.);
              it != midpoints.end() && *it <= scheduled + 72.; ++it)
             for (double shift : {0., -4., 4.})
             {
@@ -183,7 +183,7 @@ TransitLine makeLine(const World &world, std::span<const int> nodes, int kind)
 
 int TransitLine::nextStopAfter(double along) const
 {
-    auto it = std::upper_bound(stops.begin(), stops.end(), wrapDistance(along));
+    auto it = std::ranges::upper_bound(stops, wrapDistance(along));
     return it == stops.end() ? 0 : int(it - stops.begin());
 }
 
@@ -204,7 +204,7 @@ void World::generateTransit()
             int z0 = clamp(top + s + dz, 2, N - 8), z1 = clamp(bottom - s + dz, z0 + 5, N - 3);
             std::array<int, 4> targets{node(x0, z0), node(x0, z1), node(x1, z1), node(x1, z0)};
             if (attempt >= 16)
-                std::reverse(targets.begin(), targets.end());
+                std::ranges::reverse(targets);
             auto cycle = circuit(graph, targets);
             if (cycle.empty())
                 continue;
@@ -231,7 +231,7 @@ void World::generateTransit()
         {
             auto &c = cars[--slot];
             c.line = int(i);
-            fitVehicle(c, line.kind == 9 ? 8 : 9);
+            fit_vehicle(c, line.kind == 9 ? 8 : 9);
             c.along = (n + .25) * line.track.length() / fleetSize;
             for (int trySlot = 0; trySlot < 30; ++trySlot)
             {
@@ -296,7 +296,7 @@ void World::resumeWalk(Person &p, Vec2 waiting, int level)
     // Whoever is set down somewhere else has left the old haunt behind.
     p.role = Person::Role::none;
     p.roleHome = {};
-    anchorWalk(p);
+    anchor_walk(p);
     p.body.wake();
 }
 
@@ -485,7 +485,7 @@ void World::updatePlatforms()
         return !p.dead && p.injuredUntil <= time && p.riding < 0 && !p.body.roadLevel && p.ownedScooter < 0 &&
                p.role == Person::Role::none && !p.inCompany && !p.courier && p.fear < .15 && p.health > 0 &&
                p.burnUntil <= time && p.alertUntil <= time && p.watchUntil <= time && p.boardAfter <= time &&
-               !waitingForTaxi(i) && !paramedicCall(i) && i != patrol.officer &&
+               !waitingForTaxi(i) && !paramedic_call(i) && i != patrol.officer &&
                !((job.passenger() || job.kind == JobKind::elimination) && job.actor == i);
     };
     for (int i = 0; i < int(people.size()); ++i)
@@ -589,7 +589,7 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
             }
             controls.throttle = 0;
         }
-        stepVehicle(c, controls, dt, 1 - wetness * .2);
+        step_vehicle(c, controls, dt, 1 - wetness * .2);
         c.checkTrafficAt = 0;
         return;
     }
@@ -782,7 +782,7 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
             double angle = wrap(std::atan2(aim.x, aim.z) - c.heading());
             controls.steering = clamp(
                 std::atan2(2 * c.wheelbase * std::sin(angle), std::max(1., aim.length())) / .62, -1., 1.);
-            stepVehicle(c, controls, dt, 1 - wetness * .2);
+            step_vehicle(c, controls, dt, 1 - wetness * .2);
             c.along = line.wrapDistance(c.along + speed * dt);
             return;
         }
@@ -820,4 +820,4 @@ void World::alignTram(Car &c, double dt)
     c.body.w = 0;
     c.body.v = forward(newHeading) * dot(c.body.v, f);
 }
-} // namespace pz
+} // namespace Promzona

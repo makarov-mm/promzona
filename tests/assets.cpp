@@ -4,6 +4,8 @@
 #include <iostream>
 #include <windows.h>
 #include <objbase.h>
+#include <exception>
+#include <stdexcept>
 
 // Use the production readers. This test does not create an OpenGL context.
 int main(int argc, char **argv)
@@ -26,22 +28,22 @@ int main(int argc, char **argv)
             {
                 if (extension == ".glb")
                 {
-                    auto mesh = pz::loadGlb(entry.path());
+                    auto mesh = Promzona::loadGlb(entry.path());
                     ++meshes;
                     if (!mesh.embeddedColor.empty())
                     {
-                        pz::decodeImage(mesh.embeddedColor);
+                        Promzona::decodeImage(mesh.embeddedColor);
                         ++embedded;
                     }
                 }
                 else if (extension == ".cityskin")
                 {
-                    pz::loadSkin(entry.path());
+                    Promzona::loadSkin(entry.path());
                     ++skins;
                 }
                 else if (extension == ".png" || extension == ".jpg" || extension == ".jpeg")
                 {
-                    const auto image = pz::loadImage(entry.path());
+                    const auto image = Promzona::loadImage(entry.path());
                     if (entry.path().filename() == "far-color.png")
                     {
                         // The old top-down atlases painted the sides of distant objects white.
@@ -68,7 +70,7 @@ int main(int argc, char **argv)
                 }
                 else if (extension == ".wav")
                 {
-                    auto samples = pz::readWave(entry.path());
+                    auto samples = Promzona::readWave(entry.path());
                     if (samples.empty())
                         throw std::runtime_error("Empty WAV");
                     ++waves;
@@ -91,7 +93,7 @@ int main(int argc, char **argv)
         bool rejected = false;
         try
         {
-            pz::loadGlb(bad);
+            Promzona::loadGlb(bad);
         }
         catch (...)
         {

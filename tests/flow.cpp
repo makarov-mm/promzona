@@ -2,16 +2,18 @@
 #include "promzona/world.hpp"
 #include <algorithm>
 #include <cmath>
-#include <iostream>
+#include <print>
 #include <stdexcept>
+#include <source_location>
+#include <format>
 
-using namespace pz;
+using namespace Promzona;
 namespace
 {
-void require(bool ok, const char *message)
+void require(bool ok, const char *message, std::source_location where = std::source_location::current())
 {
     if (!ok)
-        throw std::runtime_error(message);
+        throw std::runtime_error(std::format("{} (line {})", message, where.line()));
 }
 constexpr double frame = 1. / 60;
 // The player watches on foot; the car that would stand in a lane is out on the beach.
@@ -153,7 +155,7 @@ void junction()
 
     // Out of a turn the car still points across the lane. Whoever stands in front of the
     // bumper is in the way, although the line the car steers for passes them by.
-    for (size_t slot : {size_t(3), size_t(5)})
+    for (size_t slot : {3uz, 5uz})
     {
         w.cars[slot].destroy();
         w.cars[slot].body.p = {World::landEdge - 20, 230. + 8. * double(slot)};
@@ -196,7 +198,7 @@ void junction()
         c.body.angle = -std::atan2(facing.x, facing.z);
         c.body.height = w.surface(c.body.p, 0) + .8;
     };
-    for (size_t slot : {size_t(1), size_t(2), size_t(4), size_t(6)})
+    for (size_t slot : {1uz, 2uz, 4uz, 6uz})
     {
         w.cars[slot].destroy();
         w.cars[slot].body.p = {World::landEdge - 20, 230. + 8. * double(slot)};
@@ -218,7 +220,7 @@ void junction()
     w.indexTraffic();
     w.senseTraffic(out, true);
     require(out.trafficLimit < .5, "a truck out of a turn runs into the car in front of its bumper");
-    for (size_t slot : {size_t(7), size_t(8), size_t(9)})
+    for (size_t slot : {7uz, 8uz, 9uz})
     {
         w.cars[slot].destroy();
         w.cars[slot].body.p = {World::landEdge - 20, 230. + 8. * double(slot)};
@@ -274,7 +276,7 @@ void walkers()
     const Vec2 pavement = Vec2{w.layout.coordinate(column), w.layout.coordinate(20)} + Vec2{9.1, 22};
     require(!w.layout.urbanSite(pavement, .3) && w.layout.riverDistance(pavement.x) < 10,
             "this is not the embankment");
-    require(w.placeOnBlock(*shy, column + 20 * World::nodes, column + 21 * World::nodes, 1, .5),
+    require(w.place_on_block(*shy, column + 20 * World::nodes, column + 21 * World::nodes, 1, .5),
             "the embankment has no pavement");
     shy->body.p = pavement;
     shy->body.height = w.terrain.height(pavement) + .85;
@@ -611,12 +613,12 @@ int main()
         backsUp();
         levelBend();
         city();
-        std::cout << "flow tests passed\n";
+        std::println("flow tests passed");
         return 0;
     }
     catch (const std::exception &e)
     {
-        std::cerr << "FAILED: " << e.what() << '\n';
+        std::println(stderr, "FAILED: {}", e.what());
         return 1;
     }
 }

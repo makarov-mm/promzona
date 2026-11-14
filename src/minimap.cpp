@@ -1,7 +1,7 @@
 #include "promzona/minimap.hpp"
 #include "promzona/world.hpp"
 
-namespace pz
+namespace Promzona
 {
 namespace
 {
@@ -109,7 +109,7 @@ void Minimap::rebuild(const World &world)
     }
 }
 
-void Minimap::copyView(Vec2 focus, std::span<std::uint32_t, size * size> output) const
+void Minimap::copy_view(Vec2 focus, std::span<std::uint32_t, size * size> output) const
 {
     int x = coordinate(focus.x) - size / 2, y = coordinate(focus.z) - size / 2;
     int left = std::clamp(-x, 0, size), right = std::clamp(stride_ - x, 0, size);
@@ -126,4 +126,4 @@ void Minimap::copyView(Vec2 focus, std::span<std::uint32_t, size * size> output)
         }
     }
 }
-} // namespace pz
+} // namespace Promzona

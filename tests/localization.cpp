@@ -3,18 +3,21 @@
 #include <cctype>
 #include <chrono>
 #include <fstream>
-#include <iostream>
+#include <print>
 #include <set>
 #include <sstream>
 #include <stdexcept>
+#include <source_location>
+#include <format>
 
 namespace fs = std::filesystem;
 namespace
 {
-void require(bool ok, const std::string &message)
+void require(bool ok, const std::string &message,
+             std::source_location where = std::source_location::current())
 {
     if (!ok)
-        throw std::runtime_error(message);
+        throw std::runtime_error(std::format("{} (line {})", message, where.line()));
 }
 // Test sources are UTF-8; the game text is wchar_t on every platform.
 std::wstring widen(std::string_view utf8)
@@ -83,7 +86,7 @@ std::vector<std::pair<std::string, std::wstring>> gameText(const fs::path &root)
                 while (end < source.size() && source[end] != '"')
                     end += source[end] == '\\' ? 2 : 1;
                 auto literal = widen(std::string_view(source).substr(at + 2, end - at - 2));
-                if (pz::hasCyrillic(literal))
+                if (Promzona::hasCyrillic(literal))
                     result.emplace_back(name, std::move(literal));
                 at = end + 1;
             }
@@ -96,28 +99,27 @@ int main(int argc, char **argv)
 {
     try
     {
-        using pz::Language;
-        require(pz::languageFromCode("ru-RU") == Language::russian &&
-                    pz::languageFromCode("UK_ua") == Language::ukrainian &&
-                    pz::languageFromCode("de") == Language::english &&
-                    pz::languageFromCode("") == Language::english,
+        using Promzona::Language;
+        require(Promzona::languageFromCode("ru-RU") == Language::russian &&
+                    Promzona::languageFromCode("UK_ua") == Language::ukrainian &&
+                    Promzona::languageFromCode("de") == Language::english &&
+                    Promzona::languageFromCode("") == Language::english,
                 "language codes");
-        require(pz::cycleLanguage(Language::english, 1) == Language::russian &&
-                    pz::cycleLanguage(Language::english, -1) == Language::ukrainian &&
-                    pz::cycleLanguage(Language::ukrainian, 5) == Language::english,
+        require(Promzona::cycleLanguage(Language::english, 1) == Language::russian &&
+                    Promzona::cycleLanguage(Language::english, -1) == Language::ukrainian &&
+                    Promzona::cycleLanguage(Language::ukrainian, 5) == Language::english,
                 "language cycle wraps");
-        const auto file =
-            fs::temp_directory_path() /
-            ("promzona-language-" +
-             std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".txt");
-        require(pz::loadLanguage(file, Language::ukrainian) == Language::ukrainian,
+        const auto file = fs::temp_directory_path() /
+                          std::format("promzona-language-{}.txt",
+                                      std::chrono::steady_clock::now().time_since_epoch().count());
+        require(Promzona::loadLanguage(file, Language::ukrainian) == Language::ukrainian,
                 "missing preference uses fallback");
-        require(pz::saveLanguage(file, Language::russian) &&
-                    pz::loadLanguage(file, Language::english) == Language::russian,
+        require(Promzona::saveLanguage(file, Language::russian) &&
+                    Promzona::loadLanguage(file, Language::english) == Language::russian,
                 "language preference round trip");
         fs::remove(file);
 
-        pz::PhraseTranslator words;
+        Promzona::PhraseTranslator words;
         words.add(L"кот", L"cat");
         words.add(L"кот учёный", L"learned cat");
         words.add(L"cat", L"dog");
@@ -130,67 +132,73 @@ int main(int argc, char **argv)
         require(words.translate(L"кот") == L"tomcat", "later entry replaces the phrase");
 
         std::set<std::wstring_view> keys;
-        for (const auto &phrase : pz::phrases())
+        for (const auto &phrase : Promzona::phrases())
         {
             const auto key = narrow(phrase.russian);
             require(keys.insert(phrase.russian).second, "duplicate catalogue key: " + key);
             require(!phrase.english.empty() && !phrase.ukrainian.empty(), "empty translation: " + key);
-            require(!pz::hasCyrillic(phrase.english), "Cyrillic in English text: " + key);
+            require(!Promzona::hasCyrillic(phrase.english), "Cyrillic in English text: " + key);
             require(phrase.russian.front() != L' ' && phrase.russian.back() != L' ', "untrimmed key: " + key);
         }
-        require(pz::phrases().size() > 200, "catalogue is populated");
-        require(pz::localize(L"Новая игра", Language::russian) == L"Новая игра",
+        require(Promzona::phrases().size() > 200, "catalogue is populated");
+        require(Promzona::localize(L"Новая игра", Language::russian) == L"Новая игра",
                 "Russian is the source text");
-        require(pz::localize(L"Новая игра", Language::english) == L"New game" &&
-                    pz::localize(L"Новая игра", Language::ukrainian) == L"Нова гра",
+        require(Promzona::localize(L"Новая игра", Language::english) == L"New game" &&
+                    Promzona::localize(L"Новая игра", Language::ukrainian) == L"Нова гра",
                 "menu row");
-        require(pz::localize(L"Задержание · штраф $160 · прошло 4 часа", Language::english) ==
+        require(Promzona::localize(L"Задержание · штраф $160 · прошло 4 часа", Language::english) ==
                     L"Arrested · fine $160 · elapsed 4 h",
                 "composed notice");
-        require(pz::localize(L"Рынок — на ул. Ленина, 120 м на запад.", Language::english) ==
-                        L"The market is on Lenina St, 120 m west." &&
-                    pz::localize(L"Поликлиника — на ул. Мира, 40 м на юг, милок.", Language::ukrainian) ==
-                        L"Поліклініка — на вул. Миру, 40 м на південь, любчику.",
-                "directions name the street");
-        require(pz::localize(L"Слот 2", Language::english) == L"Slot 2" &&
-                    pz::localize(L"Перекус $15", Language::ukrainian) == L"Перекус $15",
+        require(
+            Promzona::localize(L"Рынок — на ул. Ленина, 120 м на запад.", Language::english) ==
+                    L"The market is on Lenina St, 120 m west." &&
+                Promzona::localize(L"Поликлиника — на ул. Мира, 40 м на юг, милок.", Language::ukrainian) ==
+                    L"Поліклініка — на вул. Миру, 40 м на південь, любчику.",
+            "directions name the street");
+        require(Promzona::localize(L"Слот 2", Language::english) == L"Slot 2" &&
+                    Promzona::localize(L"Перекус $15", Language::ukrainian) == L"Перекус $15",
                 "fragments with numbers");
-        require(pz::localize(L"PROMZONA", Language::ukrainian) == L"PROMZONA", "Latin title is untouched");
+        require(Promzona::localize(L"PROMZONA", Language::ukrainian) == L"PROMZONA",
+                "Latin title is untouched");
 
-        require(pz::streetNames().size() == 49 && pz::avenueNames().size() == 49, "name tables");
-        require(pz::streetLabel(0) == L"ул. Ленина" && pz::streetLabel(49) == pz::streetLabel(0) &&
-                    pz::streetLabel(-1) == pz::streetLabel(48),
+        require(Promzona::streetNames().size() == 49 && Promzona::avenueNames().size() == 49, "name tables");
+        require(Promzona::streetLabel(0) == L"ул. Ленина" &&
+                    Promzona::streetLabel(49) == Promzona::streetLabel(0) &&
+                    Promzona::streetLabel(-1) == Promzona::streetLabel(48),
                 "street index wraps");
-        require(pz::localize(pz::streetLabel(0), Language::english) == L"Lenina St" &&
-                    pz::localize(pz::avenueLabel(2), Language::ukrainian) == L"вул. Паркова",
+        require(Promzona::localize(Promzona::streetLabel(0), Language::english) == L"Lenina St" &&
+                    Promzona::localize(Promzona::avenueLabel(2), Language::ukrainian) == L"вул. Паркова",
                 "street names follow the language");
         // Node (24, 24) is the origin of a 49-node city; a point just east of it lies on avenue 24.
-        require(pz::streetAt({0, 5}) == pz::streetLabel(24) && pz::streetAt({5, 0}) == pz::avenueLabel(24) &&
-                    pz::streetAt({-900, 0}) == pz::avenueLabel(24) &&
-                    pz::streetAt({-860, -900}) == pz::streetLabel(0),
+        require(Promzona::streetAt({0, 5}) == Promzona::streetLabel(24) &&
+                    Promzona::streetAt({5, 0}) == Promzona::avenueLabel(24) &&
+                    Promzona::streetAt({-900, 0}) == Promzona::avenueLabel(24) &&
+                    Promzona::streetAt({-860, -900}) == Promzona::streetLabel(0),
                 "nearest road of a point");
-        for (const auto &name : pz::streetNames())
-            require(!pz::hasCyrillic(pz::localize(L"ул. " + std::wstring(name.russian), Language::english)),
+        for (const auto &name : Promzona::streetNames())
+            require(!Promzona::hasCyrillic(
+                        Promzona::localize(L"ул. " + std::wstring(name.russian), Language::english)),
                     "street transliteration");
 
         if (argc == 2)
         {
             const auto text = gameText(argv[1]);
             require(text.size() > 200, "game text was found in the sources");
-            for (const auto &[file, literal] : text)
+            for (const auto &[source, literal] : text)
             {
-                const auto english = pz::localize(literal, Language::english);
-                require(!pz::hasCyrillic(english), "untranslated text in " + file + ": \"" + narrow(literal) +
-                                                       "\" -> \"" + narrow(english) + "\"");
+                const auto english = Promzona::localize(literal, Language::english);
+                require(!Promzona::hasCyrillic(english), "untranslated text in " + source + ": \"" +
+                                                             narrow(literal) + "\" -> \"" + narrow(english) +
+                                                             "\"");
             }
-            std::cout << text.size() << " game strings have English text\n";
+            std::println("{} game strings have English text", text.size());
         }
-        std::cout << "Localization tests passed\n";
+        std::println("Localization tests passed");
         return 0;
     }
     catch (const std::exception &e)
     {
-        std::cerr << "Localization test failed: " << e.what() << '\n';
+        std::println(stderr, "Localization test failed: {}", e.what());
         return 1;
     }
 }

@@ -3,17 +3,19 @@
 #include <chrono>
 #include <cstring>
 #include <cmath>
-#include <iostream>
+#include <print>
 #include <memory>
 #include <numeric>
 #include <stdexcept>
-using namespace pz;
+#include <source_location>
+#include <format>
+using namespace Promzona;
 namespace
 {
-void check(bool ok, const char *message)
+void check(bool ok, const char *message, std::source_location where = std::source_location::current())
 {
     if (!ok)
-        throw std::runtime_error(message);
+        throw std::runtime_error(std::format("{} (line {})", message, where.line()));
 }
 template <class F> void until(F predicate)
 {
@@ -43,11 +45,11 @@ void residency()
         for (size_t k = 0; k < cells.size(); ++k)
         {
             auto eye = cells[k].centre;
-            cache.trim(cells, eye);
+            (void)cache.trim(cells, eye);
             for (auto id : detailOrder(cells, eye, 200))
                 if (!cache.contains(id))
                 {
-                    cache.trim(cells, eye, 20);
+                    (void)cache.trim(cells, eye, 20);
                     cache.add(id, 20);
                     check(cache.bytes() <= 100, "route never exceeds cache budget");
                 }
@@ -55,7 +57,7 @@ void residency()
     bool rejected = false;
     try
     {
-        cache.trim(cells, {}, 101);
+        (void)cache.trim(cells, {}, 101);
     }
     catch (const std::runtime_error &)
     {
@@ -82,7 +84,7 @@ void worker()
     // The worker must use its immutable snapshot even if the owner starts a new city.
     world.buildings.clear();
     std::vector<size_t> ids(cells.size());
-    std::iota(ids.begin(), ids.end(), size_t{});
+    std::ranges::iota(ids, 0uz);
     stream.request(ids);
     until([&] { return stream.stats().ready == DetailStream::maxReady; });
     auto stats = stream.stats();
@@ -175,7 +177,7 @@ void sectorPlan()
     bool refused = false;
     try
     {
-        planSectors(row, std::vector<bool>(3), eye, 400);
+        (void)planSectors(row, std::vector<bool>(3), eye, 400);
     }
     catch (const std::invalid_argument &)
     {
@@ -202,8 +204,8 @@ void sectorWorker()
     // By construction every root lies on one of the two rendered triangles,
     // even when their four corners do not share a plane.
     const LawnTile incline{10, 20, 14, 24, 1, 3, 5, 9};
-    check(incline.height(11, 21) == 2.5f && incline.height(13, 23) == 6.5f &&
-              incline.height(12, 22) == 4, "lawn roots agree across the terrain diagonal");
+    check(incline.height(11, 21) == 2.5f && incline.height(13, 23) == 6.5f && incline.height(12, 22) == 4,
+          "lawn roots agree across the terrain diagonal");
     check(chunkBytes(reference) > 100000, "a sector of the centre has geometry");
     auto same = [&](const SectorStream::Packet &packet, const CityChunk &source)
     {
@@ -256,8 +258,7 @@ void sectorWorker()
     world.reset();
     const auto direct = stream.build(centre);
     check(direct.lawn.size() == lawn.size(), "resident sector carries the rendered lawn tiles");
-    check(direct.id == centre && same(direct, reference),
-          "a sector built at once is the sector of the city");
+    check(direct.id == centre && same(direct, reference), "a sector built at once is the sector of the city");
     std::vector<SectorOrder> all;
     for (size_t id = 0; id < sectors.size(); ++id)
         all.push_back({id, sectors[id].distance({})});
@@ -268,7 +269,8 @@ void sectorWorker()
     check(stats.queued <= SectorStream::maxQueued && stats.readyBytes > 0,
           "the worker waits for the renderer");
     auto first = stream.poll();
-    check(first && first->id == all.front().id && first->bytes == first->vertices.size() + first->indices.size(),
+    check(first && first->id == all.front().id &&
+              first->bytes == first->vertices.size() + first->indices.size(),
           "the nearest sector arrives first");
     stream.request({});
     until([&] { return !stream.stats().busy; });
@@ -317,13 +319,13 @@ int main()
         worker();
         sectorPlan();
         sectorWorker();
-        std::cout << "Streaming: deterministic geometry, cancellation, bounded queues, residency and "
-                     "shutdown passed\n";
+        std::print("{}", "Streaming: deterministic geometry, cancellation, bounded queues, residency and "
+                         "shutdown passed\n");
         return 0;
     }
     catch (const std::exception &e)
     {
-        std::cerr << e.what() << '\n';
+        std::println(stderr, "{}", e.what());
         return 1;
     }
 }

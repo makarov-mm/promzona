@@ -1,7 +1,7 @@
 #include "promzona/world.hpp"
 #include "promzona/fleet.hpp"
 
-namespace pz
+namespace Promzona
 {
 namespace
 {
@@ -79,7 +79,7 @@ void World::drownPerson(Person &p)
 
 bool World::personEngaged(int actor) const
 {
-    return actor == patrol.officer || actor == conversation.actor || paramedicCall(actor) ||
+    return actor == patrol.officer || actor == conversation.actor || paramedic_call(actor) ||
            (job.kind != JobKind::none && job.actor == actor) ||
            std::ranges::any_of(rescues, [&](const Rescue &r) { return r.patient == actor; }) ||
            std::ranges::any_of(hailers, [&](const StreetHail &h) { return h.actor == actor; });
@@ -106,7 +106,7 @@ bool World::renewPerson(int actor)
     {
         const int node = random.index(nodes * nodes), next = chooseWalkNext(node, -1);
         Person fresh;
-        if (!placeOnBlock(fresh, node, next, random.index(2) * 2 - 1, random.next()))
+        if (!place_on_block(fresh, node, next, random.index(2) * 2 - 1, random.next()))
             continue;
         const Vec2 at = fresh.body.p, target = fresh.target;
         const double centre = terrain.height(at) + .85;
@@ -152,7 +152,7 @@ bool World::renewCar(int slot)
         Car car;
         car.id = cars[slot].id;
         car.body.id = cars[slot].body.id;
-        fitVehicle(car, streetModel(slot));
+        fit_vehicle(car, streetModel(slot));
         car.body.friction = .5;
         car.laneIndex = layout.wide() ? random.index(2) : 0;
         if (car.kind == 5 && layout.wide())
@@ -197,7 +197,7 @@ void World::renewCity()
         if (renewPerson(int(i)))
             --budget;
     }
-    renewalCursor = (renewalCursor + 97) % std::max<size_t>(1, people.size());
+    renewalCursor = (renewalCursor + 97) % std::max(1uz, people.size());
     budget = 2;
     // Slot 0 is the player's own car, as in the managed game; response and summoned
     // vehicles beyond the traffic population have their own reuse rules.
@@ -233,4 +233,4 @@ void World::renewCity()
             --budget;
     }
 }
-} // namespace pz
+} // namespace Promzona

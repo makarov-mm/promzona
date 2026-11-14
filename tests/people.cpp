@@ -8,18 +8,20 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
-#include <iostream>
+#include <print>
 #include <stdexcept>
+#include <source_location>
+#include <format>
 
-using namespace pz;
+using namespace Promzona;
 namespace
 {
 using U = Person::Uniform;
 using R = Person::Role;
-void require(bool ok, const char *message)
+void require(bool ok, const char *message, std::source_location where = std::source_location::current())
 {
     if (!ok)
-        throw std::runtime_error(message);
+        throw std::runtime_error(std::format("{} (line {})", message, where.line()));
 }
 constexpr double frame = 1. / 60;
 PlayerInput parked()
@@ -129,7 +131,7 @@ void looks()
     SkinData skin;
     skin.joints = 24;
     skin.poses = 1;
-    skin.bones.assign(size_t(24) * 16, 0.f);
+    skin.bones.assign(24uz * 16, 0.f);
     for (int j = 0; j < 24; ++j)
         skin.bones[j * 16] = skin.bones[j * 16 + 5] = skin.bones[j * 16 + 10] = skin.bones[j * 16 + 15] = 1;
     skin.bones[0 * 16 + 13] = 1;
@@ -167,18 +169,20 @@ void paces()
     auto pace = [&](std::uint32_t style)
     {
         p.style = style;
-        return World::walkingPace(p);
+        return World::walking_pace(p);
     };
     require(pace(9) < pace(8) && pace(8) < pace(2) && pace(2) < pace(10) && pace(10) < pace(0),
             "personas share one walking speed");
     require(pace(0) >= 1.15 && pace(0) <= 1.5 && pace(9) == .7, "walking speed is outside the range");
     p.style = 2;
-    const double oldRun = World::fleeingPace(p);
+    const double oldRun = World::fleeing_pace(p);
     p.style = 0;
-    require(oldRun < World::fleeingPace(p) && World::fleeingPace(p) == 3.5, "elders run like everybody else");
+    require(oldRun < World::fleeing_pace(p) && World::fleeing_pace(p) == 3.5,
+            "elders run like everybody else");
     p.style = 9;
     p.uniform = U::police;
-    require(World::walkingPace(p) == 1.3 && World::fleeingPace(p) == 3.5, "an officer staggers like a drunk");
+    require(World::walking_pace(p) == 1.3 && World::fleeing_pace(p) == 3.5,
+            "an officer staggers like a drunk");
 
     // In the city: an elder covers less ground than a neighbour of the same stretch.
     World w;
@@ -189,7 +193,7 @@ void paces()
     for (int i = 0; i < 240; ++i)
         w.step(parked(), frame);
     const double a = w.people[slow].body.v.length(), b = w.people[brisk].body.v.length();
-    require(std::abs(a - 1.) < .05 && std::abs(b - World::walkingPace(w.people[brisk])) < .05 && a < b,
+    require(std::abs(a - 1.) < .05 && std::abs(b - World::walking_pace(w.people[brisk])) < .05 && a < b,
             "walkers ignore their pace");
 }
 
@@ -199,8 +203,8 @@ void habits()
     World w;
     w.generate(20261105u);
     w.dispatchAt = w.patrolScanAt = w.nextRescueDispatch = 1e9;
-    require(count(w, R::beach) == w.people.size() / 16 && w.roleQuota(R::beach) == 45 &&
-                w.roleQuota(R::night) == 9 && count(w, R::night) == 0,
+    require(count(w, R::beach) == w.people.size() / 16 && w.role_quota(R::beach) == 45 &&
+                w.role_quota(R::night) == 9 && count(w, R::night) == 0,
             "new city has the wrong habits");
     require(w.rolesTaken == 0 && w.rolesLeft == 0, "settling counts as play");
     size_t groups = 0, corners = 0;
@@ -209,7 +213,7 @@ void habits()
         const auto &p = w.people[i];
         if (p.role == R::none)
             continue;
-        require(w.roleGround(p.role, p.roleHome) && (p.body.p - p.roleHome).length() < 1e-9 && !p.courier &&
+        require(w.role_ground(p.role, p.roleHome) && (p.body.p - p.roleHome).length() < 1e-9 && !p.courier &&
                     !p.inCompany && p.ownedScooter < 0 && p.riding < 0,
                 "habit on bad ground or with other duties");
         if (p.role == R::vagrant)
@@ -237,7 +241,7 @@ void habits()
                     "habits are not seeded");
         World dense;
         dense.generate(20261105u, {}, CityLayout::districtRevision, Density::medium);
-        require(count(dense, R::beach) == 112 && dense.roleQuota(R::night) == 22,
+        require(count(dense, R::beach) == 112 && dense.role_quota(R::night) == 22,
                 "dense city has the wrong habits");
     }
 
@@ -318,7 +322,7 @@ void habits()
     const size_t before = count(w, R::beach);
     for (int pass = 0; pass < 40; ++pass)
         rolePass(w);
-    require(count(w, R::night) == w.roleQuota(R::night), "the night shift did not turn out");
+    require(count(w, R::night) == w.role_quota(R::night), "the night shift did not turn out");
     size_t watched = w.people.size();
     for (size_t i = 0; i < w.people.size(); ++i)
     {
@@ -326,7 +330,7 @@ void habits()
         if (p.role != R::night)
             continue;
         const double street = w.layout.roadDistance(p.roleHome);
-        require(w.outOfSight(p.roleHome) && w.roleGround(R::night, p.roleHome) && street > 7.85 &&
+        require(w.outOfSight(p.roleHome) && w.role_ground(R::night, p.roleHome) && street > 7.85 &&
                     street < 8.6 && (p.target - World::corner(p.node, p.sx, p.sz)).length() < 1e-9,
                 "night worker is not at a kerb out of sight");
         require(appearance(p).outfit == Appearance::nightWorker && appearance(p).model == 1 && !p.elder() &&
@@ -449,7 +453,7 @@ void duties()
                 continue;
             fitVehicle(c, force.model);
             c.body.v = {};
-            if (w.unloadCrew(c))
+            if (w.unload_crew(c))
                 unit = &c;
         }
         auto &car = *unit;
@@ -536,21 +540,21 @@ void streets()
     p.body.height = w.terrain.height(p.body.p) + .85;
     // Eastbound walkers cross the north-south street: its cars have green from 14 to 26.
     at(15);
-    require(std::abs(w.kerbWait(p) - 11) < 1e-9, "walker steps out in front of green traffic");
+    require(std::abs(w.kerb_wait(p) - 11) < 1e-9, "walker steps out in front of green traffic");
     at(26.5);
-    require(w.kerbWait(p) == 0, "walker waits although the cars have just stopped");
+    require(w.kerb_wait(p) == 0, "walker waits although the cars have just stopped");
     at(5.5);
-    require(w.kerbWait(p) == 0, "walker waits with eight and a half seconds to spare");
+    require(w.kerb_wait(p) == 0, "walker waits with eight and a half seconds to spare");
     at(7);
-    require(std::abs(w.kerbWait(p) - 19) < 1e-9, "walker starts seven seconds before the cars");
+    require(std::abs(w.kerb_wait(p) - 19) < 1e-9, "walker starts seven seconds before the cars");
     // Away from the kerb nobody waits, and neither does anybody at an arm with no street.
     at(15);
     p.body.p = centre + Vec2{-kerb - 3, 9.1};
-    require(w.kerbWait(p) == 0, "walker waits in the middle of the block");
+    require(w.kerb_wait(p) == 0, "walker waits in the middle of the block");
     p.body.p = centre + Vec2{-2, 9.1};
-    require(w.kerbWait(p) == 0 && w.onCrossing(p, true), "walker in the road is not hurrying");
+    require(w.kerb_wait(p) == 0 && w.on_crossing(p, true), "walker in the road is not hurrying");
     at(27);
-    require(w.onCrossing(p, false) && !w.onCrossing(p, true), "walker hurries under a walk signal");
+    require(w.on_crossing(p, false) && !w.on_crossing(p, true), "walker hurries under a walk signal");
     {
         const int top = World::nodes * (World::nodes - 1) + ci;
         require(!w.layout.road(ci, World::nodes - 1, 0), "the city has a street beyond its edge");
@@ -559,20 +563,20 @@ void streets()
         edge.body.p = World::nodePoint(top) + Vec2{-kerb - .5, 9.1};
         at(15);
         w.time += (ci * 3 + cj * 5) % 9 - (ci * 3 + (World::nodes - 1) * 5) % 9;
-        require(w.kerbWait(edge) == 0, "walker waits where there is nothing to cross");
+        require(w.kerb_wait(edge) == 0, "walker waits where there is nothing to cross");
     }
     // Westbound the crossing comes first: the walker leaves the corner's own anchor.
     cross(p, corner, true, -1);
     p.body.p = centre + Vec2{kerb + .5, 9.1};
     at(20);
-    require(std::abs(w.kerbWait(p) - 6) < 1e-9, "westbound walker ignores the lights");
+    require(std::abs(w.kerb_wait(p) - 6) < 1e-9, "westbound walker ignores the lights");
     // Northbound walkers cross the east-west street, whose cars have green from 0 to 12.
     cross(p, corner, false, 1);
     p.body.p = centre + Vec2{9.1, -kerb - .5};
     at(3);
-    require(std::abs(w.kerbWait(p) - 9) < 1e-9, "northbound walker ignores the lights");
+    require(std::abs(w.kerb_wait(p) - 9) < 1e-9, "northbound walker ignores the lights");
     at(13);
-    require(w.kerbWait(p) == 0, "northbound walker waits for nothing");
+    require(w.kerb_wait(p) == 0, "northbound walker waits for nothing");
 
     // Out of the player's sight the rule is the same: whoever comes into view later is
     // found at the kerb, not in front of the cars that have green.
@@ -601,7 +605,7 @@ void streets()
         }
         require(p.body.p.x - centre.x >= kerb && !p.dead,
                 "a walker out of sight did not cross on the walk signal");
-        require(pace > w.walkingPace(p) * 1.1, "a walker out of sight dawdles in the road");
+        require(pace > w.walking_pace(p) * 1.1, "a walker out of sight dawdles in the road");
     }
     // In the street: the player watches a walker wait for the lights and then cross.
     {
@@ -677,7 +681,7 @@ void corners()
         p.node = p.next = corner;
         p.sx = p.sz = p.nextSx = p.nextSz = 1;
         p.lastWalk = 2;
-        w.chooseWalk(p);
+        w.choose_walk(p);
         return p.lastWalk;
     };
     // East-west cars have green and the others get it in six seconds: nothing may be
@@ -707,7 +711,7 @@ void corners()
         while (arrive() != 0)
             ;
         require(p.next == corner && p.nextSx == -1 && p.nextSz == 1 &&
-                    (p.target - World::corner(corner, -1, 1)).length() < 1e-9 && w.kerbWait(p) == 0,
+                    (p.target - World::corner(corner, -1, 1)).length() < 1e-9 && w.kerb_wait(p) == 0,
                 "the crossing does not lead to the other corner");
     }
     // Where a street ends there is one way on: back.
@@ -723,12 +727,12 @@ void corners()
         p.sx = p.sz = p.nextSx = p.nextSz = 1;
         p.lastWalk = 3;
         // Across the end of the street to its other pavement, or back up the block.
-        w.chooseWalk(p);
+        w.choose_walk(p);
         require(p.lastWalk == 0 && p.nextSx == -1,
                 "a walker at the end of a street does not cross to its other side");
         p.sx = -1;
         p.lastWalk = 0;
-        w.chooseWalk(p);
+        w.choose_walk(p);
         require(p.lastWalk == 3 && p.next == end + World::nodes,
                 "a walker at the end of a street stays there");
     }
@@ -753,7 +757,7 @@ void corners()
                 if (w.crossingLights(p.node, alongX, alongX ? p.sz : p.sx))
                 {
                     ++crossings;
-                    require(w.walkSignal(p.node, alongX, 9.4), "a crossing is begun against the lights");
+                    require(w.walk_signal(p.node, alongX, 9.4), "a crossing is begun against the lights");
                 }
             }
             leg[i] = key;
@@ -838,7 +842,7 @@ void passing()
         if (to > from)
             cross(p, to, true, 1);
         else
-            require(w.placeOnBlock(p, from, to, 1, .5), "the block has no northern pavement");
+            require(w.place_on_block(p, from, to, 1, .5), "the block has no northern pavement");
         p.body.p = centre + where;
         p.body.height = w.terrain.height(p.body.p) + .85;
         p.body.v = {};
@@ -851,7 +855,7 @@ void passing()
     put(follower, corner - 1, corner, {-kerb - 6, 9.1});
     put(east, corner - 1, corner, {-26, 9.1});
     put(west, corner, corner - 1, {-16, 9.1});
-    require(w.kerbWait(waiter) > 9, "the waiter has nothing to wait for");
+    require(w.kerb_wait(waiter) > 9, "the waiter has nothing to wait for");
     const Vec2 spot = waiter.body.p;
     double pushed = 0, closest = 1e9, widest = 0;
     for (int i = 0; i < 60 * 7; ++i)
@@ -1068,12 +1072,12 @@ int main()
         passing();
         litter();
         parking();
-        std::cout << "people tests passed\n";
+        std::println("people tests passed");
         return 0;
     }
     catch (const std::exception &e)
     {
-        std::cerr << "FAILED: " << e.what() << '\n';
+        std::println(stderr, "FAILED: {}", e.what());
         return 1;
     }
 }

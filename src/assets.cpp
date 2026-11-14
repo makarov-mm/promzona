@@ -1,12 +1,15 @@
 #include "promzona/assets.hpp"
 #include "json.hpp"
-#include <cstring>
+
 #include <fstream>
 #include <stdexcept>
 #include <wincodec.h>
 #include <windows.h>
 #include <wrl/client.h>
-namespace pz
+#include <cstring>
+#include <format>
+
+namespace Promzona
 {
 static std::vector<unsigned char> bytes(const std::filesystem::path &file)
 {
@@ -30,12 +33,12 @@ template <class T> static T scalar(const std::vector<unsigned char> &data, size_
     std::memcpy(&r, data.data() + at, sizeof r);
     return r;
 }
-std::string readText(const std::filesystem::path &file)
+std::string read_text(const std::filesystem::path &file)
 {
     auto b = bytes(file);
     return {b.begin(), b.end()};
 }
-MeshData loadGlb(const std::filesystem::path &file)
+MeshData load_glb(const std::filesystem::path &file)
 {
     auto b = bytes(file);
     if (scalar<std::uint32_t>(b, 0) != 0x46546c67 || scalar<std::uint32_t>(b, 4) != 2 ||
@@ -83,8 +86,8 @@ MeshData loadGlb(const std::filesystem::path &file)
         size_t elem = type == 5126 || type == 5125 ? 4 : type == 5123 ? 2 : type == 5121 ? 1 : 0;
         if (!elem)
             throw std::runtime_error("GLB component type");
-        size_t count = a.at("count"), viewOffset = v.value("byteOffset", size_t(0)),
-               viewLength = v.at("byteLength"), offset = a.value("byteOffset", size_t(0)),
+        size_t count = a.at("count"), viewOffset = v.value("byteOffset", 0uz),
+               viewLength = v.at("byteLength"), offset = a.value("byteOffset", 0uz),
                stride = v.value("byteStride", elem * components);
         if (count > 3000000 || stride < elem * components || stride > 1024 || offset > viewLength ||
             viewOffset > bin.size() || viewLength > bin.size() - viewOffset ||
@@ -154,7 +157,7 @@ MeshData loadGlb(const std::filesystem::path &file)
             if (!image.contains("bufferView"))
                 throw std::runtime_error("Imported GLB image must be embedded");
             auto &view = j.at("bufferViews").at(image.at("bufferView").get<int>());
-            size_t offset = view.value("byteOffset", size_t(0)), length = view.at("byteLength");
+            size_t offset = view.value("byteOffset", 0uz), length = view.at("byteLength");
             if (view.value("buffer", 0) != 0 || offset > bin.size() || length > bin.size() - offset)
                 throw std::runtime_error("GLB image out of bounds");
             mesh.embeddedColor.assign(bin.begin() + offset, bin.begin() + offset + length);
@@ -164,7 +167,7 @@ MeshData loadGlb(const std::filesystem::path &file)
         throw std::runtime_error("GLB has no triangles");
     return mesh;
 }
-SkinData loadSkin(const std::filesystem::path &file)
+SkinData load_skin(const std::filesystem::path &file)
 {
     auto b = bytes(file);
     if (scalar<std::uint32_t>(b, 0) != 0x314b5343)
@@ -213,18 +216,18 @@ SkinData loadSkin(const std::filesystem::path &file)
     return r;
 }
 
-Image loadImage(const std::filesystem::path &file)
+Image load_image(const std::filesystem::path &file)
 {
     try
     {
-        return decodeImage(bytes(file));
+        return decode_image(bytes(file));
     }
     catch (const std::exception &e)
     {
         throw std::runtime_error(file.string() + ": " + e.what());
     }
 }
-Image decodeImage(std::span<const unsigned char> encoded)
+Image decode_image(std::span<const unsigned char> encoded)
 {
     using Microsoft::WRL::ComPtr;
     ComPtr<IWICImagingFactory> factory;
@@ -235,8 +238,8 @@ Image decodeImage(std::span<const unsigned char> encoded)
     auto check = [&](HRESULT h, const char *stage)
     {
         if (FAILED(h))
-            throw std::runtime_error(std::string(stage) +
-                                     " (HRESULT=" + std::to_string(static_cast<unsigned long>(h)) + ")");
+            throw std::runtime_error(
+                std::format("{} (HRESULT={:#010x})", stage, static_cast<unsigned long>(h)));
     };
     check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)),
           "WIC factory");
@@ -262,4 +265,4 @@ Image decodeImage(std::span<const unsigned char> encoded)
           "WIC pixel read");
     return im;
 }
-} // namespace pz
+} // namespace Promzona

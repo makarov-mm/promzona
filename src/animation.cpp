@@ -1,6 +1,6 @@
 #include "promzona/animation.hpp"
 
-namespace pz
+namespace Promzona
 {
 ActorPose ActorMotion::sample(const ActorState &p, double time, int poseCount)
 {
@@ -84,4 +84,4 @@ ActorPose ActorMotion::sample(const ActorState &p, double time, int poseCount)
     };
     return {phase(from_), phase(to_), blend_};
 }
-} // namespace pz
+} // namespace Promzona

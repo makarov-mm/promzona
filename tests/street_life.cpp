@@ -5,15 +5,19 @@
 #include <chrono>
 #include <cmath>
 #include <fstream>
-#include <iostream>
-using namespace pz;
+#include <print>
+#include <source_location>
+#include <format>
+#include <exception>
+#include <stdexcept>
+using namespace Promzona;
 
 namespace
 {
-void check(bool ok, const char *message)
+void check(bool ok, const char *message, std::source_location where = std::source_location::current())
 {
     if (!ok)
-        throw std::runtime_error(message);
+        throw std::runtime_error(std::format("{} (line {})", message, where.line()));
 }
 void scooterTest(World &w)
 {
@@ -40,12 +44,12 @@ void scooterTest(World &w)
     w.player.height = s.body.height + 4;
     check(!w.useScooter(), "mounted from a different storey");
     w.player.height = s.body.height + .7;
-    w.enterExit();
+    w.enter_exit();
     check(w.playerScooter == index && s.rider == Scooter::playerRider, "could not ride abandoned scooter");
     w.time += 8;
     w.riderIntent(p, direction, speed);
     check(s.rider == Scooter::playerRider, "owner stole player's scooter");
-    w.toggleDrone(0);
+    w.toggle_drone(0);
     check(!w.drone.active, "rode a scooter and operated a drone at once");
     w.player.v = {0, 3};
     PlayerInput input;
@@ -233,7 +237,7 @@ void conversationTest()
             w.people[i].dead = true;
     p.style = 10;
     w.money = 8;
-    w.enterExit();
+    w.enter_exit();
     check(w.conversation.actor == who && w.conversation.offer == World::StreetOffer::gift && w.money == 8,
           "F failed to address the person ahead");
     check(!w.talk() && w.money == 8, "same keypress accepted a gift twice");
@@ -315,7 +319,7 @@ void knockTest()
         car.body.v = {speed, 0};
         w.sounds.clear();
         w.time += .1;
-        w.stepWildlife(.1);
+        w.step_wildlife(.1);
         // The car is taken away: what follows is the flight alone.
         car.body.p = spot + Vec2{0, 300};
         car.body.v = {};
@@ -333,7 +337,7 @@ void knockTest()
     for (int n = 0; n < 29; ++n)
     {
         w.time += .1;
-        w.stepWildlife(.1);
+        w.step_wildlife(.1);
         highest = std::max(highest, stray->altitude - w.terrain.height(stray->p));
         check(stray->knockedUntil > w.time - 1e-9 ? stray->fear == 0 : true, "a stunned animal is afraid");
     }
@@ -342,8 +346,8 @@ void knockTest()
               stray->velocity.length() < .05 && stray->deadUntil == 0,
           "a knocked animal does not fly, land and come to rest");
     w.time += .2;
-    w.stepWildlife(.1);
-    w.stepWildlife(.1);
+    w.step_wildlife(.1);
+    w.step_wildlife(.1);
     check(stray->knockedUntil <= w.time && stray->deadUntil == 0, "a knocked animal does not get up");
     strike(9);
     check(stray->deadUntil > w.time && stray->knockedUntil > w.time &&
@@ -353,7 +357,7 @@ void knockTest()
     for (int n = 0; n < 40; ++n)
     {
         w.time += .1;
-        w.stepWildlife(.1);
+        w.step_wildlife(.1);
         highest = std::max(highest, stray->altitude - w.terrain.height(stray->p));
     }
     check(highest > .1 && stray->altitude == w.terrain.height(stray->p) && (stray->p - spot).length() > 1 &&
@@ -365,7 +369,7 @@ void knockTest()
     for (int n = 0; n < 20; ++n)
     {
         w.time += .1;
-        w.stepWildlife(.1);
+        w.step_wildlife(.1);
     }
     check(stray->altitude == w.terrain.height(stray->p), "a dead bird hangs in the air");
 }
@@ -376,17 +380,17 @@ void wildlifeTest(World &w)
     check(first != w.animals.end() && std::ranges::count(w.animals, 0, &Animal::flock) >= 6,
           "solitary pigeon spawn");
     Vec2 home = first->p;
-    w.scareWildlife(home, first->altitude, 0);
+    w.scare_wildlife(home, first->altitude, 0);
     check(w.flocks[0].flying && (home - w.flocks[0].landing).length() > 15, "flock did not depart together");
     for (int n = 0; n < 20; n++)
     {
         w.time += .1;
-        w.stepWildlife(.1);
+        w.step_wildlife(.1);
     }
     for (auto &a : w.animals)
         if (a.flock == 0)
             check(a.altitude > w.terrain.height(a.p) + 1 && a.distance > 1, "flock member left on ground");
-    w.scareWildlife(first->p, first->altitude, 3);
+    w.scare_wildlife(first->p, first->altitude, 3);
     check(first->deadUntil > w.time, "blast missed nearby animal");
 }
 // The animals of the managed game live on the pavements as well as in the parks: strays
@@ -469,7 +473,7 @@ void pavementAnimals()
     {
         const Vec2 before = stray.p;
         w.time += .1;
-        w.stepWildlife(.1);
+        w.step_wildlife(.1);
         const double step = (stray.p - before).length();
         walked += step;
         check(step <= pace * .1 + 1e-9, "a stray strolls at the pace of the managed game");
@@ -489,7 +493,7 @@ void pavementAnimals()
     for (int n = 0; n < 300; ++n)
     {
         const auto perch =
-            w.landingSite({double(n % 17) * 40 - 320, double(n % 13) * 50 - 300}, forward(n * .7));
+            w.landing_site({double(n % 17) * 40 - 320, double(n % 13) * 50 - 300}, forward(n * .7));
         ++landings;
         if (!perch.pavement)
         {
@@ -506,7 +510,7 @@ void pavementAnimals()
     check(beside > landings / 10 && beside < landings * 4 / 10,
           "about one landing in five is beside a street");
     const auto leader = std::ranges::find(w.animals, 0, &Animal::flock);
-    w.takeFlight(0, leader->p, {1, 0});
+    w.take_flight(0, leader->p, {1, 0});
     const bool files = !inPark(w.flocks[0].landing);
     int member = 0;
     for (const auto &a : w.animals)
@@ -519,8 +523,7 @@ void pavementAnimals()
 int main()
 {
     auto path = std::filesystem::temp_directory_path() /
-                ("pz-street-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) +
-                 ".json");
+                std::format("pz-street-{}.json", std::chrono::steady_clock::now().time_since_epoch().count());
     try
     {
         World w;
@@ -549,7 +552,7 @@ int main()
         for (int n = 0; n < 4200 && copy.flocks[0].flying; ++n)
         {
             copy.time += .1;
-            copy.stepWildlife(.1);
+            copy.step_wildlife(.1);
         }
         check(!copy.flocks[0].flying, "flock stalled on its way to the new park");
         for (const auto &bird : copy.animals)
@@ -585,13 +588,13 @@ int main()
         w.clinicRespawn(w.position());
         check(w.playerScooter < 0 && w.scooters.front().rider == Scooter::free, "respawn retained scooter");
         std::filesystem::remove(path);
-        std::cout << "Street life passed\n";
+        std::println("Street life passed");
         return 0;
     }
     catch (const std::exception &e)
     {
         std::filesystem::remove(path);
-        std::cerr << e.what() << '\n';
+        std::println(stderr, "{}", e.what());
         return 1;
     }
 }

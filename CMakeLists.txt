@@ -142,7 +142,7 @@ if(WIN32)
   # GLSL is loaded by the game; listing it here is for editing, not MSBuild compilation.
   set_source_files_properties(${native_shaders} PROPERTIES HEADER_FILE_ONLY TRUE)
   target_sources(Promzona PRIVATE include/promzona/renderer.hpp include/promzona/gl.hpp
-    ${native_shaders} Content/Promzona.ico)
+    ${native_shaders} Content/PROMZONA.ico)
   target_include_directories(Promzona PRIVATE third_party)
   target_link_libraries(Promzona PRIVATE promzona_core promzona_assets opengl32 shell32 winmm)
   if(MINGW)

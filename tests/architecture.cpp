@@ -1,16 +1,18 @@
 #include "promzona/architecture.hpp"
 #include "promzona/visibility.hpp"
-#include <iostream>
+#include <print>
 #include <stdexcept>
-using namespace pz;
+#include <source_location>
+#include <format>
+using namespace Promzona;
 namespace
 {
 int checks{};
-void check(bool v, const char *message)
+void check(bool v, const char *message, std::source_location where = std::source_location::current())
 {
     ++checks;
     if (!v)
-        throw std::runtime_error(message);
+        throw std::runtime_error(std::format("{} (line {})", message, where.line()));
 }
 void geometry(const CityChunk &mesh, const BuildingPlan &p)
 {
@@ -106,8 +108,8 @@ void plans()
             triangles += m.indices.size() / 3;
     }
     check(windows > 10000, "whole city architecture generated");
-    std::cout << world.buildings.size() << " buildings, " << windows << " windows, " << triangles
-              << " near-detail triangles\n";
+    std::println("{} buildings, {} windows, {} near-detail triangles", world.buildings.size(), windows,
+                 triangles);
     check(triangles < 2000000, "bounded near-detail geometry budget");
 }
 void visibility()
@@ -134,12 +136,12 @@ int main()
     {
         plans();
         visibility();
-        std::cout << checks << " architecture/culling checks passed\n";
+        std::println("{} architecture/culling checks passed", checks);
         return 0;
     }
     catch (const std::exception &e)
     {
-        std::cerr << e.what() << '\n';
+        std::println(stderr, "{}", e.what());
         return 1;
     }
 }

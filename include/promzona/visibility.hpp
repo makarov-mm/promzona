@@ -1,6 +1,7 @@
 #pragma once
 #include "math.hpp"
-namespace pz
+
+namespace Promzona
 {
 // Extract the six OpenGL clip planes once per camera, not for every object.
 class Frustum
@@ -29,4 +30,4 @@ class Frustum
         return true;
     }
 };
-} // namespace pz
+} // namespace Promzona
