@@ -76,7 +76,7 @@ namespace Promzona
 
     // The same world column keeps its absolute raindrop height while the camera moves.
     // Wrap correctly for long sessions, negative world coordinates and an airborne camera.
-    inline double rainHeight(double phase, double seconds, double eyeY)
+    inline double rain_height(double phase, double seconds, double eyeY)
     {
         constexpr double period = 28.;
         double base = eyeY - 8., cycles = phase - (seconds * 14. + base) / period;

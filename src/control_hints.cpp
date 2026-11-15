@@ -53,7 +53,7 @@ namespace Promzona
                      {L"ЛКМ", world.inventory.active() ? L"Огонь" : L"Удар"}};
             if (int food = world.counterInReach(false); food >= 0)
                 hints.push_back({L"F", L"Перекус $" + std::to_wstring(world.sites[food].price())});
-            else if (world.nearbyScooter() >= 0)
+            else if (world.nearby_scooter() >= 0)
                 hints.push_back({L"F", L"На самокат"});
             else if (world.conversation.offer != World::StreetOffer::none &&
                      world.time < world.conversation.offerUntil)

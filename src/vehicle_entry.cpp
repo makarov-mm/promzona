@@ -128,7 +128,7 @@ namespace Promzona
                         : police         ? Person::Uniform::police
                         : car.kind == 4  ? Person::Uniform::medical
                                          : Person::Uniform::none;
-            scarePerson(p, player.p, police ? .1 : 1.);
+            scare_person(p, player.p, police ? .1 : 1.);
             if (police)
             {
                 p.sidearm = car.kind >= 7 ? WeaponId::automatic : WeaponId::pistol;
@@ -167,7 +167,7 @@ namespace Promzona
         }
         if (drone.active || health <= 0)
             return;
-        if (controlledCar < 0 && useScooter())
+        if (controlledCar < 0 && use_scooter())
             return;
         if (controlledCar >= 0)
         {

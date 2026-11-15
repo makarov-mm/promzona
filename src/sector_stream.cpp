@@ -12,18 +12,27 @@ namespace Promzona
     {
         if (sectors.size() != resident.size())
             throw std::invalid_argument("Sector residency does not match the city");
+
         SectorPlan plan;
+
         for (size_t id = 0; id < sectors.size(); ++id)
         {
             const float distance = sectors[id].distance(eye);
+
             if (!resident[id])
             {
                 if (distance <= range + sectorReach)
-                    plan.load.push_back({id, distance});
+                    plan.load.push_back({
+                        .id = id,
+                        .distance = distance
+                    });
             }
             else if (distance > range + sectorReach + sectorKeep)
+            {
                 plan.evict.push_back(id);
+            }
         }
+
         std::ranges::stable_sort(plan.load, {}, &SectorOrder::distance);
         return plan;
     }
@@ -31,10 +40,16 @@ namespace Promzona
     SectorStream::SectorStream(const World &world) : world_(std::make_unique<const World>(world))
     {
         // The sectors cover the whole island and its coast, whatever the size of the grid.
-        const double low = -std::ceil(world.landEdge / Sector::size) * Sector::size;
+        const double low = -std::ceil(World::landEdge / Sector::size) * Sector::size;
+
         for (double z = low; z < -low; z += Sector::size)
             for (double x = low; x < -low; x += Sector::size)
-                sectors_.push_back({x, z});
+                sectors_.push_back(
+         {
+                    .x = x, 
+                    .z = z
+                });
+
         wanted_.resize(sectors_.size());
         worker_ = std::jthread([this](std::stop_token stop) { run(std::move(stop)); });
     }
@@ -52,31 +67,35 @@ namespace Promzona
         static_assert(stride == 48 && offsetof(Vertex, joints) == 32);
         Packet packet;
         packet.id = id;
-        size_t vertexBytes{}, indexBytes{};
+        size_t vertex_bytes{}, index_bytes{};
 
         for (auto &&[mesh, surface] : std::views::zip(geometry, packet.surfaces))
         {
             if (mesh.indices.empty())
                 continue;
+
             surface.narrow = mesh.vertices.size() <= 65536;
             const size_t width = surface.narrow ? 2 : 4;
-            indexBytes = (indexBytes + width - 1) & ~(width - 1);
-            surface.firstVertex = vertexBytes / stride;
-            surface.firstIndexByte = indexBytes;
+            index_bytes = (index_bytes + width - 1) & ~(width - 1);
+            surface.firstVertex = vertex_bytes / stride;
+            surface.firstIndexByte = index_bytes;
             surface.count = mesh.indices.size();
-            vertexBytes += mesh.vertices.size() * stride;
-            indexBytes += surface.count * width;
+            vertex_bytes += mesh.vertices.size() * stride;
+            index_bytes += surface.count * width;
         }
 
-        packet.vertices.resize(vertexBytes);
-        packet.indices.resize(indexBytes);
-        packet.bytes = vertexBytes + indexBytes;
+        packet.vertices.resize(vertex_bytes);
+        packet.indices.resize(index_bytes);
+        packet.bytes = vertex_bytes + index_bytes;
+
         for (auto &&[mesh, s] : std::views::zip(geometry, packet.surfaces))
         {
             if (!s.count)
                 continue;
-            auto *dst = packet.vertices.data() + s.firstVertex * stride;
+
+            unsigned char *dst = packet.vertices.data() + s.firstVertex * stride;
             Vec3 lo = mesh.vertices.front().position, hi = lo;
+
             for (const auto &v : mesh.vertices)
             {
                 std::memcpy(dst, &v, stride);
@@ -85,16 +104,20 @@ namespace Promzona
                 lo = {std::min(lo.x, p.x), std::min(lo.y, p.y), std::min(lo.z, p.z)};
                 hi = {std::max(hi.x, p.x), std::max(hi.y, p.y), std::max(hi.z, p.z)};
             }
+
             s.centre = (lo + hi) * .5f;
             s.radius = (hi - lo).length() * .5f;
             auto *indices = packet.indices.data() + s.firstIndexByte;
+
             if (s.narrow)
-                for (auto index : mesh.indices)
+            {
+                for (const uint32_t index : mesh.indices)
                 {
                     const auto narrow = static_cast<std::uint16_t>(index);
                     std::memcpy(indices, &narrow, sizeof(narrow));
                     indices += sizeof(narrow);
                 }
+            }
             else
                 std::memcpy(indices, mesh.indices.data(), s.count * sizeof(std::uint32_t));
         }
@@ -113,37 +136,46 @@ namespace Promzona
     void SectorStream::request(std::span<const SectorOrder> orders)
     {
         std::scoped_lock lock(mutex_);
+
         if (error_)
             std::rethrow_exception(error_);
+
         std::ranges::fill(wanted_, false);
 
-        for (const auto &order : orders)
+        for (const SectorOrder &order : orders)
         {
             if (order.id >= sectors_.size())
                 throw std::out_of_range("Invalid sector");
+
             wanted_[order.id] = true;
         }
 
         std::erase_if(ready_,
-                      [&](const auto &packet)
-                      {
-                          if (wanted_[packet->id])
-                              return false;
-                          readyBytes_ -= packet->bytes;
-                          ++discarded_;
-                          return true;
-                      });
+            [&](const auto &packet)
+            {
+                if (wanted_[packet->id])
+                    return false;
+                
+                readyBytes_ -= packet->bytes;
+                ++discarded_;
+                return true;
+            });
+
         jobs_.clear();
-        for (const auto &order : orders)
+
+        for (const SectorOrder &order : orders)
         {
             if (jobs_.size() == maxQueued)
                 break;
+
             if (order.id == active_ ||
                 std::ranges::any_of(ready_, [&](const auto &packet) { return packet->id == order.id; }) ||
                 std::ranges::find(jobs_, order.id) != jobs_.end())
                 continue;
+
             jobs_.push_back(order.id);
         }
+
         wake_.notify_one();
     }
 

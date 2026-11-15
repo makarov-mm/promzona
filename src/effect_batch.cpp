@@ -73,7 +73,7 @@ namespace Promzona
                 auto phase = mixBits(key);
                 if (fraction(phase) > w.rain)
                     continue;
-                Vec3 p{(x + fraction(key)) * spacing, float(rainHeight(fraction(phase >> 16), w.time, eye_.y)),
+                Vec3 p{(x + fraction(key)) * spacing, float(rain_height(fraction(phase >> 16), w.time, eye_.y)),
                        (z + fraction(key >> 16)) * spacing};
                 if (!frustum.sphere(p, .7f))
                     continue;

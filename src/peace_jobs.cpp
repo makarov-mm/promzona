@@ -25,7 +25,7 @@ Vec2 World::peaceOffset(int spot)
 
 bool World::peaceGround(Vec2 at, double margin) const
 {
-    return layout.urbanSite(at, margin) && CityLayout::waterLevel - terrain.bedHeight(at.x, at.z) <= .01;
+    return layout.urbanSite(at, margin) && CityLayout::waterLevel - terrain.bed_height(at.x, at.z) <= .01;
 }
 
 bool World::startPeaceJob(JobKind kind)

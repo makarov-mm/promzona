@@ -476,7 +476,7 @@ void World::updatePlatforms()
                 {
                     resumeWalk(p, *exit, car.body.roadLevel);
                     if (car.fireTime > 0)
-                        scarePerson(p, car.body.p, 1.);
+                        scare_person(p, car.body.p, 1.);
                 }
     }
     auto eligible = [&](int i)

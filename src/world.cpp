@@ -6,32 +6,37 @@
 #include <charconv>
 #include <cctype>
 #include <stdexcept>
-#include <system_error>
 #include <ranges>
 
 namespace Promzona
 {
-    void Clock::setHour(double h)
+    void Clock::set_hour(double h)
     {
         if (!std::isfinite(h))
             return;
+
         hour = std::fmod(std::fmod(h, 24) + 24, 24);
         double lo = 0, hi = 24;
+
         for (int i = 0; i < 48; i++)
         {
             double m = (lo + hi) * .5;
+
             if (m + 1.2 * std::sin(m * pi / 6) < hour)
                 lo = m;
             else
                 hi = m;
         }
+
         phase_ = (lo + hi) * .5;
     }
+
     void Clock::step(double dt)
     {
         phase_ = std::fmod(phase_ + dt * 24 / (60 * clamp(std::isfinite(cycleMinutes) ? cycleMinutes : 10., 2., 30.)), 24.);
         hour = phase_ + 1.2 * std::sin(phase_ * pi / 6);
     }
+
     // CityTerrain natural relief and two-stage foundation grading, including the canal branch.
     void Terrain::generate(std::uint32_t seed, int nodes, std::span<const Building> buildings, bool wide, const CityLayout *layout)
     {
@@ -39,88 +44,106 @@ namespace Promzona
         wide_ = wide;
         rivers_ = nodes >= 49;
         bridges_.fill(false);
+
         for (int c = 0; c < 2; ++c)
             for (int j = 0; j < nodes; ++j)
                 bridges_[c * 49 + j] = j % 6 == 0 && (!layout || layout->road((c + 1) * nodes / 3, j, 1));
+
         double edge = (nodes - 1) * 36 * .5 + 54;
         origin_ = -std::ceil(edge) - 2;
-        size_ = int(-2 * origin_) + 1;
-        heights_.resize(size_t(size_) * size_);
+        size_ = static_cast<int>(-2 * origin_) + 1;
+        heights_.resize(static_cast<size_t>(size_) * size_);
         double phase = seed % 10007 * .002;
         const bool revised = layout && layout->revision() == CityLayout::districtRevision;
+
         auto natural = [&](double x, double z)
         {
             if (rivers_)
             {
                 double inland = edge - std::max(std::abs(x), std::abs(z));
-                double h = 26 + 14 * std::sin(x * .0045 + phase) * std::cos(z * .004 - phase * .3) +
-                           9 * std::sin(z * .003 + phase * .7);
+                double h = 26 + 14 * std::sin(x * .0045 + phase) * std::cos(z * .004 - phase * .3) + 9 * std::sin(z * .003 + phase * .7);
                 double shorelineOffset = 0;
+
                 if (revised && inland > -6 && inland < 42)
                 {
                     const double band = smooth((inland + 6) / 10) * (1 - smooth((inland - 18) / 24));
-                    shorelineOffset = band * (4.1 * std::sin(x * .029 + z * .018 + phase) +
-                                              2.2 * std::sin(z * .055 - x * .036 - phase));
+                    shorelineOffset = band * (4.1 * std::sin(x * .029 + z * .018 + phase) + 2.2 * std::sin(z * .055 - x * .036 - phase));
                 }
+
                 const double shore = smooth((inland - 12) / 210);
                 const double beach = -4.8 + clamp((inland + 2 + shorelineOffset) / 42, 0., 1.) * 7.2;
                 h = beach * (1 - shore) + h * shore;
-                double bank = riverDistance(x), bankHalf = 18 - (wide ? 7.3 : 4.8) - 2.8;
+                double bank = river_distance(x), bankHalf = 18 - (wide ? 7.3 : 4.8) - 2.8;
+
                 if (bank < 150)
                 {
                     double blend = smooth((bank - 22) / 128);
                     h = 2.2 * (1 - blend) + h * blend;
                 }
+
                 if (bank < bankHalf)
                 {
                     double v = smooth((bank - (bankHalf - 3.2)) / 3.2);
                     h = -8 + 10.2 * v;
                 }
+
                 // The inland canal profile must meet the sea at its mouth. Otherwise its
                 // flat banks continue offshore as two rectangular fingers above the water.
                 if (revised && bank < 150 && inland < 42)
                     h = std::min(h, beach);
+
                 return h;
             }
+
             double t = smooth((edge - std::max(std::abs(x), std::abs(z))) / 205);
-            double h = 20 + 8 * std::sin(x * .009 + phase) * std::cos(z * .007 - phase * .3) +
-                       7 * std::sin(z * .0055 + phase * .7) + 4 * std::cos((x + z) * .006 - phase);
+            double h = 20 + 8 * std::sin(x * .009 + phase) * std::cos(z * .007 - phase * .3) + 7 * std::sin(z * .0055 + phase * .7) + 4 * std::cos((x + z) * .006 - phase);
             return h * t;
         };
+
         const double track = revised ? layout->railZ() : 0, end = revised ? layout->railEnd() : 0;
-        const double berthHeight = revised ? natural(end - 23, track) : 0;
+        const double berth_height = revised ? natural(end - 23, track) : 0;
+
         auto base = [&](double x, double z)
         {
             const double h = natural(x, z);
             if (!revised || std::abs(z - track) >= 52 || x <= layout->railStart() - 18 || x >= end + 27)
                 return h;
+
             // The loading aprons and their adjacent building foundations sit on the same grade.
             const double across = 1 - smooth((std::abs(z - track) - 20) / 32);
             const double along = smooth((x - layout->railStart() + 18) / 18) * (1 - smooth((x - end - 3) / 24));
             const double berth = smooth((x - end + 210) / 95);
-            const double railGrade = natural(x, track) * (1 - berth) + berthHeight * berth;
-            return h + (railGrade - h) * across * along;
+            const double rail_grade = natural(x, track) * (1 - berth) + berth_height * berth;
+            return h + (rail_grade - h) * across * along;
         };
+
         for (int j = 0; j < size_; j++)
             for (int i = 0; i < size_; i++)
-                heights_[i + size_t(j) * size_] = float(base(origin_ + i, origin_ + j));
+                heights_[i + static_cast<size_t>(j) * size_] = static_cast<float>(base(origin_ + i, origin_ + j));
+
         double low = -(nodes - 1) * 18.;
+
         auto pad = [&](const Building &b)
         {
             double x = low + (std::floor((b.p.x - low) / 36) + .5) * 36,
                    z = low + (std::floor((b.p.z - low) / 36) + .5) * 36;
             return base(x, z);
         };
+
         std::vector<float> grading(heights_.size());
-        for (auto &b : buildings)
+
+        for (const Building &b : buildings)
         {
             if (b.kind == BuildingKind::wagon || b.kind == BuildingKind::buffer)
                 continue;
-            int x0 = std::max(0, int(std::floor(b.p.x - b.half.x - 4.5 - origin_))),
-                x1 = std::min(size_ - 1, int(std::ceil(b.p.x + b.half.x + 4.5 - origin_))),
-                z0 = std::max(0, int(std::floor(b.p.z - b.half.z - 4.5 - origin_))),
-                z1 = std::min(size_ - 1, int(std::ceil(b.p.z + b.half.z + 4.5 - origin_)));
+
+            int x0 = std::max(0, static_cast<int>(std::floor(b.p.x - b.half.x - 4.5 - origin_))),
+                x1 = std::min(size_ - 1, static_cast<int>(std::ceil(b.p.x + b.half.x + 4.5 - origin_))),
+                z0 = std::max(0, static_cast<int>(std::floor(b.p.z - b.half.z - 4.5 - origin_))),
+                z1 = std::min(size_ - 1, static_cast<int>(std::ceil(b.p.z + b.half.z + 4.5 - origin_)));
+
             double level = pad(b);
+
             for (int j = z0; j <= z1; j++)
                 for (int i = x0; i <= x1; i++)
                 {
@@ -130,94 +153,113 @@ namespace Promzona
                     double dx = std::abs(x - low - std::round((x - low) / 36) * 36),
                            dz = std::abs(z - low - std::round((z - low) / 36) * 36);
                     w *= smooth((std::min(dx, dz) - (wide ? 7.3 : 4)) / 2);
-                    auto k = i + size_t(j) * size_;
+                    unsigned long long k = i + static_cast<size_t>(j) * size_;
+
                     if (w > grading[k])
                     {
-                        grading[k] = float(w);
-                        heights_[k] = float(base(x, z) * (1 - w) + level * w);
+                        grading[k] = static_cast<float>(w);
+                        heights_[k] = static_cast<float>(base(x, z) * (1 - w) + level * w);
                     }
                 }
         }
-        for (auto &b : buildings)
+
+        for (const Building &b : buildings)
         {
             if (b.kind == BuildingKind::wagon || b.kind == BuildingKind::buffer)
                 continue;
             double level = pad(b);
-            int x0 = std::max(0, int(std::floor(b.p.x - b.half.x - .8 - origin_))),
-                x1 = std::min(size_ - 1, int(std::ceil(b.p.x + b.half.x + .8 - origin_))),
-                z0 = std::max(0, int(std::floor(b.p.z - b.half.z - .8 - origin_))),
-                z1 = std::min(size_ - 1, int(std::ceil(b.p.z + b.half.z + .8 - origin_)));
+
+            int x0 = std::max(0, static_cast<int>(std::floor(b.p.x - b.half.x - .8 - origin_))),
+                x1 = std::min(size_ - 1, static_cast<int>(std::ceil(b.p.x + b.half.x + .8 - origin_))),
+                z0 = std::max(0, static_cast<int>(std::floor(b.p.z - b.half.z - .8 - origin_))),
+                z1 = std::min(size_ - 1, static_cast<int>(std::ceil(b.p.z + b.half.z + .8 - origin_)));
+
             for (int j = z0; j <= z1; j++)
                 for (int i = x0; i <= x1; i++)
-                    heights_[i + size_t(j) * size_] = float(level);
+                    heights_[i + static_cast<size_t>(j) * size_] = static_cast<float>(level);
         }
     }
-    double Terrain::riverDistance(double x) const
+    double Terrain::river_distance(double x) const
     {
         double low = -(nodes_ - 1) * 18.;
-        return rivers_ ? std::min(std::abs(x - low - (nodes_ / 3) * 36 - 18),
-                                  std::abs(x - low - (2 * nodes_ / 3) * 36 - 18))
-                       : 1e9;
+
+        return rivers_ 
+            ? std::min(
+                std::abs(x - low - nodes_ / 3 * 36 - 18),
+                std::abs(x - low - 2 * nodes_ / 3 * 36 - 18))
+            : 1e9;
     }
+
     bool Terrain::bridge(Vec2 p) const
     {
-        if (!rivers_ || riverDistance(p.x) > 18 - (wide_ ? 7.3 : 4.8))
+        if (!rivers_ || river_distance(p.x) > 18 - (wide_ ? 7.3 : 4.8))
             return false;
+
         double low = -(nodes_ - 1) * 18.;
-        int row = int(std::nearbyint((p.z - low) / 36));
-        int channel =
-            std::abs(p.x - low - (nodes_ / 3) * 36 - 18) < std::abs(p.x - low - (2 * nodes_ / 3) * 36 - 18) ? 0
-                                                                                                            : 1;
-        return row >= 0 && row < nodes_ && bridges_[channel * 49 + row] &&
-               std::abs(p.z - low - row * 36) <= (wide_ ? 10.55 : 8.05) + 1e-9;
+        int row = static_cast<int>(std::nearbyint((p.z - low) / 36));
+        int channel = std::abs(p.x - low - (nodes_ / 3) * 36 - 18) < std::abs(p.x - low - (2 * nodes_ / 3) * 36 - 18) ? 0 : 1;
+        return row >= 0 && row < nodes_ && bridges_[channel * 49 + row] && std::abs(p.z - low - row * 36) <= (wide_ ? 10.55 : 8.05) + 1e-9;
     }
+
     double Terrain::height(double x, double z) const
     {
-        if (bridge({x, z}))
+        if (bridge({.x = x, .z = z}))
         {
-            double c = std::cos(pi * std::min(1., riverDistance(x) / (18 - (wide_ ? 7.3 : 4.8))) * .5);
+            double c = std::cos(pi * std::min(1., river_distance(x) / (18 - (wide_ ? 7.3 : 4.8))) * .5);
             return 2.2 + 1.5 * c * c;
         }
-        return bedHeight(x, z);
+
+        return bed_height(x, z);
     }
-    double Terrain::bedHeight(double x, double z) const
+
+    double Terrain::bed_height(double x, double z) const
     {
         if (heights_.empty())
             return 0;
         double u = clamp(x - origin_, 0., size_ - 1.000001), v = clamp(z - origin_, 0., size_ - 1.000001);
-        int i = int(u), j = int(v);
+        int i = static_cast<int>(u), j = static_cast<int>(v);
         u -= i;
         v -= j;
-        size_t k = i + size_t(j) * size_;
+        size_t k = i + static_cast<size_t>(j) * size_;
         double a = heights_[k], b = heights_[k + 1], c = heights_[k + size_ + 1], d = heights_[k + size_];
         return u >= v ? a + (b - a) * u + (c - b) * v : a + (c - d) * u + (d - a) * v;
     }
+
     std::vector<int> World::neighbours(int n) const
     {
-        auto out = layout.neighbours(n);
-        for (const auto &s : roadLevels)
+        std::vector<int> out = layout.neighbours(n);
+
+        for (const RoadLevel &s : roadLevels)
         {
             if (s.leftNode == n)
                 out.push_back(s.rightNode);
+
             if (s.rightNode == n)
                 out.push_back(s.leftNode);
         }
+
         return out;
     }
-    int World::chooseNext(int n, int previous)
+
+    int World::choose_next(int n, int previous)
     {
-        auto options = neighbours(n);
+        std::vector<int> options = neighbours(n);
+
         if (options.size() > 1)
             std::erase(options, previous);
+
         if (options.empty())
             throw std::logic_error("Disconnected road node");
-        return options[random.index(int(options.size()))];
+
+        return options[random.index(static_cast<int>(options.size()))];
     }
-    void World::newRoute(Car &car)
+
+    void World::new_route(Car &car)
     {
         if (car.routePhase == 1)
         {
             car.plannedTo = -1;
+
             if (auto s = levelEdge(car.routeFrom, car.routeTo))
             {
                 car.laneIndex = 0;
@@ -227,10 +269,12 @@ namespace Promzona
             }
             else
             {
-                auto f = (nodePoint(car.routeTo) - nodePoint(car.routeFrom)).unit();
-                const auto offset = perpendicular(f) * CityLayout::laneOffset(car.laneIndex);
-                car.route.emplace(nodePoint(car.routeFrom) + f * 9 + offset,
-                                  nodePoint(car.routeTo) - f * stopLine + offset);
+                const Vec2 f = (nodePoint(car.routeTo) - nodePoint(car.routeFrom)).unit();
+                const Vec2 offset = perpendicular(f) * CityLayout::laneOffset(car.laneIndex);
+
+                car.route.emplace(
+                    nodePoint(car.routeFrom) + f * 9 + offset,
+                    nodePoint(car.routeTo) - f * stopLine + offset);
                 car.routePhase = 0;
                 car.routeLevel = 0;
             }
@@ -243,7 +287,7 @@ namespace Promzona
                      : car.responding                            ? pursuitNext(from, car.routeFrom)
                      : car.plannedTo >= 0 && std::ranges::contains(neighbours(from), car.plannedTo)
                          ? car.plannedTo
-                         : chooseNext(from, car.routeFrom);
+                         : choose_next(from, car.routeFrom);
             car.plannedTo = -1;
             auto centre = nodePoint(from), incoming = (centre - nodePoint(car.routeFrom)).unit(),
                  outgoing = (nodePoint(to) - centre).unit();
@@ -278,27 +322,33 @@ namespace Promzona
         car.senseAt = 0;
         car.rejoining = false;
     }
-    Vec2 World::pickupSite()
+
+    Vec2 World::pickup_site()
     {
         for (int tries = 0; tries < 200; ++tries)
         {
-            auto p = nodePoint(random.index(nodes * nodes)) + Vec2{10, 10};
+            Vec2 p = nodePoint(random.index(nodes * nodes)) + Vec2{10, 10};
+
             if (!layout.urbanSite(p, .4) || levelAt(p, 1))
                 continue;
+
             bool clear = true;
-            for (auto &b : buildings)
+
+            for (const Building &b : buildings)
                 if (std::abs(p.x - b.p.x) < b.half.x + .5 && std::abs(p.z - b.p.z) < b.half.z + .5)
                 {
                     clear = false;
                     break;
                 }
+
             if (clear)
                 return p;
         }
+
         return nodePoint(nodes / 2 * nodes + nodes / 2) + Vec2{10, 10};
     }
-    void World::generate(std::uint32_t newSeed, std::function<void(float)> progress, int layoutRevision,
-                         Density population)
+
+    void World::generate(std::uint32_t newSeed, std::function<void(float)> progress, int layoutRevision, Density population)
     {
         seed = newSeed;
         density = population;
@@ -335,7 +385,7 @@ namespace Promzona
         staticQueryCount = size_t(-1);
         nearbyStaticBodies.clear();
         physics.clear();
-        clock.setHour(7);
+        clock.set_hour(7);
         inventory.clear();
         player = {};
         player.id = 1;
@@ -463,12 +513,12 @@ namespace Promzona
             {
                 car.routeLevel = 0;
                 car.routeFrom = random.index(nodes * nodes);
-                car.routeTo = chooseNext(car.routeFrom, -1);
+                car.routeTo = choose_next(car.routeFrom, -1);
                 auto from = nodePoint(car.routeFrom), to = nodePoint(car.routeTo), f = (to - from).unit();
                 car.body.angle = -std::atan2(f.x, f.z);
                 car.body.p = from + f * 9 + perpendicular(f) * CityLayout::lane;
                 car.routePhase = 1;
-                newRoute(car);
+                new_route(car);
                 car.routeDistance = random.next() * car.route->length();
                 car.body.p = car.route->sample(car.routeDistance).first;
                 car.body.roadLevel = car.routeLevel;
@@ -497,9 +547,9 @@ namespace Promzona
                 {
                     c.routeLevel = c.body.roadLevel = 0;
                     c.routeFrom = 0;
-                    c.routeTo = chooseNext(0, -1);
+                    c.routeTo = choose_next(0, -1);
                     c.routePhase = 1;
-                    newRoute(c);
+                    new_route(c);
                     c.body.p = c.route->sample(0).first;
                     c.body.angle = -c.route->sample(0).second;
                 }
@@ -558,7 +608,7 @@ namespace Promzona
         // their order are unchanged, so later generators still read the same random stream.
         for (int i = 0, weapons = 0; i < 70; i++)
         {
-            auto p = pickupSite();
+            auto p = pickup_site();
             const bool pills = i % 4 != 1;
             WeaponId weapon = WeaponId::none;
             if (!pills)
@@ -587,8 +637,8 @@ namespace Promzona
         }
         generateServices();
         generateTransit();
-        generateStreetLife();
-        formCompanies(false);
+        generate_street_life();
+        form_companies(false);
         generateStreetFurniture();
         generate_shops();
         generate_bus_stops();
@@ -616,7 +666,7 @@ namespace Promzona
         shotCooldown = std::max(0., shotCooldown - dt);
         wantedCooldown -= dt;
         if (wantedCooldown < 0)
-            fadeWanted(dt);
+            fade_wanted(dt);
         weatherClock -= dt;
         if (weatherClock <= 0)
         {
@@ -783,7 +833,7 @@ namespace Promzona
             else if (!local)
             {
                 if (!car.route)
-                    newRoute(car);
+                    new_route(car);
                 double cruise = car.responding                                      ? 16.
                                 : medical && medical->stage == RescueStage::driving ? 11.
                                                                                     : 7.;
@@ -808,7 +858,7 @@ namespace Promzona
                 // looked at it saw a truck on the move, not one standing in a queue.
                 const double speed = (car.routeDistance - from) / dt;
                 if (car.routeDistance >= car.route->length() && clear)
-                    newRoute(car);
+                    new_route(car);
                 auto sample = car.route->sample(car.routeDistance);
                 b.p = sample.first;
                 // Port of the managed PoliceRuleStep: a crew on a call pulls out towards the
@@ -831,7 +881,7 @@ namespace Promzona
             else
             {
                 if (!car.route)
-                    newRoute(car);
+                    new_route(car);
                 car.routeDistance = car.route->closestDistance(b.p);
                 if (time >= car.senseAt)
                     senseTraffic(car, true);
@@ -844,7 +894,7 @@ namespace Promzona
                                                          std::abs(cross(beyond, forward(end.second))) < 2);
                 if (reached && clear)
                 {
-                    newRoute(car);
+                    new_route(car);
                     car.routeDistance = car.route->closestDistance(b.p);
                     end = car.route->sample(car.route->length());
                 }
@@ -1171,7 +1221,7 @@ namespace Promzona
                             (!playerDriving && ahead && layout.roadDistance(p.body.p) < layout.roadHalf()))
                         {
                             dir = d.unit();
-                            scarePerson(p, c.body.p, 2.);
+                            scare_person(p, c.body.p, 2.);
                             if (playerDriving && p.sidearm != WeaponId::none)
                                 p.alertUntil = time + 5.;
                         }
@@ -1182,7 +1232,7 @@ namespace Promzona
                         releaseScooter(p.ownedScooter, c.body.v * .45);
                         p.fear = 3;
                     }
-                    if (detectImpact(p, c,
+                    if (detect_impact(p, c,
                                      controlledCar >= 0 && !transitPassenger() && &c == &cars[controlledCar]))
                         break;
                 }
@@ -1193,8 +1243,8 @@ namespace Promzona
             if (p.walkWait > time && p.fear <= 0)
                 speed = 0;
             role_intent(p, dir, speed);
-            riderIntent(p, dir, speed);
-            socialIntent(p, dir, speed);
+            rider_intent(p, dir, speed);
+            social_intent(p, dir, speed);
             // Ordinary walking: wait for the walk signal, hurry when the lights change halfway.
             // The whole city keeps to it, not only the streets about the player: whoever comes
             // into view is found at the kerb and not in front of the cars that have green.
@@ -1374,7 +1424,7 @@ namespace Promzona
             else
                 p.body.p += p.body.v * dt;
         }
-        detectPlayerImpact(carsNearWalkers);
+        detect_player_impact(carsNearWalkers);
         std::vector<Vec2> beforeContact;
         beforeContact.reserve(cars.size());
         for (auto &c : cars)
@@ -1407,7 +1457,7 @@ namespace Promzona
             // surface and sinks to the bed at 0.6 m/s.
             if (p.dead && p.drowned && !p.body.roadLevel)
             {
-                const double bed = terrain.bedHeight(p.body.p.x, p.body.p.z);
+                const double bed = terrain.bed_height(p.body.p.x, p.body.p.z);
                 const double afloat = CityLayout::waterLevel - bed - .5 - (time - p.diedAt) * .6;
                 if (afloat > 0)
                 {
@@ -1421,7 +1471,7 @@ namespace Promzona
         else if (transitPassenger())
             player.angle = -placeTransitRider(player, cars[controlledCar], playerTransitSeat);
         updateTireMarks(focus, dt);
-        updateScooters(dt);
+        update_scooters(dt);
         step_wildlife(dt);
         std::vector<Vec2> impacts(cars.size());
         for (size_t i = 0; i < cars.size(); i++)
@@ -1467,7 +1517,7 @@ namespace Promzona
                 pickup.wait = -1;
                 continue;
             }
-            pickup.p = pickupSite();
+            pickup.p = pickup_site();
             pickup.wait = 2;
         }
         std::erase_if(pickups, [](const Pickup &p) { return p.wait < 0; });
@@ -1476,7 +1526,7 @@ namespace Promzona
             ripples.pop_front();
         const double dangerDepth = controlledCar >= 0 ? .85 : 1.15;
         bool submerged = ground() < CityLayout::waterLevel &&
-                         terrain.bedHeight(position().x, position().z) < CityLayout::waterLevel - dangerDepth;
+                         terrain.bed_height(position().x, position().z) < CityLayout::waterLevel - dangerDepth;
         if (submerged)
             splash(position(), controlledCar >= 0 ? 2.5 : .8);
         if (health <= 0 || submerged || std::max(std::abs(position().x), std::abs(position().z)) > landEdge ||
@@ -1606,11 +1656,11 @@ namespace Promzona
         else if (cmd == "hour")
         {
             if (args.size() == 1)
-                clock.setHour(7);
+                clock.set_hour(7);
             else
             {
                 count(2, "hour 0..24");
-                clock.setHour(consoleNumber(args[1], 0., 24., "hour 0..24"));
+                clock.set_hour(consoleNumber(args[1], 0., 24., "hour 0..24"));
             }
         }
         else if (cmd == "rain" || cmd == "cycle")
@@ -1644,7 +1694,7 @@ namespace Promzona
             count(2, "spawn TYPE");
             if (args[1] == "pills" || args[1] == "energy")
             {
-                if (!spawnPickup(args[1] == "energy"))
+                if (!spawn_pickup(args[1] == "energy"))
                     throw std::runtime_error("No safe space nearby or pickup limit reached");
                 return L"OK";
             }

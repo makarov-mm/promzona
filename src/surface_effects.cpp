@@ -7,7 +7,7 @@ namespace Promzona
 void World::splash(Vec2 point, double strength)
 {
     if ((point - position()).length2() > 200 * 200 ||
-        terrain.bedHeight(point.x, point.z) >= CityLayout::waterLevel)
+        terrain.bed_height(point.x, point.z) >= CityLayout::waterLevel)
         return;
     strength = clamp(strength, .15, 3.);
     if (ripples.size() == 96)
@@ -17,7 +17,7 @@ void World::splash(Vec2 point, double strength)
 
     // Drops rise from the surface and fall back through it to the bed (CityTraffic.Splash).
     emit(Vec3{float(point.x), float(CityLayout::waterLevel + .08), float(point.z)},
-         terrain.bedHeight(point.x, point.z), ParticleKind::water, std::clamp(int(strength * 22), 5, 65),
+         terrain.bed_height(point.x, point.z), ParticleKind::water, std::clamp(int(strength * 22), 5, 65),
          std::min(7., 1 + strength * 2));
 }
 

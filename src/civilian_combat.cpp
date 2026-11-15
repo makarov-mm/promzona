@@ -19,7 +19,7 @@ void World::alarmWitnesses(Vec2 origin, double height, bool playerCaused)
             continue;
         if (!blastVisible(origin, height, witness.body.p, witness.body.height))
             continue;
-        scarePerson(witness, origin, 2.);
+        scare_person(witness, origin, 2.);
         witness.incident = origin;
         witness.watchUntil = time + 10. + (witness.body.id % 19);
         if (playerCaused && witness.sidearm != WeaponId::none)
@@ -66,7 +66,7 @@ void World::civilianCombat(Person &p, double dt)
     if (hit.kind == HitKind::car)
         damageCar(cars[hit.index], gun->npcCarDamage);
     else
-        woundPlayer(gun->personDamage * .45);
+        wound_player(gun->personDamage * .45);
     bulletSparks(p.body.p, dir, muzzle, slope, hit);
     for (double at = 1; at < hit.distance && particles.size() < 5000; at += 1.4)
         particles.push_back(

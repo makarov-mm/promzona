@@ -135,7 +135,7 @@ bool World::chaseGround(Vec2 at) const
 {
     const double ground = terrain.height(at);
     return std::max(std::abs(at.x), std::abs(at.z)) < landEdge - 3 && !openCut(at) &&
-           CityLayout::waterLevel - terrain.bedHeight(at.x, at.z) <= .65 &&
+           CityLayout::waterLevel - terrain.bed_height(at.x, at.z) <= .65 &&
            !insideBuilding(at, ground + .8, .4) && !scenerySolid(at, ground + .8, .3);
 }
 
@@ -224,13 +224,13 @@ void World::standDown(Car &c)
 int World::pursuitNext(int node, int previous)
 {
     if (pursuitNode < 0 || node == pursuitNode)
-        return chooseNext(node, previous);
+        return choose_next(node, previous);
     auto options = neighbours(node);
     int best = -1;
     for (int n : options)
         if (pursuitDistances[n] >= 0 && (best < 0 || pursuitDistances[n] < pursuitDistances[best]))
             best = n;
-    return best < 0 ? chooseNext(node, previous) : best;
+    return best < 0 ? choose_next(node, previous) : best;
 }
 
 bool World::deployResponder(int kind)
@@ -276,7 +276,7 @@ bool World::deployResponder(int kind)
         car.routeFrom = from;
         car.routeTo = to;
         car.routePhase = 1;
-        newRoute(car);
+        new_route(car);
         auto [pos, heading] = car.route->sample(0);
         if ((focus - pos).length2() < 120 * 120 || !layout.urbanSite(pos, .5))
             continue;
@@ -371,7 +371,7 @@ bool World::spawnVehicle(unsigned model)
     if (best == 60 * 60)
         return false;
     candidate.routePhase = 1;
-    newRoute(candidate);
+    new_route(candidate);
     candidate.routeDistance = candidate.route->closestDistance(candidate.body.p);
     candidate.summoned = true;
     candidate.id = static_cast<unsigned>(slot);
@@ -407,7 +407,7 @@ void World::responseFire(Car &c)
     c.nextShot = time + (c.kind == 12 ? 2.3 : c.kind == 14 ? .65 : .9);
     sounds.push_back({c.kind == 12 ? "shot" : "automatic", c.body.p, .75});
     if (hit.kind == HitKind::player)
-        woundPlayer(.055);
+        wound_player(.055);
     else
         damageCar(cars[hit.index], .095);
     bulletSparks(c.body.p, dir, y, (targetY - y) / range, hit);

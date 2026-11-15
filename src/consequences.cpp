@@ -1,3 +1,5 @@
+#include <utility>
+
 #include "promzona/world.hpp"
 
 namespace Promzona
@@ -88,7 +90,7 @@ namespace Promzona
         openMarket = -1;
         if (drone.active)
             stop_drone(L"Связь с дроном прервана", 20);
-        hurtPlayer(clamp((closing - 1.1) * .11, .05, 1.));
+        hurt_player(clamp((closing - 1.1) * .11, .05, 1.));
         if (godMode)
             return;
         playerKnockedUntil = time + 1.2 + std::min(2.4, closing * .12);
@@ -97,38 +99,44 @@ namespace Promzona
         player.wake();
     }
 
-    void World::hurtPlayer(double amount)
+    void World::hurt_player(double amount)
     {
         if (godMode || !std::isfinite(amount) || amount <= 0)
             return;
         health = std::max(0., health - amount);
     }
 
-    void World::woundPlayer(double amount)
+    void World::wound_player(double amount)
     {
         if (godMode || controlledCar >= 0 || health <= 0 || !std::isfinite(amount) || amount <= 0)
             return;
-        sounds.push_back({"impact", player.p, .5});
-        hurtPlayer(amount);
+
+        sounds.push_back({
+            .name = "impact", 
+            .source = player.p, 
+            .gain = .5
+        });
+
+        hurt_player(amount);
     }
 
     // Port of DetectPedestrianImpacts for one walker; the caller supplies nearby cars.
     namespace
     {
-    // Which way the vehicle's outline faces where it is nearest to `at`: along the car in
-    // front of a bumper, across it beside a flank. Measured from the middle of the car, as it
-    // was before, half the flank of a tram counted as its front: whoever brushed a tram that
-    // was pulling away was run over by it.
-    Vec2 outward(const Car &car, Vec2 at)
-    {
-        const Vec2 ahead = forward(car.heading()), d = at - car.body.p;
-        const double spine = std::max(0., car.body.halfH - car.body.halfW);
-        const Vec2 from = d - ahead * clamp(dot(d, ahead), -spine, spine);
-        return from / std::max(.3, from.length());
+        // Which way the vehicle's outline faces where it is nearest to `at`: along the car in
+        // front of a bumper, across it beside a flank. Measured from the middle of the car, as it
+        // was before, half the flank of a tram counted as its front: whoever brushed a tram that
+        // was pulling away was run over by it.
+        Vec2 outward(const Car &car, Vec2 at)
+        {
+            const Vec2 ahead = forward(car.heading()), d = at - car.body.p;
+            const double spine = std::max(0., car.body.halfH - car.body.halfW);
+            const Vec2 from = d - ahead * clamp(dot(d, ahead), -spine, spine);
+            return from / std::max(.3, from.length());
+        }
     }
-    } // namespace
 
-    bool World::detectImpact(Person &p, const Car &car, bool playerDriving)
+    bool World::detect_impact(Person &p, const Car &car, bool playerDriving)
     {
         const auto d = p.body.p - car.body.p;
         const double distance = d.length();
@@ -145,7 +153,7 @@ namespace Promzona
         return true;
     }
 
-    void World::detectPlayerImpact(std::span<const Car *const> traffic)
+    void World::detect_player_impact(std::span<const Car *const> traffic)
     {
         if (controlledCar >= 0 || health <= 0 || playerKnockedUntil > time)
             return;
@@ -171,58 +179,74 @@ namespace Promzona
     {
         const auto at = position();
         const double y = ground() + .85;
-        for (const auto &c : cars)
+
+        for (const Car &c : cars)
             if (c.responding && !c.destroyed && c.seesSuspect)
                 return true;
-        if (patrol.officer >= 0 && patrol.officer < int(people.size()))
+
+        if (patrol.officer >= 0 && std::cmp_less(patrol.officer, people.size()))
         {
-            const auto &officer = people[patrol.officer];
-            if (!officer.dead && (officer.body.p - at).length2() < 45 * 45 &&
-                blastVisible(officer.body.p, officer.body.height, at, y))
+            if (const Person &officer = people[patrol.officer]; !officer.dead && (officer.body.p - at).length2() < 45 * 45 && blastVisible(officer.body.p, officer.body.height, at, y))
                 return true;
         }
+
         return false;
     }
 
     // Port of the wanted fade in CityTraffic.ServicesStep, applied once the crime
     // cooldown has run out: slow while the militia can see the suspect, five times
     // faster once out of sight for 15 s and 25 s after the last crime.
-    void World::fadeWanted(double dt)
+    void World::fade_wanted(double dt)
     {
         if (wanted <= 0)
             return;
+
         if (time >= policeSightCheckAt)
         {
             policeSightCheckAt = time + .5;
+
             if (policeSees())
                 lastPoliceSightAt = time;
         }
+
         const bool lost = time - lastPoliceSightAt > 15 && time - lastCrimeAt > 25;
         wanted = std::max(0., wanted - dt * (lost ? .09 : .018));
     }
 
     // Console "spawn pills|energy": a pickup on the nearest clear ground around the player.
-    bool World::spawnPickup(bool energy)
+    bool World::spawn_pickup(bool energy)
     {
         constexpr size_t pickupCap = 240;
         if (pickups.size() >= pickupCap)
             return false;
-        const auto centre = position();
+        const Vec2 centre = position();
         const int level = controlledCar >= 0 ? cars[controlledCar].body.roadLevel : player.roadLevel;
+
         for (double radius = 3; radius <= 45; radius += 3)
             for (int n = 0; n < 24; ++n)
             {
                 const auto at = centre + forward(n * 2 * pi / 24) * radius;
                 const double floor = surface(at, level);
-                if (std::max(std::abs(at.x), std::abs(at.z)) > landEdge - 12 ||
-                    floor < CityLayout::waterLevel + .1 || std::abs(floor - ground()) > 1.5 ||
-                    insideBuilding(at, floor + .8, .5) || scenerySolid(at, floor + .8, .4) ||
-                    (!level && openCut(at, .6)))
+
+                if (std::max(std::abs(at.x), std::abs(at.z)) > landEdge - 12 || floor < CityLayout::waterLevel + .1 || std::abs(floor - ground()) > 1.5 || insideBuilding(at, floor + .8, .5) || scenerySolid(at, floor + .8, .4) || (!level && openCut(at, .6)))
+                {
                     continue;
-                Pickup pickup{at, WeaponId::none, !energy, 1., energy, true, level};
+                }
+
+                Pickup pickup {
+                    .p = at, 
+                    .weapon = WeaponId::none, 
+                    .health = !energy, 
+                    .wait = 1., 
+                    .energy = energy, 
+                    .dropped = true,
+                    .roadLevel = level
+                };
+
                 pickups.push_back(pickup);
                 return true;
             }
+
         return false;
     }
 }

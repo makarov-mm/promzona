@@ -45,11 +45,11 @@ namespace Promzona
     int World::ambulance_turn(const Rescue &r, int node, int previous)
     {
         if (r.distances.empty() || r.distances[node] <= 0)
-            return chooseNext(node, previous);
+            return choose_next(node, previous);
         for (int n : neighbours(node))
             if (r.distances[n] == r.distances[node] - 1)
                 return n;
-        return chooseNext(node, previous);
+        return choose_next(node, previous);
     }
 
     void World::medic_intent(int actor, Vec2 &direction, double &speed) const

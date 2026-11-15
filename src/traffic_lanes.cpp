@@ -92,7 +92,7 @@ void World::planExit(Car &car)
     const auto *call = car.kind == 4 ? ambulanceCall(int(car.id)) : nullptr;
     if ((call && call->stage == RescueStage::driving) || neighbours(car.routeTo).empty())
         return;
-    car.plannedTo = chooseNext(car.routeTo, car.routeFrom);
+    car.plannedTo = choose_next(car.routeTo, car.routeFrom);
     // A bus does not turn into a street it could leave only by turning round. It is too
     // long for the turn at the end, and stood across the street there.
     if (car.kind == 5 && neighbours(car.plannedTo).size() < 2)

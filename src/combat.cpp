@@ -101,7 +101,7 @@ AttackHit World::traceAttack(Vec2 from, Vec2 dir, double y, double slope, double
         if (at <= range)
         {
             Vec2 point = from + dir * at;
-            if (terrain.bedHeight(point.x, point.z) < CityLayout::waterLevel)
+            if (terrain.bed_height(point.x, point.z) < CityLayout::waterLevel)
                 hit = {HitKind::water, -1, at};
         }
     }
@@ -367,7 +367,7 @@ void World::explode(Vec2 p, double y, double strength, bool vehicleBlast, bool p
                 killPerson(person, v, playerCaused);
         }
         if (controlledCar < 0)
-            woundPlayer(6 * effect(player.p, player.height, 8));
+            wound_player(6 * effect(player.p, player.height, 8));
     }
 }
 void World::shoot(double heading, double pitch)
@@ -641,6 +641,6 @@ void World::combatStep(double dt)
     if (playerBurnUntil > time && waterDepth(position(), ground()) > .35)
         playerBurnUntil = 0;
     if (playerBurnUntil > time)
-        hurtPlayer(.065 * elapsed);
+        hurt_player(.065 * elapsed);
 }
 } // namespace Promzona

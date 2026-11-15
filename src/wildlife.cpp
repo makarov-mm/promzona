@@ -24,7 +24,7 @@ namespace Promzona
 
             if (street)
             {
-                const std::optional<Perch> pavement = animalPerch(streetRandom, false);
+                const std::optional<Perch> pavement = animal_perch(streetRandom, false);
 
                 if (!pavement || !pavement->pavement)
                     continue;
@@ -73,7 +73,7 @@ namespace Promzona
 
         for (Animal &a : animals)
             if (a.flock == index)
-                a.offset = flockOffset(member++, perch.pavement);
+                a.offset = flock_offset(member++, perch.pavement);
 
         if ((from - position()).length2() < 45 * 45)
             sounds.push_back({
@@ -160,7 +160,7 @@ namespace Promzona
                 Vec2 respawn = a.flock >= 0 ? flocks[a.flock].landing + a.offset
                                             : habitat[streetRandom.index(int(habitat.size()))];
                 if (a.flock < 0)
-                    if (const auto perch = animalPerch(streetRandom, false))
+                    if (const auto perch = animal_perch(streetRandom, false))
                         respawn = perch->at;
                 if ((respawn - focus).length2() < 105 * 105)
                     continue;

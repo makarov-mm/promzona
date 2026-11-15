@@ -61,7 +61,7 @@ bool World::scenerySolid(Vec2 p, double y, double radius) const
             return false;
         if (y >= ground - CityLayout::canalDeckThickness - radius || !layout.bridge(p))
             return true;
-        return y < terrain.bedHeight(p.x, p.z) + radius;
+        return y < terrain.bed_height(p.x, p.z) + radius;
     }
     double floor = s->floor(terrain, p);
     bool wall = std::abs(p.z - s->centreZ(p.x)) > RoadLevel::halfWidth - .14 - radius &&

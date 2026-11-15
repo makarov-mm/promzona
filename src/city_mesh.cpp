@@ -39,7 +39,7 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
     auto &l = w.layout;
     auto owns = [&](Vec2 p) { return p.x >= x0 && p.x < x0 + size && p.z >= z0 && p.z < z0 + size; };
     auto ground = [&](double x, double z, double add = 0, bool bed = false) {
-        return Vec3{float(x), float((bed ? w.terrain.bedHeight(x, z) : w.terrain.height(x, z)) + add),
+        return Vec3{float(x), float((bed ? w.terrain.bed_height(x, z) : w.terrain.height(x, z)) + add),
                     float(z)};
     };
     // Rails and contact wires follow the very same polyline that constrains the tram.
@@ -391,7 +391,7 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
                     Vec2 p = CityLayout::direction(side) * shore +
                              perpendicular(CityLayout::direction(side)) * (along + k * 4.);
                     if (!owns(p) || l.riverDistance(p.x) < l.deckHalf() + 2 ||
-                        !l.sandyGround(p, l.roadDistance(p)) || w.terrain.bedHeight(p.x, p.z) < y + .65)
+                        !l.sandyGround(p, l.roadDistance(p)) || w.terrain.bed_height(p.x, p.z) < y + .65)
                         continue;
                     auto at = ground(p.x, p.z);
                     box(data[Metal], at + Vec3{0, 1.07f, 0}, {.032f, 1.07f, .032f});

@@ -74,7 +74,7 @@ void World::generateServices()
             }
         }
     for (int i = 0; i < 48; ++i)
-        pickups.push_back({pickupSite(), WeaponId::none, false, 0, true});
+        pickups.push_back({pickup_site(), WeaponId::none, false, 0, true});
 }
 
 void World::notify(std::wstring text)

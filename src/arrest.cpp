@@ -217,7 +217,7 @@ void World::arrestStep(double dt)
     playerBurnUntil = energySeconds = clinicCredit = 0;
     conversation = {};
     openMarket = -1;
-    clock.setHour(clock.hour + 3 + level);
+    clock.set_hour(clock.hour + 3 + level);
     wanted = wantedCooldown = dispatchAt = 0;
     for (auto &c : cars)
     {

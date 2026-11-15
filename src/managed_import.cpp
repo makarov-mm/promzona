@@ -222,7 +222,7 @@ int seatCars(World &w, const json &saved)
         car.routeFrom = place.from;
         car.routeTo = place.to;
         car.routePhase = 1;
-        w.newRoute(car);
+        w.new_route(car);
         car.routeDistance = clamp(place.along - 9, 0., car.route->length());
         const auto [at, heading] = car.route->sample(car.routeDistance);
         car.body.p = at;
@@ -395,7 +395,7 @@ ManagedImport World::importManaged(const std::filesystem::path &file, Density po
     next.generate(std::bit_cast<std::uint32_t>(std::int32_t(seedValue)), {},
                   report.samePlan ? 0 : CityLayout::districtRevision, population);
     next.money = int(cash);
-    next.clock.setHour(hour);
+    next.clock.set_hour(hour);
     const bool raining = document.value("Raining", false);
     next.setWeather(raining ? 1 : 0);
     next.weatherClock = 90;

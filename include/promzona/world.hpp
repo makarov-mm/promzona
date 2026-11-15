@@ -24,13 +24,13 @@ class Terrain
     int nodes_{33};
     bool wide_{}, rivers_{};
     std::array<bool, 98> bridges_{};
-    double riverDistance(double x) const;
+    double river_distance(double x) const;
     bool bridge(Vec2 p) const;
 
   public:
     void generate(std::uint32_t seed, int nodes, std::span<const Building> buildings, bool wide = false,
                   const CityLayout *layout = nullptr);
-    double bedHeight(double x, double z) const;
+    double bed_height(double x, double z) const;
     double height(double x, double z) const;
     double height(Vec2 p) const { return height(p.x, p.z); }
     Vec2 gradient(Vec2 p) const
@@ -44,8 +44,8 @@ class Clock
 
   public:
     double hour{7}, cycleMinutes{20};
-    Clock() { setHour(7); }
-    void setHour(double h);
+    Clock() { set_hour(7); }
+    void set_hour(double h);
     void step(double dt);
     double sunHeight() const { return std::sin((hour - 6) * pi / 12); }
     double daylight() const { return smooth((sunHeight() + .12) / .38); }
@@ -301,9 +301,9 @@ struct World
         StreetOffer offer{};
     } conversation;
     bool talk();
-    void generateStreetLife();
-    void formCompanies(bool loading);
-    void socialIntent(Person &person, Vec2 &direction, double &speed);
+    void generate_street_life();
+    void form_companies(bool loading);
+    void social_intent(Person &person, Vec2 &direction, double &speed);
     // Dry land off the canal banks, and the bridges.
     bool dryGround(Vec2 at) const;
     // How far a walker who is held up turns aside, in radians.
@@ -312,12 +312,12 @@ struct World
     // Walkers keep out of each other's way; `afoot` is everybody walking near the player.
     void passWalkers(const Person &person, const std::vector<const Person *> &afoot, Vec2 &direction,
                      double speed) const;
-    void scarePerson(Person &person, Vec2 origin, double fear);
+    void scare_person(Person &person, Vec2 origin, double fear);
     void releaseScooter(int index, Vec2 velocity);
-    int nearbyScooter() const;
-    bool useScooter();
-    void riderIntent(Person &person, Vec2 &direction, double &speed);
-    void updateScooters(double dt);
+    int nearby_scooter() const;
+    bool use_scooter();
+    void rider_intent(Person &person, Vec2 &direction, double &speed);
+    void update_scooters(double dt);
     void step_wildlife(double dt);
     void scare_wildlife(Vec2 origin, double height, double lethalRadius);
     // A place for an animal, and whether it is a pavement rather than the lawn of a park.
@@ -329,10 +329,10 @@ struct World
     // Where the managed game puts an animal (SpawnAnimal): a block taken at random; in a
     // park somewhere on its lawn, otherwise on the pavement of the street beside the
     // block. `lawn` looks for a park first, as most flocks of pigeons do.
-    std::optional<Perch> animalPerch(Random &source, bool lawn) const;
+    std::optional<Perch> animal_perch(Random &source, bool lawn) const;
     // The place of the n-th member of a flock around its home: a spiral on a lawn, two
     // files along a pavement.
-    static Vec2 flockOffset(int member, bool pavement);
+    static Vec2 flock_offset(int member, bool pavement);
     Perch landing_site(Vec2 near, Vec2 away);
     void take_flight(int flock, Vec2 from, Vec2 away);
     std::vector<TransitLine> lines;
@@ -451,7 +451,7 @@ struct World
     void generateStreetFurniture();
     void fixturesNear(Vec2 centre, double radius, std::vector<size_t> &out) const;
     void updateFixtures(Vec2 focus, double dt);
-    void supportFixture(StreetFixture &fixture);
+    void support_fixture(StreetFixture &fixture);
     std::vector<Body> staticBodies;
     std::vector<size_t> nearbyStaticBodies;
     Vec2 staticQueryCentre{};
@@ -488,13 +488,13 @@ struct World
     // The nearest spot off the carriageway where somebody hurt in the road can wait.
     Vec2 kerbside(Vec2 from) const;
     void strike_player(const Car &car, double closingSpeed);
-    bool detectImpact(Person &person, const Car &car, bool playerDriving);
-    void detectPlayerImpact(std::span<const Car *const> traffic);
-    void hurtPlayer(double amount);
+    bool detect_impact(Person &person, const Car &car, bool playerDriving);
+    void detect_player_impact(std::span<const Car *const> traffic);
+    void hurt_player(double amount);
     // A bullet or a blast that reaches the player on foot (DamagePlayer): heard as well.
-    void woundPlayer(double amount);
+    void wound_player(double amount);
     bool policeSees() const;
-    void fadeWanted(double dt);
+    void fade_wanted(double dt);
     // Depth of the canal or the sea under a body whose lowest point is at `feet`;
     // zero on dry land and on a bridge deck.
     double waterDepth(Vec2 point, double feet) const;
@@ -638,7 +638,7 @@ struct World
     int ownedGarage{-1}, openMarket{-1};
     static constexpr int garagePrice = 400, garageCapacity = 3;
     static constexpr double pillHealing = .35;
-    bool spawnPickup(bool energy);
+    bool spawn_pickup(bool energy);
     int owned_vehicle_count() const;
     int garage_quote() const;
     bool service_garage();
@@ -654,7 +654,7 @@ struct World
     void interactPassengerJob();
     void stepPassengerJob(double dt);
     void releasePassenger(const Job &trip, bool delivered);
-    Vec2 passengerDoor(const Car &car, Vec2 from) const;
+    static Vec2 passengerDoor(const Car &car, Vec2 from);
     void resumeWalk(Person &person, Vec2 position, int level);
     bool startPeaceJob(JobKind kind);
     void interactPeaceJob();
@@ -765,8 +765,8 @@ struct World
         return {(n % nodes - (nodes - 1) * .5) * spacing, (n / nodes - (nodes - 1) * .5) * spacing};
     }
     std::vector<int> neighbours(int n) const;
-    int chooseNext(int n, int previous);
-    void newRoute(Car &car);
+    int choose_next(int n, int previous);
+    void new_route(Car &car);
     bool intersectionClear(const Car &car) const;
     void planExit(Car &car);
     // A car is crossing this junction (the one reservation it has); `except` is not asked.
@@ -789,6 +789,6 @@ struct World
     bool rejoinRoad(Car &car);
     bool chaseGround(Vec2 at) const;
     bool tryChangeLane(Car &car, int destination);
-    Vec2 pickupSite();
+    Vec2 pickup_site();
 };
 } // namespace Promzona

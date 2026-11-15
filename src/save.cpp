@@ -568,7 +568,7 @@ void World::load(const std::filesystem::path &path)
         next.particles.size() > 5000 || next.playerDistance < 0 || next.rockets.size() > 16 ||
         next.fireClock < 0 || next.playerBurnUntil < 0)
         throw std::runtime_error("Invalid save state");
-    next.clock.setHour(j.at("hour"));
+    next.clock.set_hour(j.at("hour"));
     next.clock.cycleMinutes = j.at("cycleMinutes");
     if (next.clock.cycleMinutes < 2 || next.clock.cycleMinutes > 30)
         throw std::runtime_error("Invalid solar cycle");
@@ -617,7 +617,7 @@ void World::load(const std::filesystem::path &path)
                 throw std::runtime_error("Invalid street fixture state");
             f.displaced = true;
             next.displacedFixtures.insert(size_t(&f - next.fixtures.data()));
-            next.supportFixture(f);
+            next.support_fixture(f);
         }
     }
     body(next.player);
@@ -927,8 +927,8 @@ void World::load(const std::filesystem::path &path)
     }
     if (!street)
     {
-        next.generateStreetLife();
-        next.formCompanies(true);
+        next.generate_street_life();
+        next.form_companies(true);
     }
     else
     {

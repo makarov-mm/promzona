@@ -8,49 +8,77 @@ namespace Promzona
     void World::generate_shops()
     {
         ownedGarage = openMarket = -1;
+
         // Append after the older services and street fixtures. Both use stable indices in saves.
-        for (const auto &building : buildings)
+        for (const Building &building : buildings)
         {
             bool stall = building.kind == BuildingKind::stall;
             if (!stall && building.kind != BuildingKind::garage)
                 continue;
             const double xInBlock = std::fmod(building.p.x - layout.coordinate(0), spacing);
+
             // One public workshop per garage row, with an entrance facing its access lane.
             if (!stall && (xInBlock >= spacing * .5 || building.front > 0))
                 continue;
-            Vec2 door = building.p + Vec2{0, building.front * (building.half.z + (stall ? .85 : 1.4))};
-            if (!layout.urbanSite(door, 1) || levelAt(door, 1) ||
-                insideBuilding(door, terrain.height(door) + .85, .35))
+
+            Vec2 door = building.p + Vec2{
+                .x = 0, 
+                .z = building.front * (building.half.z + (stall ? .85 : 1.4))
+            };
+
+            if (!layout.urbanSite(door, 1) || levelAt(door, 1) || insideBuilding(door, terrain.height(door) + .85, .35))
+            {
                 continue;
-            sites.push_back({stall ? ServiceKind::market : ServiceKind::garage, building.p, door, building.half.x,
-                             building.half.z, building.height, true});
+            }
+
+            sites.push_back({
+                .kind = stall ? ServiceKind::market : ServiceKind::garage, 
+                .centre = building.p,
+                .entrance = door, 
+                .halfWidth = building.half.x,
+                .halfDepth = building.half.z, 
+                .height = building.height, 
+                .existingBuilding = true
+            });
         }
 
         for (int j = 1; j < nodes - 2; ++j)
             for (int i = 1; i < nodes - 2; ++i)
             {
-                if ((i * 3 + j * 5) % 31 || !layout.park(i, j) || !layout.road(i, j, 1) ||
-                    layout.canalColumn(i) || layout.clinic(i, j) || layout.station(i, j) ||
-                    layout.industrial(i, j))
+                if ((i * 3 + j * 5) % 31 || !layout.park(i, j) || !layout.road(i, j, 1) || layout.canalColumn(i) || CityLayout::clinic(i, j) || CityLayout::station(i, j) || layout.industrial(i, j))
+                {
                     continue;
+                }
+
                 for (int n : {-1, 0, 1})
                 {
-                    Vec2 centre{layout.coordinate(i) + spacing * .5 + n * 4.2,
-                                layout.coordinate(j) + layout.sidewalk() + 1.3};
+                    Vec2 centre {
+                        .x = layout.coordinate(i) + spacing * .5 + n * 4.2,
+                        .z = layout.coordinate(j) + layout.sidewalk() + 1.3
+                    };
+
                     Vec2 door = centre + Vec2{0, -1.65};
-                    if (!layout.urbanSite(centre, 3) || levelAt(centre, 4) ||
-                        terrain.height(door) <= CityLayout::waterLevel + .5)
+
+                    if (!layout.urbanSite(centre, 3) || levelAt(centre, 4) || terrain.height(door) <= CityLayout::waterLevel + .5)
+                    {
                         continue;
-                    auto nearCounter = [&](const ServiceSite &s)
-                    { return s.kind != ServiceKind::market && (s.entrance - door).length2() < 12 * 12; };
+                    }
+
+                    auto near_counter = [&](const ServiceSite &s)
+                    {
+                        return s.kind != ServiceKind::market && (s.entrance - door).length2() < 12 * 12;
+                    };
+
                     auto obstructs = [&](const Body &b)
                     {
                         return std::abs(b.p.x - centre.x) < 1.85 + (b.circle ? b.radius : b.halfW) &&
                                b.p.z + (b.circle ? b.radius : b.halfH) > door.z - .65 &&
                                b.p.z - (b.circle ? b.radius : b.halfH) < centre.z + 1.15;
                     };
-                    if (std::ranges::any_of(sites, nearCounter) || std::ranges::any_of(staticBodies, obstructs))
+
+                    if (std::ranges::any_of(sites, near_counter) || std::ranges::any_of(staticBodies, obstructs))
                         continue;
+
                     sites.push_back({ServiceKind::market, centre, door, 1.5, .8, 2.4});
                     Body body;
                     body.id = 0x50000000u + static_cast<unsigned>(sites.size());
@@ -70,55 +98,56 @@ namespace Promzona
     void World::generate_bus_stops()
     {
         busStops.clear();
-        busStopOfNode.assign(size_t(nodes * nodes), -1);
+        busStopOfNode.assign(nodes * nodes, -1);
+
         // The shelter itself, with a hand's breadth to spare. The managed game keeps a wider box
         // free for its passengers; here nobody walks on this side of the street, the houses stand
         // nearer to it, and a lamp post at the kerb in front of a shelter is no obstacle.
         constexpr double footprintX = .75, footprintZ = 1.65;
         const size_t older = staticBodies.size();
+
         for (int j = 1; j < nodes - 2; j += 3)
             for (int i = 1; i < nodes - 2; i += 4)
             {
                 if (!layout.road(i, j, 0))
                     continue;
-                const Vec2 sign{layout.coordinate(i) - layout.sidewalk(), layout.coordinate(j) + spacing * .5};
+
+                const Vec2 sign { .x = layout.coordinate(i) - layout.sidewalk(), .z = layout.coordinate(j) + spacing * .5 };
                 const Vec2 centre = shelter(sign);
+
                 if (levelAt(sign, 4) || !layout.urbanSite(sign, 3) ||
                     terrain.height(centre) <= CityLayout::waterLevel + .5)
                     continue;
+
                 auto taken = [&](Vec2 p, double halfX, double halfZ) {
                     return std::abs(p.x - centre.x) < footprintX + halfX &&
                            std::abs(p.z - centre.z) < footprintZ + halfZ;
                 };
+
                 // A kiosk this near would offer its counter on the same key. Whatever else already
                 // stands here keeps its place.
-                if (std::ranges::any_of(sites, [&](const ServiceSite &s)
-                                        { return (s.centre - sign).length2() <= 36; }) ||
-                    std::ranges::any_of(buildings,
-                                        [&](const Building &b) { return taken(b.p, b.half.x, b.half.z); }) ||
-                    std::ranges::any_of(trees,
-                                        [&](const TreePlant &t) {
-                                            return taken({t.foot.x, t.foot.z}, t.radius + .5, t.radius + .5);
-                                        }) ||
-                    std::ranges::any_of(std::span(staticBodies).first(older),
-                                        [&](const Body &b)
-                                        {
-                                            const bool square = b.circle || std::abs(std::sin(b.angle)) > .05;
-                                            const double reach =
-                                                b.circle ? b.radius : std::max(b.halfW, b.halfH);
-                                            return taken(b.p, square ? reach : b.halfW,
-                                                         square ? reach : b.halfH);
-                                        }))
+                if (std::ranges::any_of(sites, [&](const ServiceSite &s) { return (s.centre - sign).length2() <= 36; }) ||
+                    std::ranges::any_of(buildings, [&](const Building &b) { return taken(b.p, b.half.x, b.half.z); }) ||
+                    std::ranges::any_of(trees,[&](const TreePlant &t)  { return taken({.x = t.foot.x, .z = t.foot.z}, t.radius + .5, t.radius + .5); }) ||
+                    std::ranges::any_of(std::span(staticBodies).first(older), [&](const Body &b)
+                    {
+                        const bool square = b.circle || std::abs(std::sin(b.angle)) > .05;
+                        const double reach = b.circle ? b.radius : std::max(b.halfW, b.halfH);
+                        return taken(b.p, square ? reach : b.halfW, square ? reach : b.halfH);
+                    }))
+                {
                     continue;
-                busStopOfNode[size_t(i + j * nodes)] = int(busStops.size());
+                }
+
+                busStopOfNode[static_cast<size_t>(i + j * nodes)] = static_cast<int>(busStops.size());
                 busStops.push_back(sign);
                 // The rear wall and the bench; the roof is above everybody's head.
                 const double ground = terrain.height(centre);
-                for (const auto &[offset, halfX, halfZ, height] :
-                     {std::tuple{-.48, .10, 1.48, 2.4}, std::tuple{-.25, .34, 1.12, .85}})
+
+                for (const auto &[offset, halfX, halfZ, height] : {std::tuple{-.48, .10, 1.48, 2.4}, std::tuple{-.25, .34, 1.12, .85}})
                 {
                     Body body;
-                    body.id = 0x52000000u + std::uint32_t(staticBodies.size() - older);
+                    body.id = 0x52000000u + static_cast<std::uint32_t>(staticBodies.size() - older);
                     body.p = centre + Vec2{offset, 0};
                     body.halfW = halfX;
                     body.halfH = halfZ;
@@ -173,8 +202,10 @@ namespace Promzona
     {
         if (transitPassenger())
             return -1;
+
         if (drone.active || health <= 0 || playerScooter >= 0)
             return -1;
+
         if (controlledCar >= 0)
         {
             const auto &c = cars[controlledCar];
@@ -184,6 +215,7 @@ namespace Promzona
         }
         else if (player.roadLevel)
             return -1;
+
         return forecourt(*this, ServiceKind::garage, controlledCar >= 0 ? 10. : 2.5);
     }
 
@@ -199,7 +231,9 @@ namespace Promzona
     {
         if (controlledCar < 0 || garage_in_reach() < 0)
             return false;
+
         int price = garage_quote();
+
         if (!price)
             notify(L"Машина в порядке");
         else if (money < price)
@@ -224,6 +258,7 @@ namespace Promzona
             notify((repaint ? L"Машина перекрашена. Розыск снят  −$" : L"Машина отремонтирована  −$") +
                    std::to_wstring(price));
         }
+
         return true;
     }
 
@@ -234,9 +269,11 @@ namespace Promzona
 
     void World::use_owned_garage()
     {
-        int site = garage_in_reach();
+        const int site = garage_in_reach();
+
         if (site < 0)
             return;
+
         if (ownedGarage < 0)
         {
             if (money < garagePrice)
@@ -250,25 +287,31 @@ namespace Promzona
             notify(L"Теперь это ваш гараж  −$400");
             return;
         }
+
         if (site != ownedGarage || controlledCar < 0)
             return;
-        auto &c = cars[controlledCar];
+        Car &c = cars[controlledCar];
+
         if (c.kind > 1 || c.fireTime > 0 || job.kind != JobKind::none || c.body.v.length2() > .25)
         {
             notify(L"Для парковки остановите исправную легковую машину или фургон и завершите заказ");
             return;
         }
+
         if (!c.personal && owned_vehicle_count() >= garageCapacity)
         {
             notify(L"Все три места заняты");
             return;
         }
+
         enter_exit();
+
         if (controlledCar >= 0)
         {
             notify(L"Оставьте место, чтобы открыть дверь");
             return;
         }
+
         c.personal = true;
         notify(L"Машина припаркована  " + std::to_wstring(owned_vehicle_count()) + L"/3");
     }
@@ -286,6 +329,7 @@ namespace Promzona
         case ShopItem::energy:
             return 15;
         }
+
         return 0;
     }
 
@@ -293,14 +337,18 @@ namespace Promzona
     {
         if (openMarket < 0 || market_in_reach() != openMarket)
             return false;
-        int price = shop_price(item);
+
+        const int price = shop_price(item);
+
         if (!price)
             return false;
+
         if (money < price)
         {
             notify(L"Не хватает денег");
             return false;
         }
+
         switch (item)
         {
         case ShopItem::pistol:
@@ -328,6 +376,7 @@ namespace Promzona
             energySeconds = 25;
             break;
         }
+
         money -= price;
         sounds.push_back({"spend", player.p, .7, true});
         notify(L"Покупка  −$" + std::to_wstring(price));

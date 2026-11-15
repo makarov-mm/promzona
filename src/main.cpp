@@ -10,7 +10,6 @@
 #include <future>
 #include <windows.h>
 #include <GL/gl.h>
-#include <mmsystem.h>
 #include <random>
 #include <ranges>
 #include <shellapi.h>
@@ -21,327 +20,383 @@
 
 namespace
 {
-using namespace Promzona;
-struct Application
-{
-    HWND window{};
-    bool running{true}, active{true}, menu{true}, console{}, loading{}, cursorHidden{};
-    bool keys[256]{}, pressed[256]{}, firing{};
-    int width{1280}, height{720}, wheel{}, cameraMode{};
-    double look{}, lookPitch{}, cameraYaw{}, zoom{20};
-    bool jobsOpen{};
-    int mouseX{}, mouseY{};
-    bool pointerMoved{}, clicked{}, mouseLookReady{};
-    GameConsole terminal;
-    std::vector<std::wstring> submissions;
-    std::wstring message;
-    std::filesystem::path saveFile;
-    void cursor(bool hidden)
+    using namespace Promzona;
+
+    struct Application
     {
-        if (hidden == cursorHidden)
-            return;
-        cursorHidden = hidden;
-        if (hidden)
-            while (ShowCursor(FALSE) >= 0)
-            {
-            }
-        else
-            while (ShowCursor(TRUE) < 0)
-            {
-            }
-    }
-};
-LRESULT CALLBACK windowProc(HWND window, UINT msg, WPARAM w, LPARAM l)
-{
-    auto a = reinterpret_cast<Application *>(GetWindowLongPtrW(window, GWLP_USERDATA));
-    if (msg == WM_NCCREATE)
-    {
-        a = static_cast<Application *>(reinterpret_cast<CREATESTRUCTW *>(l)->lpCreateParams);
-        SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(a));
-    }
-    if (!a)
-        return DefWindowProcW(window, msg, w, l);
-    switch (msg)
-    {
-    case WM_ERASEBKGND:
-    {
-        RECT r;
-        GetClientRect(window, &r);
-        FillRect(reinterpret_cast<HDC>(w), &r, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
-        return 1;
-    }
-    case WM_CLOSE:
-        a->running = false;
-        return 0;
-    case WM_SIZE:
-        a->width = LOWORD(l);
-        a->height = HIWORD(l);
-        return 0;
-    case WM_ACTIVATEAPP:
-        a->active = w != 0;
-        if (!a->active)
+        HWND window{};
+        bool running{true}, active{true}, menu{true}, console{}, loading{}, cursorHidden{};
+        bool keys[256]{}, pressed[256]{}, firing{};
+        int width{1280}, height{720}, wheel{}, cameraMode{};
+        double look{}, lookPitch{}, cameraYaw{}, zoom{20};
+        bool jobsOpen{};
+        int mouseX{}, mouseY{};
+        bool pointerMoved{}, clicked{}, mouseLookReady{};
+        GameConsole terminal;
+        std::vector<std::wstring> submissions;
+        std::wstring message;
+        std::filesystem::path saveFile;
+
+        void cursor(bool hidden)
         {
-            std::ranges::fill(a->keys, false);
-            std::ranges::fill(a->pressed, false);
-            a->firing = a->clicked = a->pointerMoved = a->mouseLookReady = false;
-            a->wheel = 0;
+            if (hidden == cursorHidden)
+                return;
+
+            cursorHidden = hidden;
+
+            if (hidden)
+                while (ShowCursor(FALSE) >= 0)
+                {
+                }
+            else
+                while (ShowCursor(TRUE) < 0)
+                {
+                }
         }
-        a->cursor(a->active && (a->loading || !a->menu) && !a->console);
-        return 0;
-    case WM_KEYDOWN:
-        if (a->console && w != VK_F1 && w != VK_ESCAPE && w != VK_OEM_3)
+    };
+
+    LRESULT CALLBACK windowProc(HWND window, UINT msg, WPARAM w, LPARAM l)
+    {
+        Application *a = reinterpret_cast<Application *>(GetWindowLongPtrW(window, GWLP_USERDATA));
+
+        if (msg == WM_NCCREATE)
         {
-            switch (w)
+            a = static_cast<Application *>(reinterpret_cast<CREATESTRUCTW *>(l)->lpCreateParams);
+            SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(a));
+        }
+
+        if (!a)
+            return DefWindowProcW(window, msg, w, l);
+
+        switch (msg)
+        {
+        case WM_ERASEBKGND:
+        {
+            RECT r;
+            GetClientRect(window, &r);
+            FillRect(reinterpret_cast<HDC>(w), &r, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
+            return 1;
+        }
+        case WM_CLOSE:
+            a->running = false;
+            return 0;
+        case WM_SIZE:
+            a->width = LOWORD(l);
+            a->height = HIWORD(l);
+            return 0;
+        case WM_ACTIVATEAPP:
+            a->active = w != 0;
+            if (!a->active)
             {
-            case VK_UP:
-                a->terminal.history(-1);
-                break;
-            case VK_DOWN:
-                a->terminal.history(1);
-                break;
-            case VK_LEFT:
-                a->terminal.move(-1);
-                break;
-            case VK_RIGHT:
-                a->terminal.move(1);
-                break;
-            case VK_HOME:
-                a->terminal.move(-160);
-                break;
-            case VK_END:
-                a->terminal.move(160);
-                break;
-            case VK_DELETE:
-                a->terminal.erase(false);
-                break;
-            case VK_BACK:
-                a->terminal.erase(true);
-                break;
-            case VK_PRIOR:
-                a->terminal.scroll(6);
-                break;
-            case VK_NEXT:
-                a->terminal.scroll(-6);
-                break;
-            case VK_TAB:
-                a->terminal.complete();
-                break;
-            case VK_RETURN:
-                a->submissions.push_back(a->terminal.submit());
-                break;
+                std::ranges::fill(a->keys, false);
+                std::ranges::fill(a->pressed, false);
+                a->firing = a->clicked = a->pointerMoved = a->mouseLookReady = false;
+                a->wheel = 0;
+            }
+            a->cursor(a->active && (a->loading || !a->menu) && !a->console);
+            return 0;
+        case WM_KEYDOWN:
+            if (a->console && w != VK_F1 && w != VK_ESCAPE && w != VK_OEM_3)
+            {
+                switch (w)
+                {
+                case VK_UP:
+                    a->terminal.history(-1);
+                    break;
+                case VK_DOWN:
+                    a->terminal.history(1);
+                    break;
+                case VK_LEFT:
+                    a->terminal.move(-1);
+                    break;
+                case VK_RIGHT:
+                    a->terminal.move(1);
+                    break;
+                case VK_HOME:
+                    a->terminal.move(-160);
+                    break;
+                case VK_END:
+                    a->terminal.move(160);
+                    break;
+                case VK_DELETE:
+                    a->terminal.erase(false);
+                    break;
+                case VK_BACK:
+                    a->terminal.erase(true);
+                    break;
+                case VK_PRIOR:
+                    a->terminal.scroll(6);
+                    break;
+                case VK_NEXT:
+                    a->terminal.scroll(-6);
+                    break;
+                case VK_TAB:
+                    a->terminal.complete();
+                    break;
+                case VK_RETURN:
+                    a->submissions.push_back(a->terminal.submit());
+                    break;
+                }
+                return 0;
+            }
+
+            if (w < 256)
+            {
+                if (!a->keys[w])
+                    a->pressed[w] = true;
+                a->keys[w] = true;
             }
             return 0;
+        case WM_KEYUP:
+            if (w < 256)
+                a->keys[w] = false;
+            return 0;
+        case WM_CHAR:
+            if (a->console && w != L'~' && w != L'`')
+                a->terminal.insert(static_cast<wchar_t>(w));
+            return 0;
+        case WM_MOUSEWHEEL:
+            if (a->console)
+                a->terminal.scroll(3 * GET_WHEEL_DELTA_WPARAM(w) / WHEEL_DELTA);
+            else
+                a->wheel += GET_WHEEL_DELTA_WPARAM(w) / WHEEL_DELTA;
+            return 0;
+        case WM_MOUSEMOVE:
+            a->mouseX = static_cast<short>(LOWORD(l));
+            a->mouseY = static_cast<short>(HIWORD(l));
+            a->pointerMoved = true;
+            return 0;
+        case WM_LBUTTONDOWN:
+            a->mouseX = static_cast<short>(LOWORD(l));
+            a->mouseY = static_cast<short>(HIWORD(l));
+            a->clicked = a->menu && !a->loading;
+            a->firing = !a->menu && !a->loading && !a->console;
+            return 0;
+        case WM_LBUTTONUP:
+            a->firing = false;
+            return 0;
+        case WM_SETCURSOR:
+            if (a->cursorHidden)
+            {
+                SetCursor(nullptr);
+                return TRUE;
+            }
+            break;
         }
-        if (w < 256)
+        return DefWindowProcW(window, msg, w, l);
+    }
+
+    struct Context
+    {
+        HWND window{};
+        HDC dc{};
+        HGLRC gl{};
+
+        explicit Context(HWND w, const bool vsync) : window(w), dc(GetDC(w))
         {
-            if (!a->keys[w])
-                a->pressed[w] = true;
-            a->keys[w] = true;
+            PIXELFORMATDESCRIPTOR p{};
+            p.nSize = sizeof p;
+            p.nVersion = 1;
+            p.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+            p.iPixelType = PFD_TYPE_RGBA;
+            p.cColorBits = 32;
+            p.cDepthBits = 24;
+            p.cStencilBits = 8;
+            int format = ChoosePixelFormat(dc, &p);
+
+            if (!format || !SetPixelFormat(dc, format, &p))
+                throw std::runtime_error("Cannot select OpenGL pixel format");
+
+            HGLRC bootstrap = wglCreateContext(dc);
+
+            if (!bootstrap || !wglMakeCurrent(dc, bootstrap))
+                throw std::runtime_error("Cannot create OpenGL context");
+
+            using Create = HGLRC(WINAPI *)(HDC, HGLRC, const int *);
+            Create create = reinterpret_cast<Create>(wglGetProcAddress("wglCreateContextAttribsARB"));
+
+            if (create)
+            {
+                const int attributes[] = {0x2091, 3, 0x2092, 3, 0x9126, 1, 0};
+                gl = create(dc, nullptr, attributes);
+            }
+
+            wglMakeCurrent(nullptr, nullptr);
+            wglDeleteContext(bootstrap);
+
+            if (!gl || !wglMakeCurrent(dc, gl))
+                throw std::runtime_error("OpenGL 3.3 is required");
+
+            using Swap = BOOL(WINAPI *)(int);
+
+            if (auto swap = reinterpret_cast<Swap>(wglGetProcAddress("wglSwapIntervalEXT")))
+                swap(vsync ? 1 : 0);
+
+            glClearColor(0, 0, 0, 1);
+            glClear(GL_COLOR_BUFFER_BIT);
+            SwapBuffers(dc);
         }
-        return 0;
-    case WM_KEYUP:
-        if (w < 256)
-            a->keys[w] = false;
-        return 0;
-    case WM_CHAR:
-        if (a->console && w != L'~' && w != L'`')
-            a->terminal.insert(wchar_t(w));
-        return 0;
-    case WM_MOUSEWHEEL:
-        if (a->console)
-            a->terminal.scroll(3 * GET_WHEEL_DELTA_WPARAM(w) / WHEEL_DELTA);
-        else
-            a->wheel += GET_WHEEL_DELTA_WPARAM(w) / WHEEL_DELTA;
-        return 0;
-    case WM_MOUSEMOVE:
-        a->mouseX = static_cast<short>(LOWORD(l));
-        a->mouseY = static_cast<short>(HIWORD(l));
-        a->pointerMoved = true;
-        return 0;
-    case WM_LBUTTONDOWN:
-        a->mouseX = static_cast<short>(LOWORD(l));
-        a->mouseY = static_cast<short>(HIWORD(l));
-        a->clicked = a->menu && !a->loading;
-        a->firing = !a->menu && !a->loading && !a->console;
-        return 0;
-    case WM_LBUTTONUP:
-        a->firing = false;
-        return 0;
-    case WM_SETCURSOR:
-        if (a->cursorHidden)
+
+        ~Context()
         {
-            SetCursor(nullptr);
-            return TRUE;
+            wglMakeCurrent(nullptr, nullptr);
+
+            if (gl)
+                wglDeleteContext(gl);
+
+            if (dc)
+                ReleaseDC(window, dc);
         }
-        break;
-    }
-    return DefWindowProcW(window, msg, w, l);
-}
-struct Context
-{
-    HWND window{};
-    HDC dc{};
-    HGLRC gl{};
-    explicit Context(HWND w, bool vsync) : window(w), dc(GetDC(w))
-    {
-        PIXELFORMATDESCRIPTOR p{};
-        p.nSize = sizeof p;
-        p.nVersion = 1;
-        p.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-        p.iPixelType = PFD_TYPE_RGBA;
-        p.cColorBits = 32;
-        p.cDepthBits = 24;
-        p.cStencilBits = 8;
-        int format = ChoosePixelFormat(dc, &p);
-        if (!format || !SetPixelFormat(dc, format, &p))
-            throw std::runtime_error("Cannot select OpenGL pixel format");
-        auto bootstrap = wglCreateContext(dc);
-        if (!bootstrap || !wglMakeCurrent(dc, bootstrap))
-            throw std::runtime_error("Cannot create OpenGL context");
-        using Create = HGLRC(WINAPI *)(HDC, HGLRC, const int *);
-        auto create = reinterpret_cast<Create>(wglGetProcAddress("wglCreateContextAttribsARB"));
-        if (create)
-        {
-            const int attributes[] = {0x2091, 3, 0x2092, 3, 0x9126, 1, 0};
-            gl = create(dc, nullptr, attributes);
-        }
-        wglMakeCurrent(nullptr, nullptr);
-        wglDeleteContext(bootstrap);
-        if (!gl || !wglMakeCurrent(dc, gl))
-            throw std::runtime_error("OpenGL 3.3 is required");
-        using Swap = BOOL(WINAPI *)(int);
-        if (auto swap = reinterpret_cast<Swap>(wglGetProcAddress("wglSwapIntervalEXT")))
-            swap(vsync ? 1 : 0);
-        glClearColor(0, 0, 0, 1);
-        glClear(GL_COLOR_BUFFER_BIT);
-        SwapBuffers(dc);
-    }
-    ~Context()
-    {
-        wglMakeCurrent(nullptr, nullptr);
-        if (gl)
-            wglDeleteContext(gl);
-        if (dc)
-            ReleaseDC(window, dc);
-    }
-};
-std::wstring wide(std::string_view s)
-{
-    const int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), int(s.size()), nullptr, 0);
-    std::wstring r;
-    // The conversion writes straight into the string; what it could not convert is left out.
-    r.resize_and_overwrite(
-        n, [&](wchar_t *buffer, size_t size)
-        { return MultiByteToWideChar(CP_UTF8, 0, s.data(), int(s.size()), buffer, int(size)); });
-    return r;
-}
-std::string utf8(std::wstring_view s)
-{
-    const int n = WideCharToMultiByte(CP_UTF8, 0, s.data(), int(s.size()), nullptr, 0, nullptr, nullptr);
-    std::string r;
-    r.resize_and_overwrite(n,
-                           [&](char *buffer, size_t size) {
-                               return WideCharToMultiByte(CP_UTF8, 0, s.data(), int(s.size()), buffer,
-                                                          int(size), nullptr, nullptr);
-                           });
-    return r;
-}
-View camera(const World &w, Application &a, double dt)
-{
-    if (w.drone.active)
-    {
-        const auto &d = w.drone;
-        View camera;
-        camera.eye = {float(d.position.x), float(d.altitude), float(d.position.z)};
-        const auto f = forward(d.heading) * std::cos(d.pitch);
-        camera.target = camera.eye + Vec3{float(f.x), float(std::sin(d.pitch)), float(f.z)};
-        camera.heading = d.heading;
-        return camera;
-    }
-    auto p = w.position();
-    double heading =
-        w.controlledCar >= 0 && !w.transitPassenger() ? w.cars[w.controlledCar].heading() : a.look;
-    a.cameraYaw = wrap(a.cameraYaw + wrap(heading - a.cameraYaw) * (1 - std::exp(-dt * 3)));
-    float y = float(w.ground());
-    View v;
-    v.target = {float(p.x), y + 1.3f, float(p.z)};
-    // V cycles chase, elevated distant and near top-down views, as in the managed game.
-    if (a.cameraMode == 2)
-        v.eye = v.target + Vec3{0, 70, -28};
-    else if (a.cameraMode == 1)
-    {
-        const double distance = a.zoom * 2.2, pitch = .72;
-        v.eye = v.target + Vec3{float(-std::sin(a.cameraYaw) * std::cos(pitch) * distance),
-                                float(std::sin(pitch) * distance),
-                                float(-std::cos(a.cameraYaw) * std::cos(pitch) * distance)};
-    }
-    else
-        v.eye = v.target + Vec3{float(-std::sin(a.cameraYaw) * a.zoom), float(a.zoom * .43),
-                                float(-std::cos(a.cameraYaw) * a.zoom)};
-    const bool mounted = w.controlledCar >= 0 && !w.transitPassenger() && w.cars[w.controlledCar].mountedGun();
-    const bool onFoot = w.controlledCar < 0 && w.playerScooter < 0 && a.cameraMode == 0;
-    const bool aim = w.health > 0 && ((onFoot && w.inventory.active()) ||
-                                      (a.cameraMode == 0 && mounted && a.firing));
-    if (aim && mounted)
-        v.target.y = y + 2.3f;
-    const double pitch = aim && mounted ? w.cars[w.controlledCar].turretPitch : a.lookPitch;
-    Vec3 sight{float(std::sin(a.look) * std::cos(pitch)), float(std::sin(pitch)),
-               float(std::cos(a.look) * std::cos(pitch))};
-    if (onFoot)
-        v.eye = v.target - sight * 5.3f +
-                Vec3{float(-std::cos(a.look) * .58), .62f, float(std::sin(a.look) * .58)};
-    else if (aim)
-        v.eye = v.target - sight * 7.f +
-                Vec3{float(-std::cos(a.look) * .35), .12f, float(std::sin(a.look) * .35)};
-    // Sweep the camera segment; stop before roofs, facades or terrain, including a small clearance.
-    auto clearOffset = [&](Vec3 offset, float radius)
-    {
-        const int steps = std::clamp(int(std::ceil(offset.length() / .22f)), 1, 100);
-        for (int i = 1; i <= steps; ++i)
-        {
-            float t = float(i) / steps;
-            auto q = v.target + offset * t;
-            if (w.scenerySolid({q.x, q.z}, q.y, radius) || w.insideBuilding({q.x, q.z}, q.y, radius))
-                return offset * (float(i - 1) / steps);
-        }
-        return offset;
     };
-    auto offset = clearOffset(v.eye - v.target, .6f);
-    if ((!aim || onFoot) && offset.length() < 2.f)
+
+    std::wstring wide(std::string_view s)
     {
-        // A stop can put the passenger on a narrow pavement with a facade behind.
-        // Try the sides before falling back to a view from the character's eyes.
-        for (double angle : {pi * .5, -pi * .5, pi})
+        const int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), int(s.size()), nullptr, 0);
+        std::wstring r;
+
+        // The conversion writes straight into the string; what it could not convert is left out.
+        r.resize_and_overwrite(
+            n, [&](wchar_t *buffer, size_t size)
+            {
+                return MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), buffer, static_cast<int>(size));
+            });
+
+        return r;
+    }
+
+    std::string utf8(std::wstring_view s)
+    {
+        const int n = WideCharToMultiByte(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0, nullptr, nullptr);
+        std::string r;
+
+        r.resize_and_overwrite(n, [&](char *buffer, size_t size) {
+            return WideCharToMultiByte(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), buffer, static_cast<int>(size), nullptr, nullptr);
+        });
+
+        return r;
+    }
+
+    View camera(const World &w, Application &a, double dt)
+    {
+        if (w.drone.active)
         {
-            const auto side = forward(a.cameraYaw + angle);
-            auto candidate = clearOffset({float(side.x * 4), 1.65f, float(side.z * 4)}, .22f);
-            if (candidate.length() > offset.length())
-                offset = candidate;
-            if (offset.length() >= 3.f)
-                break;
+            const auto &d = w.drone;
+            View camera;
+            camera.eye = {float(d.position.x), float(d.altitude), float(d.position.z)};
+            const auto f = forward(d.heading) * std::cos(d.pitch);
+            camera.target = camera.eye + Vec3{float(f.x), float(std::sin(d.pitch)), float(f.z)};
+            camera.heading = d.heading;
+            return camera;
         }
+
+        Vec2 p = w.position();
+        double heading = w.controlledCar >= 0 && !w.transitPassenger() ? w.cars[w.controlledCar].heading() : a.look;
+        a.cameraYaw = wrap(a.cameraYaw + wrap(heading - a.cameraYaw) * (1 - std::exp(-dt * 3)));
+        float y = static_cast<float>(w.ground());
+        View v;
+        v.target = {static_cast<float>(p.x), y + 1.3f, static_cast<float>(p.z)};
+
+        // V cycles chase, elevated distant and near top-down views, as in the managed game.
+        if (a.cameraMode == 2)
+        {
+            v.eye = v.target + Vec3{0, 70, -28};
+        }
+        else if (a.cameraMode == 1)
+        {
+            const double distance = a.zoom * 2.2, pitch = .72;
+            v.eye = v.target + Vec3 {
+                static_cast<float>(-std::sin(a.cameraYaw) * std::cos(pitch) * distance),
+                static_cast<float>(std::sin(pitch) * distance),
+                static_cast<float>(-std::cos(a.cameraYaw) * std::cos(pitch) * distance)
+            };
+        }
+        else
+        {
+            v.eye = v.target + Vec3 {
+                static_cast<float>(-std::sin(a.cameraYaw) * a.zoom),
+                static_cast<float>(a.zoom * .43),
+                static_cast<float>(-std::cos(a.cameraYaw) * a.zoom)
+            };
+        }
+
+        const bool mounted = w.controlledCar >= 0 && !w.transitPassenger() && w.cars[w.controlledCar].mountedGun();
+        const bool on_foot = w.controlledCar < 0 && w.playerScooter < 0 && a.cameraMode == 0;
+        const bool aim = w.health > 0 && ((on_foot && w.inventory.active()) || (a.cameraMode == 0 && mounted && a.firing));
+
+        if (aim && mounted)
+            v.target.y = y + 2.3f;
+
+        const double pitch = aim && mounted ? w.cars[w.controlledCar].turretPitch : a.lookPitch;
+
+        Vec3 sight {
+            static_cast<float>(std::sin(a.look) * std::cos(pitch)),
+            static_cast<float>(std::sin(pitch)),
+            static_cast<float>(std::cos(a.look) * std::cos(pitch))
+        };
+
+        if (on_foot)
+        {
+            v.eye = v.target - sight * 5.3f + Vec3{static_cast<float>(-std::cos(a.look) * .58), .62f, static_cast<float>(std::sin(a.look) * .58)};
+        }
+        else if (aim)
+        {
+            v.eye = v.target - sight * 7.f + Vec3{static_cast<float>(-std::cos(a.look) * .35), .12f, static_cast<float>(std::sin(a.look) * .35)};
+        }
+
+        // Sweep the camera segment; stop before roofs, facades or terrain, including a small clearance.
+        auto clear_offset = [&](Vec3 offset, float radius)
+        {
+            const int steps = std::clamp(static_cast<int>(std::ceil(offset.length() / .22f)), 1, 100);
+            for (int i = 1; i <= steps; ++i)
+            {
+                float t = static_cast<float>(i) / steps;
+                auto q = v.target + offset * t;
+                if (w.scenerySolid({q.x, q.z}, q.y, radius) || w.insideBuilding({q.x, q.z}, q.y, radius))
+                    return offset * (static_cast<float>(i - 1) / steps);
+            }
+            return offset;
+        };
+
+        Vec3 offset = clear_offset(v.eye - v.target, .6f);
+
+        if ((!aim || on_foot) && offset.length() < 2.f)
+        {
+            // A stop can put the passenger on a narrow pavement with a facade behind.
+            // Try the sides before falling back to a view from the character's eyes.
+            for (double angle : {pi * .5, -pi * .5, pi})
+            {
+                const auto side = forward(a.cameraYaw + angle);
+                auto candidate = clear_offset({float(side.x * 4), 1.65f, float(side.z * 4)}, .22f);
+                if (candidate.length() > offset.length())
+                    offset = candidate;
+                if (offset.length() >= 3.f)
+                    break;
+            }
+        }
+
+        v.eye = v.target + offset;
+
+        if (aim)
+        {
+            // Keep the reticle aligned to the firing line, even if a wall shifts the camera sideways.
+            const double muzzleY = mounted ? w.cars[w.controlledCar].body.height + 1.45 : w.player.height + .47;
+            v.target = Vec3{float(p.x), float(muzzleY), float(p.z)} + sight * 45.f;
+            v.weapon_sight = true;
+        }
+        else if (on_foot && offset.length() >= .4f)
+            v.target = v.target + sight * 3.f;
+        else if (offset.length() < .4f)
+        {
+            const auto ahead = forward(a.cameraYaw);
+            v.eye = v.target + Vec3{0, .3f, 0};
+            v.target = v.eye + Vec3{float(ahead.x), 0, float(ahead.z)};
+        }
+        v.distance = std::max(.1f, offset.length());
+        v.heading = a.cameraYaw;
+        return v;
     }
-    v.eye = v.target + offset;
-    if (aim)
-    {
-        // Keep the reticle aligned to the firing line, even if a wall shifts the camera sideways.
-        const double muzzleY = mounted ? w.cars[w.controlledCar].body.height + 1.45 : w.player.height + .47;
-        v.target = Vec3{float(p.x), float(muzzleY), float(p.z)} + sight * 45.f;
-        v.weapon_sight = true;
-    }
-    else if (onFoot && offset.length() >= .4f)
-        v.target = v.target + sight * 3.f;
-    else if (offset.length() < .4f)
-    {
-        const auto ahead = forward(a.cameraYaw);
-        v.eye = v.target + Vec3{0, .3f, 0};
-        v.target = v.eye + Vec3{float(ahead.x), 0, float(ahead.z)};
-    }
-    v.distance = std::max(.1f, offset.length());
-    v.heading = a.cameraYaw;
-    return v;
 }
-} // namespace
+
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
 {
     Application app;
@@ -351,11 +406,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     std::optional<SceneMode> modeOverride;
     bool profile = false, frameProfile = false, invalidDisplay = false;
     std::wstring scenario = L"day";
-    std::optional<View> reviewView;
     // Smoke scenario "people": who stands where in the line-up.
-    std::vector<std::pair<int, Vec2>> lineup;
-    int reviewRider = -1;
-    double riderStartDistance{};
     std::filesystem::path screenshot, content, logPath, smokeOutput, importFile;
     std::optional<Language> languageOverride;
     std::optional<Density> densityOverride;
@@ -450,29 +501,40 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             scenario != L"rail-yard" && scenario != L"seafront" && scenario != L"canal-mouth" &&
             scenario != L"crowd")
             throw std::runtime_error("Unknown smoke scenario");
+
         if (content.empty())
             content = std::filesystem::is_directory(exeDirectory / L"Content")
-                          ? exeDirectory / L"Content"
-                          : std::filesystem::path(PROMZONA_SOURCE_CONTENT);
+                ? exeDirectory / L"Content"
+                : std::filesystem::path(PROMZONA_SOURCE_CONTENT);
+
         PWSTR local = nullptr;
+
         if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &local)))
         {
             app.saveFile = std::filesystem::path(local) / "PromzonaCpp" / "save.json";
             CoTaskMemFree(local);
         }
         else
+        {
             app.saveFile = exeDirectory / "save.json";
+        }
+
         if (smoke)
             app.saveFile = (smokeOutput.empty() ? exeDirectory : smokeOutput) / "smoke-save.json";
+
         std::filesystem::create_directories(app.saveFile.parent_path());
         logPath = app.saveFile.parent_path() / "native.log";
         log.open(logPath);
+
         if (!log)
             throw std::runtime_error("Cannot open runtime log");
+
         if (invalidDisplay || (captureWidth && !smoke) || (profile && !smoke))
             throw std::runtime_error("Invalid mode, benchmark dimensions, or --smoke missing");
+
         SceneMode displayMode = SceneMode::enhanced;
         const auto displayFile = app.saveFile.parent_path() / "display-mode.txt";
+
         if (!smoke)
         {
             std::ifstream prefs(displayFile);
@@ -485,14 +547,17 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     displayMode = SceneMode::scaled;
             }
         }
+
         if (modeOverride)
             displayMode = *modeOverride;
+
         auto modeName = [&]()
         {
             return displayMode == SceneMode::original ? "native"
                    : displayMode == SceneMode::scaled ? "balanced"
                                                       : "quality";
         };
+
         WNDCLASSW wc{};
         wc.style = CS_OWNDC;
         wc.lpfnWndProc = windowProc;
@@ -501,8 +566,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
         wc.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
         wc.lpszClassName = L"PromzonaCppWindow";
+
         if (!RegisterClassW(&wc))
             throw std::runtime_error("Window class registration failed");
+
         int width = windowed ? 1280 : GetSystemMetrics(SM_CXSCREEN),
             height = windowed ? 720 : GetSystemMetrics(SM_CYSCREEN);
         DWORD style = windowed ? WS_OVERLAPPEDWINDOW : WS_POPUP;
@@ -519,6 +586,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         ShowWindow(app.window, smoke ? SW_SHOWNOACTIVATE : SW_SHOW);
         UpdateWindow(app.window);
         {
+            std::vector<std::pair<int, Vec2>> lineup;
+            std::optional<View> reviewView;
+            double riderStartDistance{};
+            int reviewRider = -1;
             Context context(app.window, !profile);
             Renderer renderer(content);
             renderer.sceneMode(displayMode);
@@ -1079,14 +1150,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         {
                             if (scenario == L"storm")
                             {
-                                world->clock.setHour(16);
+                                world->clock.set_hour(16);
                                 world->setWeather(1);
                                 world->weatherClock = 120;
                                 world->time = 95;
                             }
                             if (scenario == L"night")
                             {
-                                world->clock.setHour(22);
+                                world->clock.set_hour(22);
                                 world->setWeather(.85);
                                 world->weatherClock = 120;
                             }
@@ -1104,7 +1175,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             if (scenario == L"wildlife" || scenario == L"scooter" ||
                                 scenario == L"delivery-rider")
                             {
-                                world->clock.setHour(10);
+                                world->clock.set_hour(10);
                                 world->setWeather(0);
                                 world->controlledCar = -1;
                                 world->player.roadLevel = 0;
@@ -1140,7 +1211,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                         world->releaseScooter(int(it - world->scooters.begin()), {});
                                         world->player.p = it->body.p;
                                         world->player.height = it->body.height + .7;
-                                        if (!world->useScooter())
+                                        if (!world->use_scooter())
                                             throw std::runtime_error("Could not mount dropped scooter");
                                         auto dir = (rider.target - rider.body.p).unit();
                                         app.look = std::atan2(dir.x, dir.z);
@@ -1173,7 +1244,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 }
                                 if (staged != 3)
                                     throw std::runtime_error("No cars to stage the wreckage with");
-                                world->clock.setHour(13);
+                                world->clock.set_hour(13);
                                 world->setWeather(0);
                                 world->weatherClock = 120;
                                 const Vec2 side{ahead.z, -ahead.x}, eye = origin + ahead * 8 + side * 11;
@@ -1207,7 +1278,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 car.body.height = world->terrain.height(car.body.p) + .8;
                                 car.body.v = incoming * 11;
                                 car.body.wake();
-                                world->clock.setHour(11);
+                                world->clock.set_hour(11);
                                 world->setWeather(0);
                                 View view;
                                 auto camera = target + perpendicular(incoming) * 3.6 - incoming * 4.5;
@@ -1230,7 +1301,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 world->player.height = world->terrain.height(bank) + .85;
                                 world->inventory.give(WeaponId::pistol, 30);
                                 world->setWeather(0);
-                                world->clock.setHour(11);
+                                world->clock.set_hour(11);
                                 View view;
                                 view.eye = {float(target.x - 1.), 1.6f, float(target.z - 6.)};
                                 view.target = {float(target.x), float(CityLayout::waterLevel),
@@ -1252,7 +1323,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 car.body.angle = 0;
                                 car.body.v = {0, 5};
                                 world->setWeather(0);
-                                world->clock.setHour(10);
+                                world->clock.set_hour(10);
                                 View v;
                                 auto eye = target + Vec2{-3.8, -4.0};
                                 v.eye = {float(eye.x), float(world->terrain.height(eye) + 1.95),
@@ -1283,7 +1354,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 car.body.angle = 0;
                                 car.body.v = {0, 7};
                                 world->setWeather(0);
-                                world->clock.setHour(10);
+                                world->clock.set_hour(10);
                                 View v;
                                 auto eye = hole->p + Vec2{-2.6, -3.4};
                                 v.eye = {float(eye.x), float(world->terrain.height(eye) + 1.7), float(eye.z)};
@@ -1315,7 +1386,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 c.body.p = eye + Vec2{-4, -4};
                                 c.body.v = {};
                                 c.body.height = world->terrain.height(c.body.p) + .8;
-                                world->clock.setHour(10);
+                                world->clock.set_hour(10);
                             }
                             if (scenario == L"traffic-lanes" || arrestScenario)
                             {
@@ -1369,7 +1440,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                     unit->body.height = world->terrain.height(unit->body.p) + .8;
                                     unit->body.v = {};
                                     world->setWeather(0);
-                                    world->clock.setHour(11);
+                                    world->clock.set_hour(11);
                                     View view;
                                     auto eye = origin + Vec2{24, -5};
                                     view.eye = {float(eye.x), float(world->terrain.height(eye) + 4),
@@ -1385,7 +1456,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                     driver.routeTo = from + 1;
                                     driver.routePhase = 1;
                                     driver.laneIndex = 0;
-                                    world->newRoute(driver);
+                                    world->new_route(driver);
                                     auto place = [&](Car &c, double x, double z)
                                     {
                                         c.body.p = origin + Vec2{x, z};
@@ -1400,7 +1471,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                     wreck.destroy();
                                     passingWreckPosition = wreck.body.p;
                                     place(world->cars.at(0), 2, CityLayout::lane);
-                                    world->clock.setHour(11);
+                                    world->clock.set_hour(11);
                                     world->setWeather(0);
                                     world->weatherClock = 120;
                                     auto eye = origin + Vec2{6, -6};
@@ -1473,7 +1544,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 car.body.w = 0;
                                 car.health = .62;
                                 recoveryStart = car.body.p;
-                                world->clock.setHour(11);
+                                world->clock.set_hour(11);
                                 world->setWeather(0);
                                 world->weatherClock = 120;
                             }
@@ -1507,7 +1578,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 }
                                 if (hijackedCar < 0)
                                     throw std::runtime_error("Missing accessible patrol car");
-                                world->clock.setHour(13);
+                                world->clock.set_hour(13);
                                 world->setWeather(0);
                             }
                             if (scenario == L"ambulance")
@@ -1522,7 +1593,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                     throw std::runtime_error("Missing ambulance");
                                 auto side = rotate(Vec2{1, 0}, unit->body.angle);
                                 auto at = unit->body.p + side * 3.4;
-                                world->clock.setHour(10);
+                                world->clock.set_hour(10);
                                 world->setWeather(0);
                                 world->controlledCar = -1;
                                 world->player.p = at + side * 8;
@@ -1546,7 +1617,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 world->controlledCar = int(world->cars.size() - 1);
                                 app.look = world->cars.back().heading() + .46;
                                 app.zoom = 12;
-                                world->clock.setHour(14);
+                                world->clock.set_hour(14);
                             }
                             if (passengerScenario)
                             {
@@ -1584,7 +1655,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 }
                                 if (!found)
                                     throw std::runtime_error("No accessible stop in smoke city");
-                                world->clock.setHour(13);
+                                world->clock.set_hour(13);
                                 app.zoom = 17;
                             }
                             if (scenario == L"transit")
@@ -1594,14 +1665,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                     throw std::runtime_error("Missing tram in generated city");
                                 world->controlledCar = int(it - world->cars.begin());
                                 app.zoom = 18;
-                                world->clock.setHour(13);
+                                world->clock.set_hour(13);
                             }
                             if (scenario == L"pursuit")
                             {
                                 world->command("wanted 6");
                                 for (int n = 0; n < 24; ++n)
                                     world->updateDispatch();
-                                world->clock.setHour(12);
+                                world->clock.set_hour(12);
                             }
                             if (scenario == L"leaflets")
                             {
@@ -1685,7 +1756,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 view.target = {float(centre.x), float(world->terrain.height(centre) + 1.2),
                                                float(centre.z)};
                                 reviewView = view;
-                                world->clock.setHour(11);
+                                world->clock.set_hour(11);
                             }
                             if (scenario == L"courier")
                             {
@@ -1708,7 +1779,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 v.eye = at + Vec3{-3.5f, 1.95f, -6.5f};
                                 v.target = at;
                                 reviewView = v;
-                                world->clock.setHour(11);
+                                world->clock.set_hour(11);
                             }
                             if (scenario == L"walk")
                             {
@@ -1777,7 +1848,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 world->player.height = world->terrain.height(world->player.p) + .85;
                                 world->player.angle = -pi * .5;
                                 app.look = pi * .5;
-                                world->clock.setHour(11);
+                                world->clock.set_hour(11);
                                 world->dayNightCycle = false;
                                 world->dispatchAt = world->patrolScanAt = world->nextRescueDispatch = 1e9;
                             }
@@ -1816,7 +1887,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                     c.routePhase = 1;
                                     c.laneIndex = 1;
                                     c.routeLevel = c.body.roadLevel = 0;
-                                    world->newRoute(c);
+                                    world->new_route(c);
                                     c.routeDistance = along;
                                     const auto [at, heading] = c.route->sample(along);
                                     c.body.p = at;
@@ -1835,7 +1906,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 world->controlledCar = -1;
                                 world->player.p = sign + Vec2{-3, 7};
                                 world->player.height = world->terrain.height(world->player.p) + .85;
-                                world->clock.setHour(11);
+                                world->clock.set_hour(11);
                                 world->dayNightCycle = false;
                                 world->dispatchAt = world->patrolScanAt = world->nextRescueDispatch = 1e9;
                             }
@@ -1847,7 +1918,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 c.body.angle = -pi * .5;
                                 c.body.v = {};
                                 c.body.height = world->terrain.height(c.body.p) + .8;
-                                world->clock.setHour(10);
+                                world->clock.set_hour(10);
                                 app.cameraMode = scenario == L"canal" ? 2 : 0;
                             }
                             if (scenario == L"overpass" || scenario == L"underpass" ||
@@ -1866,7 +1937,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 c.body.roadLevel = scenario == L"underpass" ? 0 : level.id;
                                 c.body.height = world->surface(c.body.p, c.body.roadLevel) + .8;
                                 c.lift = c.verticalVelocity = 0;
-                                world->clock.setHour(10);
+                                world->clock.set_hour(10);
                                 if (scenario == L"tunnel")
                                     world->setWeather(1);
                                 app.zoom = scenario == L"underpass" ? 12 : scenario == L"tunnel" ? 7 : 24;
@@ -1919,7 +1990,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 c.body.v = {};
                                 c.body.roadLevel = 0;
                                 c.body.height = world->terrain.height(c.body.p) + .8;
-                                world->clock.setHour(scenario == L"facade-night" ? 22 : 10);
+                                world->clock.set_hour(scenario == L"facade-night" ? 22 : 10);
                                 world->setWeather(0);
                                 world->weatherClock = 120;
                             }
@@ -1940,7 +2011,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 v.target = {float(at.x), float(car.body.height + .7), float(at.z)};
                                 v.eye = v.target + Vec3{18, 8, -160};
                                 reviewView = v;
-                                world->clock.setHour(11);
+                                world->clock.set_hour(11);
                                 world->setWeather(0);
                                 world->weatherClock = 120;
                             }
@@ -1972,7 +2043,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 c.body.v = {};
                                 c.body.roadLevel = 0;
                                 c.body.height = world->terrain.height(c.body.p) + .8;
-                                world->clock.setHour(scenario == L"park-evening" ? 17.5 : 10);
+                                world->clock.set_hour(scenario == L"park-evening" ? 17.5 : 10);
                                 world->setWeather(0);
                                 world->weatherClock = 120;
                             }
@@ -2076,7 +2147,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 world->player.roadLevel = 0;
                                 world->player.verticalSpeed = 0;
                                 world->player.height = world->terrain.height(*observer) + .85;
-                                world->clock.setHour(15);
+                                world->clock.set_hour(15);
                                 world->setWeather(0);
                                 world->weatherClock = 120;
                             }
@@ -2135,7 +2206,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                     world->player.height = world->terrain.height(approach) + .85;
                                     world->player.verticalSpeed = 0;
                                 }
-                                world->clock.setHour(scenario.ends_with(L"evening") ? 17.65 : 11.0);
+                                world->clock.set_hour(scenario.ends_with(L"evening") ? 17.65 : 11.0);
                                 world->setWeather(0);
                                 world->weatherClock = 120;
                                 log << "Courtyard centre " << centre.x << "," << centre.z << " paths "
@@ -2321,7 +2392,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             world->inventory.cycle(turn > 0 ? 1 : -1);
                         // Developer preview keys kept from the managed game.
                         if (gameplayInput && app.pressed['N'])
-                            world->clock.setHour(world->clock.hour + 6);
+                            world->clock.set_hour(world->clock.hour + 6);
                         if (gameplayInput && app.pressed['P'])
                             world->setRain(world->rainTarget <= .5);
                         if (app.pressed[VK_F5])
@@ -2566,7 +2637,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             plan.origin + normal * (plan.windowsOnZ ? plan.halfDepth : plan.halfWidth);
                         view.target = front + Vec3{0, 5, 0};
                         view.eye = front + normal * 23 + cross({0, 1, 0}, normal) * 12 + Vec3{0, 8, 0};
-                        world->clock.setHour(10);
+                        world->clock.set_hour(10);
                         world->setWeather(0);
                     }
                     if (smoke && scenario == L"pursuit")

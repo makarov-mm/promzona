@@ -26,7 +26,7 @@ double World::waterDepth(Vec2 point, double feet) const
 {
     if (feet >= CityLayout::waterLevel)
         return 0;
-    return std::max(0., CityLayout::waterLevel - terrain.bedHeight(point.x, point.z));
+    return std::max(0., CityLayout::waterLevel - terrain.bed_height(point.x, point.z));
 }
 
 // Port of the managed WaterStep and of the water branch of VehicleLife: a walker out of
@@ -160,9 +160,9 @@ bool World::renewCar(int slot)
         car.routeFrom = random.index(nodes * nodes);
         if (neighbours(car.routeFrom).empty())
             continue;
-        car.routeTo = chooseNext(car.routeFrom, -1);
+        car.routeTo = choose_next(car.routeFrom, -1);
         car.routePhase = 1;
-        newRoute(car);
+        new_route(car);
         car.routeDistance = random.next() * car.route->length();
         const auto [at, heading] = car.route->sample(car.routeDistance);
         if (!outOfSight(at))
