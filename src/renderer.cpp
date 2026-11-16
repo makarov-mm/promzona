@@ -5,6 +5,8 @@
 #include "promzona/fleet.hpp"
 #include "json.hpp"
 #include "effect_batch.hpp"
+#include "headlights.hpp"
+#include "leaf_mask.hpp"
 #include "post_processing.hpp"
 #include "promzona/minimap.hpp"
 #include "promzona/reflection_probe.hpp"
@@ -359,7 +361,8 @@ GLuint bonePalette(const SkinData &s)
 struct Renderer::Impl
 {
     std::filesystem::path root;
-    GLuint scene{}, ui{}, white{}, bones[2]{}, rug{}, shadowTexture{}, shadowFbo{};
+    GLuint scene{}, ui{}, white{}, bones[2]{}, rug{};
+    std::array<GLuint, 2> shadowTexture{}, shadowFbo{};
     Mesh uiQuad, cube, marker, skin[2], patrolCap[2];
     struct
     {
@@ -368,7 +371,7 @@ struct Renderer::Impl
     struct
     {
         GLint eye{}, time{}, sun{}, fog{}, zenith{}, air{}, day{}, rain{}, probeReady{}, probeCentre{},
-            probeRoofed{}, waterEdge{};
+            probeRoofed{}, waterEdge{}, lamps{}, colors{}, axes{}, clip{}, softDepth{};
     } effectUniforms;
     GLint uiSample{};
     GLuint effectShader{};
@@ -497,6 +500,14 @@ struct Renderer::Impl
     float menuAspect{};
     PostProcessing post;
     SceneTimer timer;
+    HeadlightSelection headlights;
+    struct FarShadowCache
+    {
+        SunShadow shadow;
+        Vec3 focus, sun;
+        size_t sectorRevision;
+    };
+    std::optional<FarShadowCache> farShadowCache;
     int poses[2]{};
     std::map<std::uint32_t, ActorMotion> actorMotion;
     std::map<std::filesystem::path, GLuint> textures;
@@ -557,6 +568,8 @@ struct Renderer::Impl
     // The sea beyond the island reaches the horizon whatever the draw distance. The
     // outer sectors carry it; this plane stands in for those that are not in memory.
     std::optional<Batch> openSea;
+    std::vector<const Batch *> visibleRails;
+    GLuint leafCoverage{};
     std::unique_ptr<SectorStream> sectorStream;
     // In memory or being uploaded, and the orders the worker still has to deliver.
     std::vector<bool> sectorResident;
@@ -693,7 +706,14 @@ struct Renderer::Impl
                           GetUniformLocation(effectShader, "uProbeReady"),
                           GetUniformLocation(effectShader, "uProbeCentre"),
                           GetUniformLocation(effectShader, "uProbeRoofed"),
-                          GetUniformLocation(effectShader, "uWaterEdge")};
+                          GetUniformLocation(effectShader, "uWaterEdge"),
+                          GetUniformLocation(effectShader, "uHeadPosition"),
+                          GetUniformLocation(effectShader, "uHeadColor"),
+                          GetUniformLocation(effectShader, "uHeadAxis"),
+                          GetUniformLocation(effectShader, "uClip"),
+                          GetUniformLocation(effectShader, "uSoftDepth")};
+        UseProgram(effectShader);
+        Uniform1i(GetUniformLocation(effectShader, "uSceneDepth"), 9);
         UseProgram(ui);
         Uniform1i(GetUniformLocation(ui, "uColor"), 0);
         uiSample = GetUniformLocation(ui, "uSample");
@@ -747,22 +767,35 @@ struct Renderer::Impl
         post.initialize(program(fullscreen, read_text(root / "Shaders/Native/glow.frag")),
                         program(fullscreen, read_text(root / "Shaders/Native/resolve.frag")),
                         program(fullscreen, read_text(root / "Shaders/Native/occlusion.frag")));
-        glGenTextures(1, &shadowTexture);
-        glBindTexture(GL_TEXTURE_2D, shadowTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, DEPTH_COMPONENT24, SunShadow::resolution, SunShadow::resolution, 0,
-                     GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glGenTextures(2, shadowTexture.data());
+        GenFramebuffers(2, shadowFbo.data());
+        for (size_t i = 0; i < shadowFbo.size(); ++i)
+        {
+            const int size = i == 0 ? SunShadow::resolution : SunShadow::farResolution;
+            glBindTexture(GL_TEXTURE_2D, shadowTexture[i]);
+            glTexImage2D(GL_TEXTURE_2D, 0, DEPTH_COMPONENT24, size, size, 0, GL_DEPTH_COMPONENT,
+                         GL_UNSIGNED_INT, nullptr);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, CLAMP_TO_EDGE);
+            BindFramebuffer(FRAMEBUFFER, shadowFbo[i]);
+            FramebufferTexture2D(FRAMEBUFFER, DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowTexture[i], 0);
+            glDrawBuffer(GL_NONE);
+            glReadBuffer(GL_NONE);
+            if (CheckFramebufferStatus(FRAMEBUFFER) != FRAMEBUFFER_COMPLETE)
+                throw std::runtime_error("Sun shadow framebuffer incomplete");
+        }
+        BindFramebuffer(FRAMEBUFFER, 0);
+        const auto leaves = leafMask(256);
+        glGenTextures(1, &leafCoverage);
+        glBindTexture(GL_TEXTURE_2D, leafCoverage);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, 256, 256, 0, GL_RGB, GL_UNSIGNED_BYTE, leaves.data());
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, CLAMP_TO_EDGE);
-        GenFramebuffers(1, &shadowFbo);
-        BindFramebuffer(FRAMEBUFFER, shadowFbo);
-        FramebufferTexture2D(FRAMEBUFFER, DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowTexture, 0);
-        glDrawBuffer(GL_NONE);
-        glReadBuffer(GL_NONE);
-        if (CheckFramebufferStatus(FRAMEBUFFER) != FRAMEBUFFER_COMPLETE)
-            throw std::runtime_error("Sun shadow framebuffer incomplete");
-        BindFramebuffer(FRAMEBUFFER, 0);
+        GenerateMipmap(GL_TEXTURE_2D);
         glGenTextures(1, &white);
         glBindTexture(GL_TEXTURE_2D, white);
         unsigned char rgba[] = {255, 255, 255, 255};
@@ -1265,10 +1298,8 @@ struct Renderer::Impl
             DeleteVertexArrays(1, &skyVao);
         if (sky)
             DeleteProgram(sky);
-        if (shadowFbo)
-            DeleteFramebuffers(1, &shadowFbo);
-        if (shadowTexture)
-            glDeleteTextures(1, &shadowTexture);
+        DeleteFramebuffers(2, shadowFbo.data());
+        glDeleteTextures(2, shadowTexture.data());
         sectorStream.reset();
         sectors.clear();
         openSea.reset();
@@ -1276,6 +1307,7 @@ struct Renderer::Impl
             v.lods.clear();
         for (auto &[path, t] : textures)
             glDeleteTextures(1, &t);
+        glDeleteTextures(1, &leafCoverage);
         glDeleteTextures(1, &white);
         glDeleteTextures(GLsizei(hudTextures.size()), hudTextures.data());
         DeleteBuffers(1, &hudUploadBuffer);
@@ -1579,6 +1611,8 @@ struct Renderer::Impl
             b.tint = {.40f, .36f, .30f};
             b.surface = 2;
         }
+        if (i == ThinRail)
+            b.surface = 16;
         if (i == StationSign)
             b.color = stationSign;
         if (i >= Sign && i < Sign + 3)
@@ -2336,6 +2370,8 @@ StreamingStats Renderer::streamingStats() const
 }
 void Renderer::prepare(const World &world)
 {
+    impl_->headlights = {};
+    impl_->farShadowCache.reset();
     auto &r = *impl_;
     r.effects.clearWeatherCache();
     r.grassCell.reset();
@@ -2504,7 +2540,28 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     const auto projection = Mat4::perspective(float(pi / 3), float(w) / h, nearPlane, farPlane);
     auto vp = projection * Mat4::look_at(view.eye, view.target);
     Vec3 sun{float(std::cos((world.clock.hour - 6) * pi / 12)), float(world.clock.sunHeight()), .3f};
-    auto shadow = sunShadow(view.weapon_sight ? view.eye : view.target, sun);
+    const Vec3 shadowFocus = view.weapon_sight ? view.eye : view.target;
+    auto shadow = sunShadow(shadowFocus, sun);
+    const bool farEnabled = view.shadows && r.graphics.quality > 1 && shadow.strength > 0.f;
+    const Vec3 farFocus = shadowFocus + (view.target - view.eye).unit() * 54.f;
+    const Vec3 lightDirection = sun.unit();
+    const size_t sectorRevision = r.sectorUploads + r.sectorEvictions;
+    auto &cache = r.farShadowCache;
+    if (!farEnabled)
+        cache.reset();
+    // Only static casters enter this map. Keep its original matrix while the
+    // camera and sun move less than a visible distance at the cascade boundary.
+    const bool refreshFar = farEnabled && (!cache || (cache->focus - farFocus).length() > 4.f ||
+                                           (cache->sun - lightDirection).length() > .002f ||
+                                           cache->sectorRevision != sectorRevision);
+    if (refreshFar)
+        cache =
+            Impl::FarShadowCache{sunShadow(farFocus, sun, SunShadow::farHalfSize, SunShadow::farResolution),
+                                 farFocus, lightDirection, sectorRevision};
+    const Mat4 &farMatrix = cache ? cache->shadow.matrix : shadow.matrix;
+    Uniform1i(r.uniform("uFarShadow"), 10);
+    Uniform1i(r.uniform("uFarEnabled"), farEnabled);
+    UniformMatrix4fv(r.uniform("uFarShadowMatrix"), 1, GL_FALSE, farMatrix.m.data());
     if (!view.shadows || r.graphics.quality == 0)
         shadow.strength = 0;
     UniformMatrix4fv(r.uniform("uShadowMatrix"), 1, GL_FALSE, shadow.matrix.m.data());
@@ -2512,8 +2569,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     Uniform1i(r.uniform("uShadow"), 5);
     r.submittedBatches = r.submittedTriangles = r.submittedDetails = r.shadowBatches = 0;
     world.fixturesNear({view.eye.x, view.eye.z}, 145, r.visibleFixtures);
-    // Moving lights of the managed game: headlights of the four vehicles nearest to the
-    // view target and up to four emergency beacons within 60 m. Twelve slots in total.
+    // Four pairs illuminate visible road, followed by up to four emergency beacons.
     std::array<float, 36> lampPosition{}, lampColor{}, lampDirection{};
     {
         const float dark = 1 - day;
@@ -2530,35 +2586,14 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 lampDirection[size_t(slot) * 3 + k] = values[2][k];
             }
         };
-        if (dark > .02f)
+        r.headlights.update(world, view.eye, Frustum(vp), dark > .02f);
         {
-            std::array<int, 4> nearest{-1, -1, -1, -1};
-            std::array<double, 4> distance{1e18, 1e18, 1e18, 1e18};
-            for (int i = 0; i < int(world.cars.size()); ++i)
+            for (size_t k = 0; k < r.headlights.slots.size(); ++k)
             {
-                const auto &car = world.cars[i];
-                // Parked and abandoned vehicles keep their lights off.
-                if (car.destroyed || car.falling || car.kind == 12 ||
-                    (car.driverless && i != world.controlledCar))
+                const auto &slot = r.headlights.slots[k];
+                if (slot.car < 0)
                     continue;
-                double d = (car.body.p - focus).length2();
-                if (d > 150 * 150)
-                    continue;
-                for (int k = 0; k < 4; ++k)
-                    if (d < distance[k])
-                    {
-                        std::swap(d, distance[k]);
-                        std::swap(i, nearest[k]);
-                        if (i < 0)
-                            break;
-                    }
-                i = int(&car - world.cars.data());
-            }
-            for (int k = 0; k < 4; ++k)
-            {
-                if (nearest[k] < 0)
-                    continue;
-                const auto &car = world.cars[nearest[k]];
+                const auto &car = world.cars[slot.car];
                 const auto f = forward(car.heading());
                 const Vec3 ahead{float(f.x), 0, float(f.z)}, right{float(f.z), 0, float(-f.x)};
                 const Vec3 nose =
@@ -2566,8 +2601,8 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                     ahead * (float(car.body.halfH) + .03f);
                 const Vec3 beam = (ahead + Vec3{0, float(std::sin(car.terrainPitch)) - .10f, 0}).unit();
                 for (int side = 0; side < 2; ++side)
-                    put(k * 2 + side, nose + right * ((side * 2 - 1) * .65f), Vec3{3.5f, 3.3f, 2.7f} * dark,
-                        beam);
+                    put(int(k) * 2 + side, nose + right * ((side * 2 - 1) * float(car.body.halfW) * .77f),
+                        Vec3{5.4f, 5.05f, 4.35f} * (dark * slot.intensity), beam);
             }
         }
         int slot = 8;
@@ -2639,34 +2674,42 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                                  ? Mat4::identity()
                                  : ReflectionProbe::projection() * ReflectionProbe::view(probeEye, probeFace);
     const Vec3 sunRay{float(std::cos((world.clock.hour - 6) * pi / 12)), float(world.clock.sunHeight()), .3f};
-    // The sun map, then one face of the probe while it is being taken, then the view.
-    for (int pass = 0; pass < 3; ++pass)
+    // Far and near sunlight, the pending reflection face, then the camera view.
+    for (int pass = 0; pass < 4; ++pass)
     {
-        const bool depthPass = pass == 0, probePass = pass == 1, viewPass = pass == 2;
+        const bool farPass = pass == 0, depthPass = pass <= 1, probePass = pass == 2, viewPass = pass == 3;
+        if (farPass && !refreshFar)
+            continue;
+        const int cascade = farPass ? 1 : 0;
+        const int shadowSize = farPass ? SunShadow::farResolution : SunShadow::resolution;
+        if (probePass)
+            r.timer.mark(SceneTimer::reflection);
+        if (viewPass)
+            r.timer.mark(SceneTimer::opaque);
         if ((depthPass && shadow.strength <= 0) || (probePass && probeFace < 0))
             continue;
         frame_trace.enter(depthPass ? FrameTrace::shadow : probePass ? FrameTrace::probe : FrameTrace::scene);
         const Vec3 eye = probePass ? probeEye : view.eye;
-        const Mat4 &passMatrix = depthPass ? shadow.matrix : probePass ? probeMatrix : vp;
+        const Mat4 &passMatrix = depthPass   ? (farPass ? farMatrix : shadow.matrix)
+                                 : probePass ? probeMatrix
+                                             : vp;
         const float passRange = probePass ? ReflectionProbe::farPlane : range;
         ActiveTexture(TEXTURE0 + 5);
         // Never sample a depth texture while rendering into it.
-        glBindTexture(GL_TEXTURE_2D, depthPass ? 0 : r.shadowTexture);
+        glBindTexture(GL_TEXTURE_2D, depthPass ? 0 : r.shadowTexture[0]);
+        ActiveTexture(TEXTURE0 + 10);
+        glBindTexture(GL_TEXTURE_2D, depthPass ? 0 : r.shadowTexture[1]);
         ActiveTexture(TEXTURE0 + Impl::probeUnit);
         glBindTexture(TEXTURE_CUBE_MAP, r.probeCubes[r.probeFront]);
         ActiveTexture(TEXTURE0);
-        BindFramebuffer(FRAMEBUFFER, depthPass   ? r.shadowFbo
+        BindFramebuffer(FRAMEBUFFER, depthPass   ? r.shadowFbo[cascade]
                                      : probePass ? r.probeFbo
                                                  : (post ? r.post.sceneTarget() : 0));
         if (probePass)
             FramebufferTexture2D(FRAMEBUFFER, COLOR_ATTACHMENT0, TEXTURE_CUBE_MAP_POSITIVE_X + probeFace,
                                  r.probeCubes[1 - r.probeFront], 0);
-        const int passWidth = depthPass   ? SunShadow::resolution
-                              : probePass ? ReflectionProbe::size
-                                          : sceneWidth;
-        const int passHeight = depthPass   ? SunShadow::resolution
-                               : probePass ? ReflectionProbe::size
-                                           : sceneHeight;
+        const int passWidth = depthPass ? shadowSize : probePass ? ReflectionProbe::size : sceneWidth;
+        const int passHeight = depthPass ? shadowSize : probePass ? ReflectionProbe::size : sceneHeight;
         glViewport(0, 0, passWidth, passHeight);
         glColorMask(!depthPass, !depthPass, !depthPass, !depthPass);
         if (depthPass)
@@ -2740,8 +2783,16 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             const float limit = std::min(passRange, objectRange) + radius;
             return (depthPass || dot(delta, delta) < limit * limit) && frustum.sphere(p, radius);
         };
+        r.visibleRails.clear();
         auto drawScenery = [&](const auto &b)
         {
+            if (b.slot == ThinRail)
+            {
+                if (viewPass &&
+                    visible(b.centre, b.radius, b.detail ? building_detail_end * detailScale : range))
+                    r.visibleRails.push_back(&b);
+                return;
+            }
             // Facade details are too small for the sun map and for a face of the probe.
             if ((viewPass || (!b.detail && (probePass || b.surface != 4))) &&
                 visible(b.centre, b.radius, b.detail ? building_detail_end * detailScale : range))
@@ -2784,7 +2835,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             instances.clear();
         for (auto id : r.visibleFixtures)
         {
-            if (probePass)
+            if (probePass || farPass)
                 break;
             const auto &f = world.fixtures[id];
             const auto &body = world.staticBodies[f.body];
@@ -2872,39 +2923,47 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 t.foot.x,        t.foot.y,        t.foot.z, t.height / 8,
                 std::sin(angle), std::cos(angle), angle,    float(t.seed % 97) / 97};
             int base = (std::to_underlying(t.kind) * 3 + int(t.seed % 3)) * 2;
-            if (distance - radius < treeLodEnd)
+            if (!farPass && distance - radius < treeLodEnd)
                 r.treeInstances[base].push_back(instance);
-            if (distance + radius > treeLodStart)
+            if (farPass || distance + radius > treeLodStart)
                 r.treeInstances[base + 1].push_back(instance);
         }
-        for (size_t k = 0; k < r.treeModels.size(); ++k)
+        auto drawTrees = [&](bool leafPass)
         {
-            auto &instances = r.treeInstances[k];
-            if (instances.empty())
-                continue;
-            for (int part = 0; part < 2; ++part)
+            for (size_t k = 0; k < r.treeModels.size(); ++k)
             {
-                r.setModel(Mat4::identity());
-                r.material(r.white, 0, {1, 1, 1});
-                r.setFlag(Impl::Constant::instanced, 1);
-                r.setFlag(Impl::Constant::surface, 8 + part);
-                r.setFlag(Impl::Constant::treeLod, int(k % 2));
-                auto &mesh = r.treeModels[k][part];
-                mesh.drawInstances(instances);
-                if (depthPass)
-                    ++r.shadowBatches;
-                else if (viewPass)
+                auto &instances = r.treeInstances[k];
+                if (instances.empty())
+                    continue;
+                for (int part = 0; part < 2; ++part)
                 {
-                    ++r.submittedBatches;
-                    r.submittedTriangles += size_t(mesh.count) / 3 * instances.size();
-                }
-                else
-                {
-                    ++r.probeBatches;
-                    r.probeTriangles += size_t(mesh.count) / 3 * instances.size();
+                    if (viewPass && leafPass != (part == 1))
+                        continue;
+                    r.setModel(Mat4::identity());
+                    r.material(part ? r.leafCoverage : r.white, 0, {1, 1, 1});
+                    r.setFlag(Impl::Constant::instanced, 1);
+                    r.setFlag(Impl::Constant::surface, 8 + part);
+                    r.setFlag(Impl::Constant::treeLod, farPass ? -1 : int(k % 2));
+                    auto &mesh = r.treeModels[k][part];
+                    mesh.drawInstances(instances);
+                    if (depthPass)
+                        ++r.shadowBatches;
+                    else if (viewPass)
+                    {
+                        ++r.submittedBatches;
+                        r.submittedTriangles += size_t(mesh.count) / 3 * instances.size();
+                    }
+                    else
+                    {
+                        ++r.probeBatches;
+                        r.probeTriangles += size_t(mesh.count) / 3 * instances.size();
+                    }
                 }
             }
-        }
+        };
+        drawTrees(false);
+        if (farPass)
+            continue;
         if (viewPass) frame_trace.enter(FrameTrace::actors);
         if (probePass)
         {
@@ -3307,6 +3366,22 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 r.draw(b, model);
         }
         Uniform1i(r.uniform("uSkin"), 0);
+        if (viewPass)
+        {
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glDepthMask(GL_FALSE);
+            drawTrees(true);
+            Uniform2f(r.uniform("uViewport"), float(sceneWidth), float(sceneHeight));
+            for (const auto *rail : r.visibleRails)
+            {
+                r.draw(*rail, Mat4::identity());
+                ++r.submittedBatches;
+                r.submittedTriangles += size_t(rail->mesh.count) / 3;
+            }
+            glDepthMask(GL_TRUE);
+            glDisable(GL_BLEND);
+        }
     } // sun/camera geometry passes
     frame_trace.enter(FrameTrace::effects);
     Frustum effectFrustum(vp);
@@ -3410,10 +3485,18 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             r.solid(p, {.12f, .12f, .12f}, {1, .6f, .2f}, 2);
     }
     {
+        r.timer.mark(SceneTimer::particles);
         // Puddles mirror the city, and the haze takes distant smoke: the effects share
         // the sky, the haze and the probe of the scene.
         UseProgram(r.effectShader);
         const Vec3 probeCentre = r.probe.centre();
+        if (post)
+            r.post.beginEffects(9);
+        Uniform1i(r.effectUniforms.softDepth, post);
+        Uniform2f(r.effectUniforms.clip, nearPlane, farPlane);
+        Uniform3fv(r.effectUniforms.lamps, 8, lampPosition.data());
+        Uniform3fv(r.effectUniforms.colors, 8, lampColor.data());
+        Uniform3fv(r.effectUniforms.axes, 8, lampDirection.data());
         Uniform3f(r.effectUniforms.eye, view.eye.x, view.eye.y, view.eye.z);
         Uniform1f(r.effectUniforms.time, float(world.time));
         Uniform1f(r.effectUniforms.waterEdge, float(world.layout.edge()));
@@ -3428,6 +3511,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         Uniform1i(r.effectUniforms.probeRoofed, probeUnderRoof(probeCentre));
     }
     r.effects.draw(r.effectShader, world, view, vp, r.graphics.effects);
+    r.timer.mark(SceneTimer::post);
     frame_trace.enter(FrameTrace::post);
     if (post)
         // Contact shading follows the quality setting, as in the managed game: none at

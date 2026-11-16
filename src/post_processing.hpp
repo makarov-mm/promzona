@@ -16,7 +16,7 @@ namespace Promzona
 
     class PostProcessing
     {
-        GLuint vao_{}, glow_{}, resolve_{}, occlusion_{}, depth_{};
+        GLuint effectsFb_{}, vao_{}, glow_{}, resolve_{}, occlusion_{}, depth_{};
         // The scene, two quarter-size targets of the glow, and the half-size contact shading.
         std::array<GLuint, 4> fb_{}, color_{};
         GLint pass_{}, threshold_{}, conditions_{}, bloom_{}, lens_{}, samples_{}, clip_{}, shaded_{};
@@ -26,6 +26,7 @@ namespace Promzona
         void initialize(GLuint glowProgram, GLuint resolveProgram, GLuint occlusionProgram);
         void resize(int width, int height);
         void releaseTargets();
+        void beginEffects(unsigned depthUnit) const;
         GLuint sceneTarget() const { return fb_[0]; }
         void present(int width, int height, float day, float rain, float sunHeight, bool bloom, const ContactShading &contact);
         ~PostProcessing();
@@ -34,15 +35,28 @@ namespace Promzona
     // Opt-in elapsed queries. Never wait for an unavailable GPU result on the frame path.
     class SceneTimer
     {
-        std::array<GLuint, 8> ids_{};
+      public:
+        enum Stage
+        {
+            shadows,
+            reflection,
+            opaque,
+            particles,
+            post,
+            finish
+        };
+
+      private:
+        std::array<std::array<GLuint, finish + 1>, 8> ids_{};
         std::array<bool, 8> pending_{};
         unsigned cursor_{}, frame_{};
         bool active_{};
-        std::vector<double> milliseconds_;
+        std::array<std::vector<double>, finish + 1> milliseconds_;
 
-    public:
+      public:
         void enable();
         void begin();
+        void mark(Stage stage);
         void end();
         [[nodiscard]] std::string report() const;
         ~SceneTimer();

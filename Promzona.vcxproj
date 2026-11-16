@@ -68,6 +68,7 @@
     <None Include="Content/Shaders/Native\effects.vert" />
     <None Include="Content/Shaders/Native\environment.glsl" />
     <None Include="Content/Shaders/Native\water.glsl" />
+    <None Include="Content/Shaders/Native\headlight.glsl" />
     <None Include="Content/Shaders/Native\scene.frag" />
     <None Include="Content/Shaders/Native\fullscreen.vert" />
     <None Include="Content/Shaders/Native\glow.frag" />
@@ -114,6 +115,8 @@
     <ClInclude Include="include/promzona\visibility.hpp" />
     <ClInclude Include="include/promzona\world.hpp" />
     <ClInclude Include="src\effect_batch.hpp" />
+    <ClInclude Include="src\headlights.hpp" />
+    <ClInclude Include="src\leaf_mask.hpp" />
     <ClInclude Include="src\frame_trace.hpp" />
     <ClInclude Include="src\post_processing.hpp" />
     <ClInclude Include="third_party\json.hpp" />

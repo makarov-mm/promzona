@@ -95,9 +95,7 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
                 const double wire = line.kind == 9 ? 0. : (n ? .28 : -.28);
                 auto u = a + ra * wire, v = b + rb * wire;
                 auto base = ground(u.x, u.z, 5.75), end = ground(v.x, v.z, 5.75);
-                Vec3 up{0, .028f, 0};
-                quad(data[Frame], base - up, end - up, end + up, base + up);
-                quad(data[Frame], base + up, end + up, end - up, base - up);
+                appendThinRail(data[ThinRail], base, end, .028f);
             }
             double along = std::abs(f.x) > .999 ? a.x : std::abs(f.z) > .999 ? a.z : 1e10;
             // Stops occupy the block midpoint. Keep the overhead-wire mast clear of the boarding area.

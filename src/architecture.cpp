@@ -4,6 +4,7 @@ namespace Promzona
 namespace
 {
 constexpr float windowHalfWidth = .64f, windowHalfHeight = .54f;
+constexpr float entranceHalfWidth = .72f, entranceHeight = 2.24f, recess = .34f;
 constexpr float storey = 2.8f, bay = 2.45f, firstWindow = 2.9f;
 std::uint32_t hash(std::uint32_t n)
 {
@@ -53,15 +54,6 @@ Vec3 extents(Vec3 right, Vec3 n, Vec3 half)
 {
     return {std::abs(right.x) * half.x + std::abs(n.x) * half.z, half.y,
             std::abs(right.z) * half.x + std::abs(n.z) * half.z};
-}
-// Thin rails use crossed sheets instead of six box faces.
-void rail(MeshData &mesh, Vec3 a, Vec3 b, float radius)
-{
-    auto axis = (b - a).unit();
-    auto u = cross(axis, std::abs(axis.y) > .9f ? Vec3{1, 0, 0} : Vec3{0, 1, 0}).unit() * radius;
-    auto v = cross(axis, u).unit() * radius;
-    face(mesh, a - u, b - u, b + u, a + u);
-    face(mesh, a - v, b - v, b + v, a + v);
 }
 // Special buildings share the footprint and overall height used for contacts.
 void districtBuilding(CityChunk &data, const BuildingPlan &p, int style)
@@ -275,23 +267,70 @@ void buildingCore(CityChunk &data, const BuildingPlan &p, int facade)
         districtBuilding(data, p, facade);
         return;
     }
-    auto centre = p.origin + Vec3{0, p.height * .5f, 0};
-    auto weatheredBox = [&](MeshData &mesh, Vec3 position, Vec3 half, float tile)
+    const Vec3 front = p.windowsOnZ ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
+    const Vec3 side = cross({0, 1, 0}, front);
+    const float half = p.windowsOnZ ? p.halfWidth : p.halfDepth;
+    const float depth = p.windowsOnZ ? p.halfDepth : p.halfWidth;
+    auto shell = [&](MeshData &mesh, float height, float outset, float tile)
     {
-        const size_t first = mesh.vertices.size();
-        box(mesh, position, half, tile);
-        for (size_t i = first; i < mesh.vertices.size(); ++i)
+        const float width = half + outset, length = depth + outset;
+        for (Vec3 normal : {front, side, front * -1.f, side * -1.f})
         {
-            auto &v = mesh.vertices[i];
-            v.joints[1] = v.position.y - p.origin.y;
-            v.joints[3] = -1; // Only apartment walls and their plinths receive the damp band.
+            const Vec3 right = cross({0, 1, 0}, normal);
+            const bool longFace = std::abs(dot(normal, front)) > .5f;
+            const bool hasDoor = dot(normal, front) > .5f;
+            const float span = longFace ? width : length;
+            const Vec3 base = p.origin + normal * (longFace ? length : width);
+            auto panel = [&](float left, float rightEdge, float bottom, float top)
+            {
+                const auto first = mesh.vertices.size();
+                auto at = [&](float x, float y) { return base + right * x + Vec3{0, y, 0}; };
+                face(mesh, at(left, bottom), at(rightEdge, bottom), at(rightEdge, top), at(left, top));
+                for (auto &v : std::span(mesh.vertices).subspan(first))
+                {
+                    const float x = dot(v.position - base, right), y = v.position.y - p.origin.y;
+                    v.uv = {(x + span) / tile, (height - y) / tile};
+                    v.joints = {x, y, hasDoor ? -span : span, -1};
+                }
+            };
+            if (hasDoor)
+            {
+                panel(-span, -entranceHalfWidth, 0, height);
+                panel(entranceHalfWidth, span, 0, height);
+                if (height > entranceHeight)
+                    panel(-entranceHalfWidth, entranceHalfWidth, entranceHeight, height);
+            }
+            else
+                panel(-span, span, 0, height);
+        }
+        auto cap = [&](float left, float right, float back, float near)
+        {
+            auto at = [&](float x, float z) { return p.origin + side * x + front * z + Vec3{0, height, 0}; };
+            face(mesh, at(left, near), at(right, near), at(right, back), at(left, back),
+                 (right - left) / tile, (near - back) / tile);
+        };
+        if (height > entranceHeight)
+            cap(-width, width, -length, length);
+        else
+        {
+            cap(-width, width, -length, depth - recess);
+            cap(-width, -entranceHalfWidth, depth - recess, length);
+            cap(entranceHalfWidth, width, depth - recess, length);
         }
     };
-    weatheredBox(data[Facade + clamp(facade, 0, 7)], centre, {p.halfWidth, p.height * .5f, p.halfDepth},
-                 3.2f);
+    shell(data[Facade + clamp(facade, 0, 7)], p.height, 0, 3.2f);
+    shell(data[Foundation], .60f, .035f, 2.f);
     box(data[Roof], p.origin + Vec3{0, p.height + .12f, 0}, {p.halfWidth + .12f, .12f, p.halfDepth + .12f});
-    weatheredBox(data[Foundation], p.origin + Vec3{0, .30f, 0},
-                 {p.halfWidth + .035f, .3f, p.halfDepth + .035f}, 2);
+    auto at = [&](float x, float y, float z)
+    { return p.origin + side * x + Vec3{0, y, 0} + front * (depth + z); };
+    const float w = entranceHalfWidth, h = entranceHeight;
+    face(data[Foundation], at(-w, 0, .036f), at(-w, 0, -recess), at(-w, h, -recess), at(-w, h, .036f));
+    face(data[Foundation], at(w, 0, -recess), at(w, 0, .036f), at(w, h, .036f), at(w, h, -recess));
+    face(data[Foundation], at(-w, h, -recess), at(w, h, -recess), at(w, h, .036f), at(-w, h, .036f));
+    const auto firstDoor = data[Door].vertices.size();
+    face(data[Door], at(-w, 0, -recess), at(w, 0, -recess), at(w, h, -recess), at(-w, h, -recess));
+    for (auto &v : std::span(data[Door].vertices).subspan(firstDoor))
+        v.joints = {dot(v.position - p.origin, side), v.position.y - p.origin.y, -half, -2};
     for (const auto &w : p.windows)
     {
         panel(data[Windows], w.centre, w.right, w.normal, windowHalfWidth + .055f, windowHalfHeight + .055f,
@@ -327,10 +366,18 @@ void buildingDetails(CityChunk &data, const BuildingPlan &p)
     float half = p.windowsOnZ ? p.halfWidth : p.halfDepth;
     auto entrance = p.origin + n * (depth + .09f);
     auto localBox = [&](int material, Vec3 c, Vec3 size) { box(data[material], c, extents(r, n, size)); };
-    localBox(Door, entrance + Vec3{0, 1.05f, 0}, {.62f, 1.05f, .045f});
-    localBox(Frame, entrance + r * .43f + n * .06f + Vec3{0, 1.0f, 0}, {.025f, .14f, .025f});
-    localBox(Roof, entrance + n * .35f + Vec3{0, 2.22f, 0}, {.96f, .085f, .46f});
-    localBox(Lamps, entrance + n * .1f + Vec3{0, 2.08f, 0}, {.18f, .055f, .04f});
+    const Vec3 door = entrance - n * (.09f + recess);
+    for (float flank : {-1.f, 1.f})
+        localBox(Frame, door + r * (flank * .675f) + n * .02f + Vec3{0, 1.1f, 0}, {.042f, 1.1f, .027f});
+    localBox(Frame, door + Vec3{0, 2.18f, 0} + n * .023f, {.71f, .06f, .03f});
+    localBox(Metal, door + r * .48f + n * .055f + Vec3{0, 1.03f, 0}, {.033f, .14f, .045f});
+    localBox(Foundation, entrance + n * .02f + Vec3{0, .059f, 0}, {.80f, .059f, .49f});
+    localBox(Foundation, entrance + n * .43f + Vec3{0, 2.43f, 0}, {1.11f, .105f, .60f});
+    localBox(Metal, entrance + n * 1.02f + Vec3{0, 2.42f, 0}, {1.13f, .052f, .032f});
+    for (float flank : {-1.f, 1.f})
+        localBox(Frame, entrance + r * (.87f * flank) + n * .29f + Vec3{0, 2.28f, 0}, {.035f, .05f, .40f});
+    localBox(Frame, entrance + n * .12f + Vec3{0, 2.30f, 0}, {.21f, .055f, .12f});
+    localBox(Lamps, entrance + n * .12f + Vec3{0, 2.256f, 0}, {.15f, .025f, .09f});
     localBox(Metal, entrance - r * (half - .25f) + Vec3{0, p.height * .5f, 0}, {.05f, p.height * .5f, .05f});
     // Reuse the original advertisement art. 2:1 signs fit the fascia without stretching.
     if (p.seed % 3 == 0 && half >= 3.8f)
@@ -356,13 +403,14 @@ void buildingDetails(CityChunk &data, const BuildingPlan &p)
         // height.
         box(data[Roof], at(0, -.68f, .45f), extents(w.right, w.normal, {.88f, .065f, .54f}));
         for (int side : {-1, 1})
-            rail(data[Metal], at(side * .84f, .21f, .01f), at(side * .84f, .21f, 1.03f), .025f);
-        rail(data[Metal], at(-.87f, .21f, 1.0f), at(.87f, .21f, 1.0f), .025f);
+            appendThinRail(data[ThinRail], at(side * .84f, .21f, .01f), at(side * .84f, .21f, 1.03f), .025f);
+        appendThinRail(data[ThinRail], at(-.87f, .21f, 1.0f), at(.87f, .21f, 1.0f), .025f);
         if (w.balcony == 2)
         {
             panel(data[Glass], at(0, .75f, 1.0f), w.right, w.normal, .84f, .50f);
             for (int divider : {-1, 0, 1})
-                rail(data[Frame], at(divider * .82f, .23f, 1.02f), at(divider * .82f, 1.27f, 1.02f), .023f);
+                appendThinRail(data[ThinRail], at(divider * .82f, .23f, 1.02f),
+                               at(divider * .82f, 1.27f, 1.02f), .023f);
             box(data[Roof], at(0, 1.29f, .48f), extents(w.right, w.normal, {.88f, .045f, .56f}));
         }
     }

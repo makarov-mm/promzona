@@ -16,6 +16,8 @@ uniform vec3 uEye;
 uniform float uPose, uPreviousPose, uPoseBlend;
 out vec3 vWorld, vNormal, vLocal;
 out vec2 vUv;
+uniform vec2 uViewport;
+noperspective out vec2 vLine;
 flat out vec4 vDetail;
 
 mat4 bone(int joint, int pose)
@@ -56,7 +58,7 @@ void main()
         n = mat3(skin) * n;
     }
     vLocal = p.xyz;
-    if (uSkin == 0 && aJoints.w == -1.) vLocal.y = aJoints.y;
+    if (uSkin == 0 && (aJoints.w == -1.0 || aJoints.w == -2.0)) vLocal.xy = aJoints.xy;
     vec4 world = uModel * p;
     if (uSurface == 4)
         world.y += shoreWave(world.xz, uTime).x;
@@ -95,4 +97,20 @@ void main()
     }
     vDetail = detail;
     gl_Position = uViewProjection * world;
+    vLine = vec2(0.0);
+    if (uSurface == 16)
+    {
+        vec3 centre = aPosition - aNormal * (aUv.x * aUv.y);
+        vec4 clip = uViewProjection * vec4(centre, 1.0);
+        vec4 along = uViewProjection * vec4(aJoints.xyz, 0.0);
+        vec2 screenAxis = (along.xy * clip.w - clip.xy * along.w) * uViewport;
+        vec2 perpendicular = vec2(-screenAxis.y, screenAxis.x) / max(length(screenAxis), 0.0001);
+        // The main view has a 60 degree vertical field of view.
+        float halfWidth = min(50.0, 0.8660254 * uViewport.y * aUv.y / max(clip.w, 0.1));
+        float offset = aUv.x * (halfWidth + 0.75);
+        clip.xy += perpendicular * (2.0 * offset / uViewport) * clip.w;
+        gl_Position = clip;
+        vWorld = centre;
+        vLine = vec2(offset, halfWidth);
+    }
 }

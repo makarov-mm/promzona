@@ -9,12 +9,15 @@ namespace Promzona
     {
         static constexpr int resolution = 2048;
         static constexpr float halfSize = 110, depth = 520;
+        static constexpr int farResolution = 1024;
+        static constexpr float farHalfSize = 330;
         Mat4 matrix;
         Vec3 centre;
         float strength{};
     };
 
-    inline SunShadow sunShadow(Vec3 focus, Vec3 sun)
+    inline SunShadow sunShadow(Vec3 focus, Vec3 sun, float extent = SunShadow::halfSize,
+                               int resolution = SunShadow::resolution)
     {
         SunShadow s;
         Vec3 light = sun.unit();
@@ -23,16 +26,17 @@ namespace Promzona
         if (right.length() < .1f)
             right = {1, 0, 0};
         auto up = cross(right, light * -1);
-        float texel = 2 * SunShadow::halfSize / SunShadow::resolution;
+        const float texel = 2 * extent / float(resolution);
+        const float depth = std::max(SunShadow::depth, 2.4f * extent);
         auto snap = [texel](float v) { return std::floor(v / texel + .5f) * texel; };
         s.centre = focus + right * (snap(dot(right, focus)) - dot(right, focus)) + up * (snap(dot(up, focus)) - dot(up, focus));
         // Explicit basis remains valid with a sun directly above the observer.
         Mat4 view = Mat4::identity();
-        auto eye = s.centre + light * (SunShadow::depth * .5f);
+        auto eye = s.centre + light * (depth * .5f);
         view.m = {right.x, up.x, light.x, 0, right.y, up.y, light.y, 0, right.z, up.z, light.z, 0, -dot(right, eye), -dot(up, eye), -dot(light, eye), 1};
         Mat4 projection = Mat4::identity();
-        projection.m[0] = projection.m[5] = 1 / SunShadow::halfSize;
-        projection.m[10] = -2 / SunShadow::depth;
+        projection.m[0] = projection.m[5] = 1 / extent;
+        projection.m[10] = -2 / depth;
         projection.m[14] = -1;
         s.matrix = projection * view;
         return s;

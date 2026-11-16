@@ -31,7 +31,8 @@ namespace Promzona
         WorkshopSteel,
         StationSign,
         PotholeDecal, // three photographs
-        SurfaceCount = PotholeDecal + 3
+        ThinRail = PotholeDecal + 3,
+        SurfaceCount
     };
 
     using CityChunk = std::array<MeshData, SurfaceCount>;
@@ -44,6 +45,23 @@ namespace Promzona
         mesh.vertices.push_back({b, normal, {1.f, 0.f}});
         mesh.vertices.push_back({c, normal, {0.f, 0.f}});
         mesh.indices.insert(mesh.indices.end(), {base, base + 1, base + 2});
+    }
+
+    // Store the real strip for bounds and mesh checks. The colour pass expands its
+    // centreline in screen space and integrates the physical width over each pixel.
+    inline void appendThinRail(MeshData &mesh, Vec3 a, Vec3 b, float radius)
+    {
+        const auto tangent = (b - a).unit();
+        if (tangent.length() < .5f)
+            return;
+        const auto side = cross(tangent, std::abs(tangent.y) < .9f ? Vec3{0, 1, 0} : Vec3{1, 0, 0}).unit();
+        const auto first = static_cast<std::uint32_t>(mesh.vertices.size());
+        for (auto [centre, sign] : {std::pair{a, -1.f}, {b, -1.f}, {b, 1.f}, {a, 1.f}})
+            mesh.vertices.push_back({.position = centre + side * (radius * sign),
+                                     .normal = side,
+                                     .uv = {sign, radius},
+                                     .joints = {tangent.x, tangent.y, tangent.z, 0}});
+        mesh.indices.insert(mesh.indices.end(), {first, first + 1, first + 2, first, first + 2, first + 3});
     }
 
     // Heights of a rendered, unclipped lawn quad at (west,south), (east,south),

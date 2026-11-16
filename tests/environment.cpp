@@ -1,4 +1,5 @@
 #include "promzona/world.hpp"
+#include "../src/headlights.hpp"
 #include "promzona/atmosphere.hpp"
 #include "promzona/city_mesh.hpp"
 #include "promzona/reflection_probe.hpp"
@@ -35,6 +36,36 @@ Vec3 project(const Mat4 &m, Vec3 p)
             m.m[1] * p.x + m.m[5] * p.y + m.m[9] * p.z + m.m[13],
             m.m[2] * p.x + m.m[6] * p.y + m.m[10] * p.z + m.m[14]};
 }
+void headlightSelection()
+{
+    World world;
+    world.cars.resize(5);
+    for (size_t i = 0; i < world.cars.size(); ++i)
+        world.cars[i].body.p = {double(i * 4), 0};
+    Mat4 projection = Mat4::identity();
+    projection.m[0] = projection.m[5] = projection.m[10] = .01f;
+    Frustum frustum(projection);
+    HeadlightSelection lights;
+    auto slotFor = [&](int car)
+    { return std::ranges::find(lights.slots, car, &HeadlightSelection::Slot::car); };
+    lights.update(world, {}, frustum, true);
+    check(slotFor(0) != lights.slots.end() && slotFor(4) == lights.slots.end(),
+          "four closest beams selected");
+    world.cars[0].body.p.x = 200;
+    world.time += .125;
+    lights.update(world, {}, frustum, true);
+    check(slotFor(0) != lights.slots.end() && slotFor(0)->intensity == .5f,
+          "displaced headlights fade in place");
+    check(slotFor(4) == lights.slots.end(), "replacement waits for fading pair");
+    world.time += .125;
+    lights.update(world, {}, frustum, true);
+    check(slotFor(0) == lights.slots.end() && slotFor(4) != lights.slots.end() &&
+              slotFor(4)->intensity == .5f,
+          "new headlights fade in");
+    lights.update(world, {}, frustum, false);
+    check(std::ranges::all_of(lights.slots, [](auto slot) { return slot.car < 0; }),
+          "daylight clears active pairs");
+}
 void shadows()
 {
     for (auto sun : {Vec3{1, 1, .3f}, Vec3{0, 1, 0}, Vec3{-1, .12f, .3f}, Vec3{1, -1, 0}})
@@ -52,6 +83,14 @@ void shadows()
         check(f.sphere(focus, 1), "focus inside shadow volume");
         check(!f.sphere(focus + sun.unit() * 600, 1), "outside light depth rejected");
         check(sun.y < 0 ? s.strength == 0 : s.strength > 0, "night shadow disabled");
+        Vec3 across = cross(sun.unit(), Vec3{0, 1, 0}).unit();
+        if (across.length() > .5f)
+        {
+            const auto farMap = sunShadow(focus, sun, SunShadow::farHalfSize, SunShadow::farResolution);
+            const Vec3 distant = focus + across * 240.f;
+            check(!f.sphere(distant, 1) && Frustum(farMap.matrix).sphere(distant, 1),
+                  "far cascade covers distant casters");
+        }
         auto repeat = sunShadow(s.centre + Vec3{.001f, .001f, .001f}, sun);
         check(std::abs(repeat.matrix.m[12] - s.matrix.m[12]) < 1e-6f &&
                   std::abs(repeat.matrix.m[13] - s.matrix.m[13]) < 1e-6f,
@@ -1048,6 +1087,7 @@ int main()
     try
     {
         effects();
+        headlightSelection();
         shadows();
         skyAndProbe();
         weather();

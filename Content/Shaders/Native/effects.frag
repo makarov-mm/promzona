@@ -6,6 +6,14 @@ in vec3 world;
 out vec4 pixel;
 uniform vec3 uEye;
 uniform float uTime;
+uniform sampler2D uSceneDepth;
+uniform bool uSoftDepth;
+uniform vec2 uClip;
+
+float eyeDepth(float depth)
+{
+    return uClip.x * uClip.y / (uClip.y - depth * (uClip.y - uClip.x));
+}
 
 #include "environment.glsl"
 
@@ -41,7 +49,7 @@ void main()
 {
     float coverage;
 
-    if (shape.z < 1.5)
+    if (shape.z < 1.5 || shape.z >= 7.0)
     {
         coverage = 1.0 - smoothstep(0.12, 1.0, dot(shape.xy, shape.xy));
     }
@@ -86,6 +94,16 @@ void main()
 
     // Premultiplied: fire and sparks are brighter than white in the managed game, whose frame is floating point,
     // and keep their light while they fade. Here each channel is clipped after the fade instead of before it.
+    if (uSoftDepth)
+    {
+        float opaque = texelFetch(uSceneDepth, ivec2(gl_FragCoord.xy), 0).r;
+        if (gl_FragCoord.z > opaque + 0.00000006) discard;
+        if (shape.z >= 7.0)
+        {
+            float gap = eyeDepth(opaque) - eyeDepth(gl_FragCoord.z);
+            coverage *= smoothstep(0.0, shape.z == 7.0 ? 0.12 : 0.46, gap);
+        }
+    }
     float alpha = color.a * coverage;
     pixel = vec4(min(vec3(1.0), shown * alpha), alpha);
 }

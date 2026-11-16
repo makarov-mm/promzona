@@ -85,7 +85,7 @@ namespace Promzona
                     continue;
                 auto delta = p - eye_;
                 float fade = std::clamp((24.f - std::hypot(delta.x, delta.z)) * .23f, 0.f, 1.f);
-                billboard(p, right_ * .014f, Vec3{.12f, 1.f, .035f} * halfLength, color, .43f * fade, 1);
+                billboard(p, right_ * .014f, Vec3{.12f, 1.f, .035f} * halfLength, color, .43f * fade, 7.f);
             }
     }
 
@@ -259,8 +259,8 @@ namespace Promzona
                                                                                                       : .85f);
                 // Smoke, scrap and dust are lit by the day; what glows is not.
                 const bool lit = p.kind == smoke || p.kind == debris || p.kind == sand || p.kind == water;
-                billboard(p.p, right_ * p.size, up_ * p.size, lit ? colour * (.35f + .65f * day) : colour, fade,
-                          1.f);
+                billboard(p.p, right_ * p.size, up_ * p.size, lit ? colour * (.35f + .65f * day) : colour,
+                          fade, p.kind == smoke || p.kind == water ? 8.f : 1.f);
             }
 
             scuffs(w, frustum, day);
@@ -288,13 +288,13 @@ namespace Promzona
                     float radius = .07f + age * .27f;
                     Vec3 at = rear - f * (age * (.65f + .17f * speed)) + Vec3{age * .14f, age * .65f, 0};
                     billboard(at + side * float(.6 * car.body.halfW), right_ * radius, up_ * radius,
-                              Vec3{.58f, .59f, .58f} * (.45f + .55f * day), .19f * (1 - age), 1.f);
+                              Vec3{.58f, .59f, .58f} * (.45f + .55f * day), .19f * (1 - age), 8.f);
                     if (spray)
                         for (int s : {-1, 1})
                             billboard(at + side * float(s * car.body.halfW) - Vec3{0, .24f, 0},
                                       right_ * (radius * 1.4f), up_ * radius,
                                       Vec3{.60f, .70f, .76f} * (.45f + .55f * day),
-                                      float(w.wetness) * .22f * (1 - age), 1.f);
+                                      float(w.wetness) * .22f * (1 - age), 8.f);
                 }
             }
         }

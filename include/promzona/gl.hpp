@@ -51,6 +51,7 @@ namespace Promzona::gl
     X(DeleteFramebuffers, void, GLsizei, const GLuint *) \
     X(GenQueries, void, GLsizei, GLuint *) \
     X(DeleteQueries, void, GLsizei, const GLuint *) \
+    X(QueryCounter, void, GLuint, GLenum) \
     X(BeginQuery, void, GLenum, GLuint) \
     X(EndQuery, void, GLenum) \
     X(GetQueryObjectiv, void, GLuint, GLenum, GLint *) \
@@ -75,7 +76,7 @@ inline void load()
                      COMPILE_STATUS = 0x8b81, LINK_STATUS = 0x8b82, TEXTURE0 = 0x84c0, RGBA32F = 0x8814,
                      CLAMP_TO_EDGE = 0x812f, FRAMEBUFFER = 0x8d40, DEPTH_ATTACHMENT = 0x8d00,
                      FRAMEBUFFER_COMPLETE = 0x8cd5, DEPTH_COMPONENT24 = 0x81a6, COLOR_ATTACHMENT0 = 0x8ce0,
-                     TIME_ELAPSED = 0x88bf, QUERY_RESULT = 0x8866, QUERY_RESULT_AVAILABLE = 0x8867, R8 = 0x8229,
+                     TIMESTAMP = 0x8e28, TIME_ELAPSED = 0x88bf, QUERY_RESULT = 0x8866, QUERY_RESULT_AVAILABLE = 0x8867, R8 = 0x8229,
                      RGBA16F = 0x881a, TEXTURE_CUBE_MAP = 0x8513, TEXTURE_CUBE_MAP_POSITIVE_X = 0x8515,
                      TEXTURE_WRAP_R = 0x8072, TEXTURE_CUBE_MAP_SEAMLESS = 0x884f;
 }

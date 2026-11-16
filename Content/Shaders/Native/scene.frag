@@ -1,6 +1,7 @@
 #version 330 core
 in vec3 vWorld, vNormal, vLocal;
 in vec2 vUv;
+noperspective in vec2 vLine;
 flat in vec4 vDetail;
 out vec4 fragColor;
 uniform sampler2D uColor, uNormal, uOrm, uRug;
@@ -14,8 +15,11 @@ uniform int uProbePass;
 uniform vec3 uEye, uTint;
 uniform float uEmissive, uAlpha, uTime, uHour;
 #include "environment.glsl"
+#include "headlight.glsl"
 uniform float uRoughness, uMetallic, uDetailStart, uDetailEnd;
-uniform sampler2D uShadow;
+uniform sampler2D uShadow, uFarShadow;
+uniform mat4 uFarShadowMatrix;
+uniform bool uFarEnabled;
 uniform mat4 uShadowMatrix;
 uniform int uDepthPass, uTreeLod;
 uniform float uShadowStrength;
@@ -38,41 +42,35 @@ float patches(vec3 p) {
                mix(mix(latticeHash(i+vec3(0,0,1)), latticeHash(i+vec3(1,0,1)), f.x),
                    mix(latticeHash(i+vec3(0,1,1)), latticeHash(i+vec3(1,1,1)), f.x), f.y), f.z);
 }
-float foliage(vec2 uv, float species) {
-    vec2 p = uv*2.-1.;
-    float mask = 0.;
-    // Three branching twigs per card. Broadleaf blades are roughly 5--10cm
-    // at close LOD; spruce uses narrow paired needles on the same branches.
-    for (int twig=-1; twig<=1; ++twig) {
-        float a = float(twig)*.48;
-        vec2 q = mat2(cos(a),-sin(a),sin(a),cos(a))*(p-vec2(0,-.8));
-        float stem = (1.-smoothstep(.012,.025,abs(q.x)))*step(0.,q.y)*step(q.y,1.55);
-        float row = floor(q.y*4.);
-        float taper = 1.-clamp(q.y/1.8,0.,1.)*.55;
-        float x = abs(q.x)/max(.2,taper);
-        float y = fract(q.y*4.)-.5;
-        vec2 leaf = vec2((x-.19)/.155,(y-x*.8)/.42);
-        if (species < .5) leaf = vec2((x-.17)/.123,(y-x*.95)/.37);
-        if (species > 1.5) leaf = vec2((x-.18)/.18,(y-x*.8)/.15);
-        float blade = 1.-smoothstep(.85,1.,dot(leaf,leaf));
-        mask = max(mask,max(stem,blade*step(0.,row)*step(row,5.)));
-    }
-    return mask*step(abs(p.x),.98)*step(abs(p.y),.98);
+float shadowCoverage(sampler2D map, mat4 matrix, vec3 position, float bias, out float weight)
+{
+    vec4 clip = matrix * vec4(position, 1.0);
+    vec3 p = clip.xyz / clip.w * 0.5 + 0.5;
+    float edge = 2.0 * max(abs(p.x - 0.5), abs(p.y - 0.5));
+    weight = (p.z > 0.0 && p.z < 1.0) ? 1.0 - smoothstep(0.80, 0.99, edge) : 0.0;
+    if (weight <= 0.0) return 0.0;
+    vec2 texel = 1.0 / vec2(textureSize(map, 0));
+    float cover = 0.0;
+    for (int y = -1; y <= 1; ++y)
+        for (int x = -1; x <= 1; ++x)
+            cover += step(texture(map, p.xy + vec2(x, y) * texel).r + bias, p.z);
+    return cover / 9.0;
 }
-float sunlight(vec3 normal) {
-    if (uShadowStrength <= 0.) return 1.;
-    vec4 clip = uShadowMatrix * vec4(vWorld + normal*.025,1.);
-    vec3 p = clip.xyz / clip.w * .5 + .5;
-    if (p.z <= 0. || p.z >= 1.) return 1.;
-    float edge = max(abs(p.x-.5),abs(p.y-.5))*2.;
-    if (edge >= 1.) return 1.;
-    float bias = .00010 + .00020*(1.-max(dot(normal,normalize(uSun)),0.));
-    vec2 texel = 1./vec2(textureSize(uShadow,0));
-    float occlusion = 0.;
-    for (int y=-1; y<=1; ++y)
-        for (int x=-1; x<=1; ++x)
-            occlusion += step(texture(uShadow,p.xy+vec2(x,y)*texel).r+bias,p.z);
-    return 1.-occlusion/9.*uShadowStrength*(1.-smoothstep(.8,1.,edge));
+
+float sunlight(vec3 normal)
+{
+    if (uShadowStrength <= 0.0) return 1.0;
+    float bias = 0.00010 + 0.00020 * (1.0 - max(dot(normal, normalize(uSun)), 0.0));
+    float nearWeight;
+    float nearCover = shadowCoverage(uShadow, uShadowMatrix, vWorld + normal * 0.025, bias, nearWeight);
+    float cover = nearCover * nearWeight;
+    if (uFarEnabled && nearWeight < 1.0)
+    {
+        float farWeight;
+        float farCover = shadowCoverage(uFarShadow, uFarShadowMatrix, vWorld + normal * 0.16, bias * 1.8, farWeight);
+        cover += farCover * farWeight * (1.0 - nearWeight);
+    }
+    return 1.0 - uShadowStrength * cover;
 }
 // Local lighting of the managed game: analytic street lamps on the road grid and a
 // few moving lights (headlights, beacons). Short ranges, no shadows.
@@ -81,10 +79,19 @@ vec3 localLamp(vec3 pos, vec3 tint, vec3 axis, vec3 n, vec3 albedo, float range,
     float d2 = dot(delta, delta);
     if (d2 > range*range) return vec3(0.);
     vec3 l = delta * inversesqrt(max(d2, .001));
-    float cone = dot(axis, axis) > .1 ? smoothstep(.78, .94, dot(-l, normalize(axis))) : 1.;
+    bool headlight = dot(axis, axis) > 0.1;
+    float cone = headlight ? lowBeam(-l, axis) : 1.0;
     float fall = pow(max(0., 1. - d2/(range*range)), 2.) / (1. + d2*.08);
     vec3 view = normalize(uEye - vWorld), halfway = normalize(l + view + vec3(.00001));
     float spec = pow(max(0., dot(n, halfway)), mix(32., 110., wet)) * (.08 + .30*wet);
+    if (headlight)
+    {
+        // An elongated lobe along the road, with a tighter cross-road highlight.
+        vec3 lateral = normalize(cross(vec3(0.0, 1.0, 0.0), axis));
+        float across = dot(halfway, lateral);
+        float streak = pow(max(0.0, dot(n, halfway)), 18.0) * exp(-65.0 * across * across);
+        spec += wet * streak * 0.75;
+    }
     return ((albedo*.9 + vec3(.05)) * (max(0., dot(n, l)) + .04) + spec) * tint * fall * cone;
 }
 // Covered tunnels, as in the managed LocalLighting: x, z and half-length of the roofed
@@ -123,7 +130,7 @@ vec3 localLights(vec3 n, vec3 albedo, bool underground) {
     }
     for (int i = 0; i < 12; ++i)
         if (dot(uLampColor[i], uLampColor[i]) > .001)
-            sum += localLamp(uLampPosition[i], uLampColor[i], uLampDirection[i], n, albedo, 22., wet);
+            sum += localLamp(uLampPosition[i], uLampColor[i], uLampDirection[i], n, albedo, i < 8 ? 34.0 : 22.0, wet);
     return sum;
 }
 // Clothes of the managed Actor.frag on the 16-slot people palette: 0 top, 1 skin,
@@ -242,7 +249,23 @@ vec3 apartment(vec3 normal, vec3 view) {
 }
 void main() {
     float eyeDistance = length(uEye-vWorld);
-    if (uTreeLod >= 0) {
+    if (uSurface == 16)
+    {
+        float coverage = clamp(min(vLine.x + 0.5, vLine.y) - max(vLine.x - 0.5, -vLine.y), 0.0, 1.0);
+        if (uDetail != 0)
+            coverage *= 1.0 - smoothstep(uDetailStart, uDetailEnd, eyeDistance);
+        vec3 steel = mix(vec3(0.034, 0.039, 0.045), vec3(0.26, 0.27, 0.25), uDay);
+        fragColor = vec4(mix(uFog, steel, airTransmission(uEye, vWorld)), coverage);
+        return;
+    }
+    bool softLeaf = uSurface == 9 && uDepthPass == 0 && uProbePass == 0;
+    float leafOpacity = 1.0;
+    if (softLeaf)
+    {
+        float blend = smoothstep(85.0, 115.0, eyeDistance);
+        leafOpacity = (uTreeLod == 0 ? 1.0 - blend : blend) * (1.0 - smoothstep(560.0, 620.0, eyeDistance));
+    }
+    else if (uTreeLod >= 0) {
         float noise = fract(52.9829189*fract(dot(floor(gl_FragCoord.xy),vec2(.06711056,.00583715))));
         float farWeight = smoothstep(85.,115.,eyeDistance);
         if ((uTreeLod == 0 && noise < farWeight) || (uTreeLod == 1 && noise >= farWeight)) discard;
@@ -270,7 +293,13 @@ void main() {
     if (tex.a < .05) discard;
     if (uOutfit.x > .5) tex.rgb = dress(tex.rgb);
     if (uSurface == 9) {
-        if (foliage(vUv,vDetail.w) < .45) discard;
+        float mask = tex.rgb[clamp(int(vDetail.w + 0.5), 0, 2)];
+        if (softLeaf)
+        {
+            tex.a = mask * leafOpacity;
+            if (tex.a < 0.016) discard;
+        }
+        else if (mask < 0.33) discard;
     }
     if (uSurface == 11) {
         // Pothole photograph: the broken middle stays, the square border dissolves into the road.
@@ -325,6 +354,22 @@ void main() {
         float mottling = patches(vec3(vWorld.xz*1.6,vWorld.y*.7));
         float foot = 1.-smoothstep(.04,.62+.72*mottling,vLocal.y);
         tex.rgb *= mix(vec3(1.),vec3(.64,.67,.63),foot*(.72+.28*mottling));
+    }
+    if (vDetail.w == -1.0 && abs(vNormal.y) < 0.5)
+    {
+        float corner = abs(abs(vLocal.x) - abs(vDetail.z));
+        if (corner < 0.16 || (vDetail.z < 0.0 && abs(vLocal.x - vDetail.z - 0.25) < 0.45))
+        {
+            float mineral = patches(vec3(vWorld.xz * 18.0, vWorld.y * 8.0));
+            float chip = (1.0 - smoothstep(0.009, 0.085, corner)) * smoothstep(0.52, 0.76, mineral);
+            tex.rgb = mix(tex.rgb, vec3(0.56, 0.54, 0.48), chip * 0.60);
+            if (vDetail.z < 0.0)
+            {
+                float gutter = vLocal.x - vDetail.z - 0.25;
+                float streak = 1.0 - smoothstep(0.035, 0.24, abs(gutter + 0.038 * sin(vLocal.y * 1.7)));
+                tex.rgb *= 1.0 - streak * (0.16 + 0.22 * mineral);
+            }
+        }
     }
     if (uSurface == 12) {
         // Pick up the soil/leaf colour at the root. Sunlit tips are newer growth.
@@ -459,6 +504,13 @@ void main() {
         }
     }
     if (uLocalLights != 0) color += localLights(n, albedo, tunnel >= 0);
+    if (vDetail.z < 0.0 && (vDetail.w == -1.0 || vDetail.w == -2.0))
+    {
+        vec2 fromLamp = vec2(vLocal.x, vLocal.y - 2.26);
+        float below = 1.0 - smoothstep(-0.03, 0.22, fromLamp.y);
+        float pool = below / (1.0 + dot(fromLamp, fromLamp) * 4.5);
+        color += albedo * vec3(2.6, 1.76, 0.91) * pool * (1.0 - uDay);
+    }
     if (vehicleMaterial < 0) color += albedo*uEmissive;
     // Reflections of the managed game: glass, chrome and the clear coat of vehicles.
     float graze = pow(1.-abs(dot(n,v)),5.), coat = 0.;

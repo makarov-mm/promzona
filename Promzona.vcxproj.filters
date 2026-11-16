@@ -13,6 +13,9 @@
     <None Include="Content/Shaders/Native\effects.vert">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="Content/Shaders/Native\headlight.glsl">
+      <Filter>Shaders</Filter>
+    </None>
     <None Include="Content/Shaders/Native\water.glsl">
       <Filter>Shaders</Filter>
     </None>
@@ -148,6 +151,12 @@
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="include/promzona\world.hpp">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="src\headlights.hpp">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="src\leaf_mask.hpp">
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="src\effect_batch.hpp">

@@ -52,7 +52,7 @@ void plans()
         buildingDetails(detail, p);
         geometry(core, p);
         geometry(detail, p);
-        for (int slot = Sign; slot < SurfaceCount; ++slot)
+        for (int slot = Sign; slot < Sign + 3; ++slot)
             for (const auto &vertex : detail[slot].vertices)
             {
                 float horizontal =
@@ -88,9 +88,19 @@ void plans()
                   "GPU window identity preserved");
         }
         const auto &wall = core[Facade + 2].vertices;
-        check(std::abs(wall[1].uv[0] * 3.2f - 2 * p.halfWidth) < .001f,
-              "facade horizontal texture scale is metric");
-        check(std::abs(wall[0].uv[1] * 3.2f - p.height) < .001f, "facade vertical texture scale is metric");
+        for (size_t i = 0; i < wall.size(); i += 4)
+        {
+            const auto &a = wall[i], &b = wall[i + 1], &d = wall[i + 3];
+            check(std::abs(std::abs(b.uv[0] - a.uv[0]) * 3.2f - (b.position - a.position).length()) < .001f,
+                  "front opening preserves horizontal texture scale");
+            check(std::abs(std::abs(d.uv[1] - a.uv[1]) * 3.2f - (d.position - a.position).length()) < .001f,
+                  "front opening preserves vertical texture scale");
+        }
+        const Vec3 normal = p.windowsOnZ ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
+        const float depth = p.windowsOnZ ? p.halfDepth : p.halfWidth;
+        check(!core[Door].vertices.empty(), "entrance stays closed when near trim unloads");
+        for (const auto &v : core[Door].vertices)
+            check(dot(v.position - p.origin, normal) < depth - .30f, "door is behind the wall plane");
     }
     World world;
     world.generate(20261105);
