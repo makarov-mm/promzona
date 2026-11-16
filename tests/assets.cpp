@@ -28,22 +28,22 @@ int main(int argc, char **argv)
             {
                 if (extension == ".glb")
                 {
-                    auto mesh = Promzona::loadGlb(entry.path());
+                    auto mesh = Promzona::load_glb(entry.path());
                     ++meshes;
                     if (!mesh.embeddedColor.empty())
                     {
-                        Promzona::decodeImage(mesh.embeddedColor);
+                        Promzona::decode_image(mesh.embeddedColor);
                         ++embedded;
                     }
                 }
                 else if (extension == ".cityskin")
                 {
-                    Promzona::loadSkin(entry.path());
+                    Promzona::load_skin(entry.path());
                     ++skins;
                 }
                 else if (extension == ".png" || extension == ".jpg" || extension == ".jpeg")
                 {
-                    const auto image = Promzona::loadImage(entry.path());
+                    const auto image = Promzona::load_image(entry.path());
                     if (entry.path().filename() == "far-color.png")
                     {
                         // The old top-down atlases painted the sides of distant objects white.
@@ -70,7 +70,7 @@ int main(int argc, char **argv)
                 }
                 else if (extension == ".wav")
                 {
-                    auto samples = Promzona::readWave(entry.path());
+                    auto samples = Promzona::read_wave(entry.path());
                     if (samples.empty())
                         throw std::runtime_error("Empty WAV");
                     ++waves;
@@ -93,7 +93,7 @@ int main(int argc, char **argv)
         bool rejected = false;
         try
         {
-            Promzona::loadGlb(bad);
+            Promzona::load_glb(bad);
         }
         catch (...)
         {

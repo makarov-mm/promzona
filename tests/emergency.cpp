@@ -118,7 +118,7 @@ int main()
             c.routeTo = node;
             c.routePhase = 1;
             c.laneIndex = 0;
-            city.newRoute(c);
+            city.new_route(c);
             c.routeDistance = c.route->length() - .5;
             const auto [stop, heading] = c.route->sample(c.routeDistance);
             c.body.p = stop;

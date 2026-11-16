@@ -104,8 +104,12 @@ namespace Promzona
                          : m.kind == MarkKind::sand ? Vec3{.39f, .30f, .18f}
                          : m.kind == MarkKind::wet  ? Vec3{.09f, .14f, .15f}
                                                     : Vec3{.04f, .038f, .04f};
-            append(m.corners, color * (.42f + .58f * day), opacity * (m.kind == MarkKind::wet ? .36f : .76f),
-                   blood ? 2.f : 3.f);
+            const bool tyre = m.kind == MarkKind::rubber || m.kind == MarkKind::wet;
+            const float strength = m.kind == MarkKind::wet ? .27f : std::lerp(.70f, .32f, m.waterFilm);
+            append(m.corners, color * (.42f + .58f * day), opacity * (tyre ? strength : .76f),
+                   tyre    ? 6.f
+                   : blood ? 2.f
+                           : 3.f);
         }
     }
 

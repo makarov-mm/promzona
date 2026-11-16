@@ -299,7 +299,7 @@ void habits()
             ++shy;
         auto &p = w.people[shy];
         p.body.p = p.roleHome;
-        w.scarePerson(p, p.roleHome + Vec2{1, .3}, 2.);
+        w.scare_person(p, p.roleHome + Vec2{1, .3}, 2.);
         for (int i = 0; i < 120; ++i)
             w.step(parked(), frame);
         require((p.body.p - p.roleHome).length() > 3 && p.role == R::beach, "frightened visitor stood still");
@@ -318,7 +318,7 @@ void habits()
 
     // The night shift arrives after nine in the evening, out of sight, at the kerb.
     w.dayNightCycle = false;
-    w.clock.setHour(22);
+    w.clock.set_hour(22);
     const size_t before = count(w, R::beach);
     for (int pass = 0; pass < 40; ++pass)
         rolePass(w);
@@ -344,7 +344,7 @@ void habits()
         auto &seen = w.people[watched];
         const Vec2 kerb = seen.roleHome, home = w.position() + Vec2{60, 0};
         seen.body.p = seen.roleHome = home;
-        w.clock.setHour(6);
+        w.clock.set_hour(6);
         rolePass(w);
         require(count(w, R::night) == 1 && seen.role == R::night,
                 "the night shift did not end out of sight only");
@@ -359,7 +359,7 @@ void habits()
     // Habits travel with the save; a file without them is the city of an earlier build.
     const auto file = std::filesystem::temp_directory_path() / "promzona-people.json";
     std::filesystem::remove(file);
-    w.clock.setHour(23);
+    w.clock.set_hour(23);
     for (int pass = 0; pass < 6; ++pass)
         rolePass(w);
     require(count(w, R::night) >= 5, "no night shift to save");
@@ -412,7 +412,7 @@ void habits()
     loaded.dispatchAt = loaded.patrolScanAt = loaded.nextRescueDispatch = 1e9;
     require(count(loaded, R::beach) == 0 && count(loaded, R::vagrant) == 0, "habits came from nowhere");
     loaded.dayNightCycle = false;
-    loaded.clock.setHour(12);
+    loaded.clock.set_hour(12);
     for (int pass = 0; pass < 30; ++pass)
         rolePass(loaded);
     // One newcomer per pass on the beach; the homeless settle where they stand at once.
@@ -451,7 +451,7 @@ void duties()
             if (c.line >= 0 || c.kind != 0 || c.body.roadLevel || w.carEngaged(int(slot)) ||
                 (c.body.p - w.position()).length() < 320 || !w.layout.urbanSite(c.body.p, 12))
                 continue;
-            fitVehicle(c, force.model);
+            fit_vehicle(c, force.model);
             c.body.v = {};
             if (w.unload_crew(c))
                 unit = &c;
@@ -530,7 +530,7 @@ void streets()
     {
         // The junction clock is offset by its place in the grid.
         w.time = 28 * 50 + phase - (ci * 3 + cj * 5) % 9;
-        require(std::abs(CityLayout::signalPhase(ci, cj, w.time) - phase) < 1e-9, "signal phase is wrong");
+        require(std::abs(CityLayout::signal_phase(ci, cj, w.time) - phase) < 1e-9, "signal phase is wrong");
     };
     const size_t who = walker(w, true);
     auto &p = w.people[who];
@@ -589,7 +589,7 @@ void streets()
         p.fear = 0;
         at(14.5);
         double furthest = -1e9;
-        while (CityLayout::signalPhase(ci, cj, w.time) < 25.5)
+        while (CityLayout::signal_phase(ci, cj, w.time) < 25.5)
         {
             w.step({}, frame);
             furthest = std::max(furthest, p.body.p.x - centre.x);
@@ -619,7 +619,7 @@ void streets()
         p.fear = 0;
         at(14.5);
         double furthest = -1e9;
-        while (CityLayout::signalPhase(ci, cj, w.time) < 25.5)
+        while (CityLayout::signal_phase(ci, cj, w.time) < 25.5)
         {
             w.step({}, frame);
             furthest = std::max(furthest, p.body.p.x - centre.x);
@@ -982,7 +982,7 @@ void litter()
     b.p = f.home = p.body.p + Vec2{p.body.radius + b.radius + .004, 0};
     b.v = {};
     b.sleeping = true;
-    w.supportFixture(f);
+    w.support_fixture(f);
     w.staticQueryCount = size_t(-1);
     const double from = p.body.p.x;
     for (int i = 0; i < 60 * 4; ++i)

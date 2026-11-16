@@ -367,7 +367,8 @@ struct Renderer::Impl
     } skyUniforms;
     struct
     {
-        GLint eye{}, time{}, sun{}, fog{}, zenith{}, air{}, day{}, rain{}, probeReady{}, probeCentre{}, probeRoofed{};
+        GLint eye{}, time{}, sun{}, fog{}, zenith{}, air{}, day{}, rain{}, probeReady{}, probeCentre{},
+            probeRoofed{}, waterEdge{};
     } effectUniforms;
     GLint uiSample{};
     GLuint effectShader{};
@@ -412,7 +413,7 @@ struct Renderer::Impl
     Language language{Language::russian};
     // The name on the van of the gas service in every language, and the batch that shows it.
     std::array<GLuint, 3> serviceLettering{};
-    size_t serviceLetters{size_t(-1)};
+    std::array<size_t, 2> serviceLetters{};
     GLuint menuArt{};
     // Height of every street-lamp head, one texel per road node (see scene.frag).
     GLuint lampMap{}, yardMask{};
@@ -661,10 +662,10 @@ struct Renderer::Impl
                 break;
             }
         }
-        scene = program(read_text(root / "Shaders/Native/scene.vert"),
+        scene = program(readShader(root / "Shaders/Native/scene.vert"),
                         readShader(root / "Shaders/Native/scene.frag"));
         ui = program(read_text(root / "Shaders/Native/ui.vert"), read_text(root / "Shaders/Native/ui.frag"));
-        effectShader = program(read_text(root / "Shaders/Native/effects.vert"),
+        effectShader = program(readShader(root / "Shaders/Native/effects.vert"),
                                readShader(root / "Shaders/Native/effects.frag"));
         effects.initialize(effectShader);
         sky =
@@ -681,18 +682,18 @@ struct Renderer::Impl
             GetUniformLocation(sky, "uRain"),
             GetUniformLocation(sky, "uTime"),
             GetUniformLocation(sky, "uProbePass")};
-        effectUniforms = {
-            GetUniformLocation(effectShader, "uEye"),
-            GetUniformLocation(effectShader, "uTime"),
-            GetUniformLocation(effectShader, "uSun"),
-            GetUniformLocation(effectShader, "uFog"),
-            GetUniformLocation(effectShader, "uZenith"),
-            GetUniformLocation(effectShader, "uAir"),
-            GetUniformLocation(effectShader, "uDay"),
-            GetUniformLocation(effectShader, "uRain"),
-            GetUniformLocation(effectShader, "uProbeReady"),
-            GetUniformLocation(effectShader, "uProbeCentre"),
-            GetUniformLocation(effectShader, "uProbeRoofed")};
+        effectUniforms = {GetUniformLocation(effectShader, "uEye"),
+                          GetUniformLocation(effectShader, "uTime"),
+                          GetUniformLocation(effectShader, "uSun"),
+                          GetUniformLocation(effectShader, "uFog"),
+                          GetUniformLocation(effectShader, "uZenith"),
+                          GetUniformLocation(effectShader, "uAir"),
+                          GetUniformLocation(effectShader, "uDay"),
+                          GetUniformLocation(effectShader, "uRain"),
+                          GetUniformLocation(effectShader, "uProbeReady"),
+                          GetUniformLocation(effectShader, "uProbeCentre"),
+                          GetUniformLocation(effectShader, "uProbeRoofed"),
+                          GetUniformLocation(effectShader, "uWaterEdge")};
         UseProgram(ui);
         Uniform1i(GetUniformLocation(ui, "uColor"), 0);
         uiSample = GetUniformLocation(ui, "uSample");
@@ -844,7 +845,12 @@ struct Renderer::Impl
             }
             if (!*fleet[k].folder)
             {
-                k == busModel ? buildBus(cars[k]) : buildServiceVan(cars[k]);
+                const bool bus = k == busModel;
+                if (bus)
+                    buildBus(cars[k]);
+                else
+                    buildServiceVan(cars[k]);
+                buildNearServiceVehicle(cars[k], bus);
                 continue;
             }
             auto path = root / "Models/Imported" / fleet[k].folder;
@@ -861,8 +867,7 @@ struct Renderer::Impl
         loadModel(foodModels[1], root / "Models/Imported/soviet_soda_machine");
         loadModel(busShelter, root / "Models/Imported/outdated_soviet_bus_stop");
     }
-    // The managed game has no model for its bus or for the van of the gas service and builds
-    // both out of boxes; these are the same boxes. Parts: 0 the body, 3 and up the wheels.
+    // The original box models remain the distant LOD. Wheels start at part 3 in both LODs.
     Batch &boxed(Model &model, const MeshData &data, Vec3 tint, float roughness = .5f, int part = 0)
     {
         if (model.lods.empty())
@@ -953,10 +958,147 @@ struct Renderer::Impl
         // The name is game text like any other: the managed game translates it as well.
         for (size_t k = 0; k < serviceLettering.size(); ++k)
             serviceLettering[k] = lettering(localize(L"ГАЗОВАЯ СЛУЖБА", Language(k)), 3.4f / .36f);
-        serviceLetters = model.lods.front().size();
+        serviceLetters[1] = model.lods.front().size();
         boxed(model, letters, {.07f, .14f, .27f}, .7f).color = serviceLettering[std::to_underlying(language)];
         wheels(model, .96f, .36f, 1.35f, .35f, .19f);
         lamps(model, .67f, .84f, 2.11f, -2.06f, {.14f, .12f, .02f});
+    }
+    void buildNearServiceVehicle(Model &model, bool bus)
+    {
+        auto distant = std::move(model.lods.front());
+        model.lods.front().clear();
+        model.wheels.clear();
+
+        const float halfWidth = bus ? 1.09f : .95f, length = bus ? 4.48f : 2.05f;
+        const float sill = bus ? 1.53f : 1.23f, lintel = bus ? 2.56f : 1.85f;
+        const float axle = bus ? 2.8f : 1.35f, hub = bus ? .49f : .36f;
+        const float radius = bus ? .47f : .35f, arch = radius + .13f;
+        const float base = bus ? .48f : .38f;
+        MeshData paint, roof, seals, seats, glass, stripe, letteringPanel;
+
+        // A ring follows the body perimeter. The clipped corners and the narrower upper
+        // ring shape the nose, raked windscreen and roof without internal box faces.
+        auto ring = [](float w, float l, float y)
+        {
+            constexpr float bevel = .14f;
+            return std::array<Vec3, 8>{{{-w + bevel, y, l},
+                                        {w - bevel, y, l},
+                                        {w, y, l - bevel},
+                                        {w, y, -l + bevel},
+                                        {w - bevel, y, -l},
+                                        {-w + bevel, y, -l},
+                                        {-w, y, -l + bevel},
+                                        {-w, y, l - bevel}}};
+        };
+        const auto belt = ring(halfWidth, length, sill);
+        const auto upper = ring(halfWidth - .045f, length - .16f, lintel);
+        const auto crown = ring(halfWidth - .12f, length - .24f, lintel + (bus ? .24f : .17f));
+        for (size_t i = 0; i < belt.size(); ++i)
+        {
+            const auto j = (i + 1) % belt.size();
+            const bool side = i == 2 || i == 6;
+            if (!side)
+                quad(paint, {belt[i].x, base, belt[i].z}, {belt[j].x, base, belt[j].z}, belt[j], belt[i]);
+            auto &panel = i % 2 == 0 ? glass : paint;
+            quad(panel, belt[i], belt[j], upper[j], upper[i]);
+            quad(roof, upper[i], upper[j], crown[j], crown[i]);
+            // Both ends of the crown have a short bevel; fan from its centre.
+            const float capHeight = crown[i].y;
+            const auto first = static_cast<std::uint32_t>(roof.vertices.size());
+            for (auto p : {Vec3{0, capHeight, 0}, crown[i], crown[j]})
+                roof.vertices.push_back({.position = p, .normal = {0, 1, 0}});
+            roof.indices.insert(roof.indices.end(), {first, first + 1, first + 2});
+        }
+
+        for (const float side : {-1.f, 1.f})
+        {
+            // Cut the lower flank around both tyres; keep the floor between the arches.
+            const float x = side * halfWidth;
+            auto flank = [&](float z0, float y0, float z1, float y1)
+            {
+                if (side < 0)
+                    quad(paint, {x, y0, z0}, {x, y1, z1}, {x, sill, z1}, {x, sill, z0});
+                else
+                    quad(paint, {x, y1, z1}, {x, y0, z0}, {x, sill, z0}, {x, sill, z1});
+            };
+            float last = -length + .14f;
+            for (float centre : {-axle, axle})
+            {
+                flank(last, base, centre - arch, base);
+                for (int k = 0; k < 10; ++k)
+                {
+                    auto lip = [&](int sample)
+                    {
+                        const float angle = float(pi) * sample / 10.f;
+                        return std::pair{centre - arch * std::cos(angle),
+                                         std::max(base, hub + arch * std::sin(angle))};
+                    };
+                    const auto [z0, y0] = lip(k);
+                    const auto [z1, y1] = lip(k + 1);
+                    flank(z0, y0, z1, y1);
+                }
+                last = centre + arch;
+            }
+            flank(last, base, length - .14f, base);
+
+            const int bays = bus ? 7 : 3;
+            for (int i = 1; i < bays; ++i)
+            {
+                const float z = std::lerp(-length + .18f, length - .18f, float(i) / bays);
+                box(seals, {side * (halfWidth - .036f), (sill + lintel) * .5f, z},
+                    {.041f, (lintel - sill) * .5f, .028f});
+                box(seats, {side * halfWidth * .59f, sill - .14f, z}, {.23f, .09f, .22f});
+                box(seats, {side * halfWidth * .59f, sill + .08f, z - .18f}, {.23f, .24f, .055f});
+            }
+            if (bus)
+                box(stripe, {x, 1.18f, 0}, {.009f, .056f, length - .15f});
+            else
+            {
+                // The service van carries tools behind the cab.
+                box(paint, {side * (halfWidth - .026f), (sill + lintel) * .5f, -length * .72f},
+                    {.028f, (lintel - sill) * .5f, length * .19f});
+            }
+            const float mirrorZ = length - .38f;
+            box(seals, {side * (halfWidth + .07f), lintel - .22f, mirrorZ}, {.11f, .018f, .018f});
+            box(seals, {side * (halfWidth + .16f), lintel - .29f, mirrorZ}, {.045f, .10f, .065f});
+            if (bus && side < 0)
+                for (float z : {3.5f, -.6f})
+                    for (float offset : {-.43f, 0.f, .43f})
+                        box(seals, {x, (base + lintel) * .5f, z + offset},
+                            {.012f, (lintel - base) * .5f, .014f});
+            if (!bus)
+            {
+                const float front = side * 1.46f, back = -front;
+                quad(letteringPanel, {x * 1.003f, .90f, front}, {x * 1.003f, .90f, back},
+                     {x * 1.003f, 1.19f, back}, {x * 1.003f, 1.19f, front});
+            }
+        }
+        if (bus)
+        {
+            boxed(model, stripe, {.38f, .21f, .14f});
+            box(roof, {0, lintel + .26f, -.6f}, {.44f, .035f, .55f});
+        }
+        for (int slat = 0; slat < 4; ++slat)
+            box(seals, {0, base + .29f + slat * .045f, length + .007f}, {.33f, .012f, .012f});
+        box(seals, {0, sill - .22f, 0}, {halfWidth - .17f, .07f, length - .20f});
+        box(seals, {0, sill + .018f, length - .34f}, {halfWidth - .16f, .045f, .17f});
+        box(seals, {0, base + .05f, length}, {halfWidth - .10f, .065f, .06f});
+        box(seals, {0, base + .05f, -length}, {halfWidth - .10f, .065f, .06f});
+        boxed(model, paint, bus ? Vec3{.72f, .64f, .39f} : Vec3{.95f, .68f, .08f}).paintMask = bus ? 0 : 1;
+        boxed(model, roof, bus ? Vec3{.81f, .78f, .61f} : Vec3{.58f, .62f, .46f});
+        boxed(model, seats, {.24f, .24f, .18f}, .84f);
+        boxed(model, seals, {.085f, .086f, .080f}, .76f);
+        boxed(model, glass, {.19f, .31f, .34f}, .15f).alpha = .35f;
+        if (!bus)
+        {
+            serviceLetters[0] = model.lods.front().size();
+            boxed(model, letteringPanel, {.07f, .14f, .27f}).color =
+                serviceLettering[std::to_underlying(language)];
+        }
+        wheels(model, bus ? 1.1f : .96f, hub, axle, radius, bus ? .26f : .19f);
+        lamps(model, bus ? .85f : .67f, bus ? .93f : .84f, length + .01f, -length - .01f,
+              {.14f, .10f, .025f});
+        model.lods.push_back(std::move(distant));
     }
     // White letters on nothing; the batch that shows them gives the colour. The canvas
     // has the proportions of the panel, so that a short name is not drawn out along it.
@@ -2107,9 +2249,9 @@ void Renderer::sceneMode(SceneMode mode)
 void Renderer::language(Language language)
 {
     impl_->language = language;
-    if (impl_->serviceLetters != size_t(-1))
-        impl_->cars[gasVanModel].lods.front()[impl_->serviceLetters].color =
-            impl_->serviceLettering[std::to_underlying(language)];
+    auto &lods = impl_->cars[gasVanModel].lods;
+    for (size_t lod = 0; lod < lods.size(); ++lod)
+        lods[lod][impl_->serviceLetters[lod]].color = impl_->serviceLettering[std::to_underlying(language)];
 }
 void Renderer::graphics(const GraphicsPreferences &settings)
 {
@@ -2291,7 +2433,7 @@ void Renderer::prepare(const World &world)
     }
     if (world.layout.revision())
     {
-        // The same four bands the outer sectors extend their water over (cityChunk).
+        // The outer sea meets the streamed water at the sector boundary.
         const float edge = float(std::ceil(world.layout.edge() / Sector::size) * Sector::size),
                     out = edge + 1800, y = float(CityLayout::waterLevel);
         MeshData sea;
@@ -2299,6 +2441,8 @@ void Renderer::prepare(const World &world)
         quad(sea, {-out, y, -edge}, {out, y, -edge}, {out, y, -out}, {-out, y, -out});
         quad(sea, {-out, y, edge}, {-edge, y, edge}, {-edge, y, -edge}, {-out, y, -edge});
         quad(sea, {edge, y, edge}, {out, y, edge}, {out, y, -edge}, {edge, y, -edge});
+        for (auto &vertex : sea.vertices)
+            vertex.uv = {8.f, 1.f};
         r.openSea = r.uploadSurface(sea, Water, false);
     }
     r.detailStream = std::make_unique<DetailStream>(world);
@@ -2562,6 +2706,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         Uniform1i(r.uniform("uOrm"), 3);
         Uniform1i(r.uniform("uRug"), 4);
         Uniform1i(r.uniform("uLocalLights"), depthPass ? 0 : 1);
+        Uniform1f(r.uniform("uWaterEdge"), float(world.layout.edge()));
         Uniform1i(r.uniform("uGridNodes"), r.lampNodes);
         Uniform1f(r.uniform("uGridLow"), r.lampLow);
         Uniform1f(r.uniform("uLampSide"), r.lampSide);
@@ -3271,6 +3416,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         const Vec3 probeCentre = r.probe.centre();
         Uniform3f(r.effectUniforms.eye, view.eye.x, view.eye.y, view.eye.z);
         Uniform1f(r.effectUniforms.time, float(world.time));
+        Uniform1f(r.effectUniforms.waterEdge, float(world.layout.edge()));
         Uniform3f(r.effectUniforms.sun, sunRay.x, sunRay.y, sunRay.z);
         Uniform3f(r.effectUniforms.fog, fog.x, fog.y, fog.z);
         Uniform3f(r.effectUniforms.zenith, air.zenith.x, air.zenith.y, air.zenith.z);

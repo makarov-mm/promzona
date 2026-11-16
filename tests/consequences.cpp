@@ -164,7 +164,7 @@ int main()
             w.playerKnockedUntil = 0;
             w.godMode = true;
             w.strike_player(car, 30);
-            w.hurtPlayer(.9);
+            w.hurt_player(.9);
             require(w.health == hurt && w.playerKnockedUntil == 0, "god mode ignores damage");
             w.godMode = false;
             w.strike_player(car, 14);

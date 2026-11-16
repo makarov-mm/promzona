@@ -370,7 +370,7 @@ void World::updateTireMarks(Vec2 focus, double dt)
                              kind == MarkKind::wet    ? 6.
                              : kind == MarkKind::sand ? 24.
                                                       : 40.,
-                             body.roadLevel, kind});
+                             body.roadLevel, kind, wet ? float(std::max(wetness, .5)) : 0.f});
             // Tyres smoke in a hard slide and raise dust on sand, at the cadence of the
             // managed skid clock.
             if (distance < 9. && time >= contact.nextPuff && kind != MarkKind::wet)

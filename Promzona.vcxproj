@@ -67,6 +67,7 @@
     <None Include="Content/Shaders/Native\effects.frag" />
     <None Include="Content/Shaders/Native\effects.vert" />
     <None Include="Content/Shaders/Native\environment.glsl" />
+    <None Include="Content/Shaders/Native\water.glsl" />
     <None Include="Content/Shaders/Native\scene.frag" />
     <None Include="Content/Shaders/Native\fullscreen.vert" />
     <None Include="Content/Shaders/Native\glow.frag" />

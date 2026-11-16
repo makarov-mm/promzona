@@ -137,7 +137,7 @@ int main(int argc, char **argv)
         solver.step(bodies, .01);
         check(a.v.x < 0 && b.v.x > 0, "pedestrians separate symmetrically");
         Clock clock;
-        clock.setHour(7);
+        clock.set_hour(7);
         near(clock.hour, 7, 1e-10, "new game morning");
         clock.cycleMinutes = 20;
         for (int i = 0; i < 144000; i++)
@@ -188,7 +188,7 @@ int main(int argc, char **argv)
         world.wanted = 4;
         world.playerBurnUntil = world.time + 3;
         world.rockets.push_back({{0, 0}, {0, 1}, 50, -.1, 2, 0});
-        world.clock.setHour(22);
+        world.clock.set_hour(22);
         world.save(save);
         World loaded;
         loaded.load(save);
@@ -225,20 +225,20 @@ int main(int argc, char **argv)
                      loadedCar.route->sample(loadedCar.routeDistance).first.x, 1e-10, "save route progress");
             }
         }
-        auto right = spatialAudio({-10, 0}, {}, 0, 1);
-        auto left = spatialAudio({10, 0}, {}, 0, 1);
+        auto right = spatial_audio({-10, 0}, {}, 0, 1);
+        auto left = spatial_audio({10, 0}, {}, 0, 1);
         check(right.right > right.left && left.left > left.right, "audio follows camera right vector");
         near(right.right, left.left, 1e-7, "stereo mirror symmetry");
-        auto rotated = spatialAudio({0, 10}, {}, pi / 2, 1);
+        auto rotated = spatial_audio({0, 10}, {}, pi / 2, 1);
         near(rotated.right, right.right, 1e-7, "audio rotates with camera, not vehicle");
         for (double heading : {0., .7, pi, -1.5})
         {
             auto f = forward(heading), r = perpendicular(f);
-            auto view = Mat4::lookAt({float(-f.x * 10), 5, float(-f.z * 10)}, {0, 0, 0});
+            auto view = Mat4::look_at({float(-f.x * 10), 5, float(-f.z * 10)}, {0, 0, 0});
             check(view.m[0] * r.x + view.m[8] * r.z > .99, "D strafe projects to screen right");
         }
-        auto farAudio = spatialAudio({0, 100}, {}, 0, 1);
-        auto nearAudio = spatialAudio({0, 3}, {}, 0, 1);
+        auto farAudio = spatial_audio({0, 100}, {}, 0, 1);
+        auto nearAudio = spatial_audio({0, 3}, {}, 0, 1);
         check(farAudio.left < nearAudio.left * .1, "distance attenuates audio");
         AudioMixer radio;
         radio.addClip("radio0", {.5f, .2f});

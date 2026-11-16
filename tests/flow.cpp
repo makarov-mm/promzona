@@ -56,12 +56,12 @@ Car &place(World &w, size_t slot, unsigned model, int from, int to, int lane, do
     c = Car{};
     c.id = std::uint32_t(slot);
     c.body.id = 0x7000u + std::uint32_t(slot);
-    fitVehicle(c, model);
+    fit_vehicle(c, model);
     c.routeFrom = from;
     c.routeTo = to;
     c.routePhase = 1;
     c.laneIndex = lane;
-    w.newRoute(c);
+    w.new_route(c);
     c.routeDistance = c.route->length() - back;
     const auto [at, heading] = c.route->sample(c.routeDistance);
     c.body.p = at;
@@ -231,7 +231,7 @@ void junction()
     auto &bus = place(w, 10, busModel, south, node, 1, 0);
     bus.plannedTo = east;
     bus.routeDistance = bus.route->length();
-    w.newRoute(bus);
+    w.new_route(bus);
     require(bus.routePhase == 1 && bus.routeTo == east && bus.route->length() > 24, "the bus does not turn");
     bus.routeDistance = 22.83;
     point(bus, {6.78, 4.29}, {.909, .416});
@@ -281,7 +281,7 @@ void walkers()
     shy->body.p = pavement;
     shy->body.height = w.terrain.height(pavement) + .85;
     shy->body.roadLevel = 0;
-    w.scarePerson(*shy, pavement + Vec2{0, 2}, 2.);
+    w.scare_person(*shy, pavement + Vec2{0, 2}, 2.);
     for (int k = 0; k < 150; ++k)
         w.step({}, frame);
     require((shy->body.p - pavement).length() > 4 && !shy->dead,
@@ -298,7 +298,7 @@ void walkers()
         shy->body.height = tram->body.height;
         shy->body.v = {};
         shy->knockedUntil = 0;
-        return w.detectImpact(*shy, *tram, false);
+        return w.detect_impact(*shy, *tram, false);
     };
     const int before = w.pedestrianImpacts;
     require(!meet(tram->body.p + ahead * (tram->body.halfH - 1.3) + side * (tram->body.halfW + .2)) &&
@@ -393,7 +393,7 @@ void overpass()
     const double tallest = w.cars[0].body.verticalExtent;
     {
         Car tall;
-        fitVehicle(tall, 17);
+        fit_vehicle(tall, 17);
         require(tall.body.verticalExtent > 3 && tall.body.verticalExtent >= tallest, "model 17 is not tall");
         int beams = 0;
         for (const auto &level : w.roadLevels)

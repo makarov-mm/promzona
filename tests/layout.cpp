@@ -163,13 +163,13 @@ int main(int argc, char **argv)
             for (int k = 0; k < 3; ++k)
             {
                 const double x = city.railEnd() - 11.6 - k * city.spacing;
-                const double rail = coast.bedHeight(x, city.railZ());
+                const double rail = coast.bed_height(x, city.railZ());
                 for (double z : {-7., -.762, .762, 7.})
-                    check(std::abs(coast.bedHeight(x, city.railZ() + z) - rail) < .15,
+                    check(std::abs(coast.bed_height(x, city.railZ() + z) - rail) < .15,
                           "wagon rails and loading apron share a level cross-section");
             }
             const double mouth = city.coordinate(city.nodes() / 3) + 18;
-            check(coast.bedHeight(mouth, city.edge() + 1) < CityLayout::waterLevel,
+            check(coast.bed_height(mouth, city.edge() + 1) < CityLayout::waterLevel,
                   "canal outlet opens beneath the sea surface");
         }
         // Heights sampled by rendering and physics must represent the same supported surface.
@@ -184,7 +184,7 @@ int main(int argc, char **argv)
             if (l.bridge({x, z}))
             {
                 check(terrain.height(x, z) > 3.6, "bridge supports cars");
-                check(terrain.bedHeight(x, z) < -7.9, "river bed remains below bridge");
+                check(terrain.bed_height(x, z) < -7.9, "river bed remains below bridge");
             }
             else
                 check(terrain.height(x, z) < CityLayout::waterLevel, "no invisible canal bridge");

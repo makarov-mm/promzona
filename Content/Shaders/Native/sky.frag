@@ -45,18 +45,31 @@ void main() {
 
     if (ray.y > 0.015) {
         // The clouds drift by seconds on the screen, whatever the speed of the game clock.
-        vec2 p = ray.xz / (ray.y + 0.18) * 2.3 + vec2(uTime * 0.003, uTime * 0.0012);
-        float density = clouds(p), detail = clouds(p + vec2(5.2, 9.1));
-        float coverage = mix(smoothstep(0.49, 0.73, density), 0.88 + 0.12 * smoothstep(0.2, 0.8, density), rain);
-        vec3 cloud = mix(vec3(0.68, 0.72, 0.76), vec3(0.91, 0.92, 0.91), detail);
-        cloud = mix(cloud, mix(vec3(0.19, 0.23, 0.28), vec3(0.40, 0.44, 0.48), density), rain);
-        cloud = mix(vec3(0.012, 0.019, 0.032) * (0.8 + 0.4 * density), cloud, day);
-        // Thin edges let the warm light through; thick banks stay cool against the sky.
-        float thinEdge = 1.0 - smoothstep(0.53, 0.72, density);
-        vec3 sunsetCloud = mix(vec3(0.46, 0.39, 0.48), vec3(1.13, 0.72, 0.43),
-                               thinEdge * (0.27 + 0.73 * sunDot) + 0.12 * detail);
-        cloud = mix(cloud, sunsetCloud, golden);
-        sky = mix(sky, cloud, coverage * smoothstep(0.015, 0.28, altitude));
+        vec2 skyPlane = ray.xz / (ray.y + 0.18);
+        vec2 p = skyPlane * 2.15 + uTime * vec2(0.0030, 0.0012);
+        float density = clouds(p);
+        float upper = smoothstep(mix(0.44, 0.29, rain), mix(0.69, 0.56, rain), density);
+        vec2 lowPlane = skyPlane * 3.8 + uTime * vec2(-0.006, 0.0035);
+        float lowNoise = 0.68 * skyNoise(lowPlane) + 0.32 * skyNoise(lowPlane * 2.31);
+        float lower = smoothstep(0.47, 0.77, lowNoise) * mix(0.19, 0.78, rain);
+        float horizonFade = smoothstep(0.015, 0.22, altitude);
+
+        // Sample toward the light: the sunward rim sees less cloud in front of it.
+        vec2 lightStep = sun.xz * 0.24;
+        float towardSun = 0.67 * skyNoise(p + lightStep)
+                        + 0.33 * skyNoise((p + lightStep) * 2.03 + vec2(13.2, 7.1));
+        float edgeLight = smoothstep(-0.06, 0.24, density - towardSun)
+                        * (1.0 - 0.78 * upper);
+        vec3 shade = mix(vec3(0.53, 0.60, 0.69), vec3(0.25, 0.30, 0.37), rain);
+        vec3 lit = mix(vec3(0.91, 0.93, 0.95), vec3(0.61, 0.66, 0.70), rain);
+        lit = mix(lit, vec3(1.0, 0.73, 0.49), golden * (0.35 + 0.65 * sunDot));
+        vec3 cloud = mix(shade, lit, clamp(0.40 + 1.5 * edgeLight - 0.25 * density, 0.0, 1.0));
+        cloud = mix(vec3(0.021, 0.028, 0.044), cloud, day);
+        sky = mix(sky, cloud, upper * horizonFade);
+
+        vec3 lowColor = mix(vec3(0.014, 0.019, 0.030), shade * (0.85 + 0.16 * lowNoise), day);
+        sky = mix(sky, lowColor, lower * horizonFade);
+        float coverage = upper + lower * (1.0 - upper);
 
         float stars = step(0.998, skyHash(floor(ray.xz / (altitude + 0.1) * 480.0)))
                     * pow(max(0.0, skyNoise(p * 110.0)), 12.0);

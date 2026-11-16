@@ -135,7 +135,7 @@ if(WIN32)
   set(native_shaders
     Content/Shaders/Native/scene.vert Content/Shaders/Native/scene.frag
     Content/Shaders/Native/fullscreen.vert Content/Shaders/Native/resolve.frag Content/Shaders/Native/glow.frag
-    Content/Shaders/Native/occlusion.frag Content/Shaders/Native/environment.glsl
+    Content/Shaders/Native/occlusion.frag Content/Shaders/Native/environment.glsl Content/Shaders/Native/water.glsl
     Content/Shaders/Native/sky.vert Content/Shaders/Native/sky.frag
     Content/Shaders/Native/ui.vert Content/Shaders/Native/ui.frag
     Content/Shaders/Native/effects.vert Content/Shaders/Native/effects.frag)

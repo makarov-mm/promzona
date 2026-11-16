@@ -46,7 +46,7 @@ void residency()
         {
             auto eye = cells[k].centre;
             (void)cache.trim(cells, eye);
-            for (auto id : detailOrder(cells, eye, 200))
+            for (auto id : detail_order(cells, eye, 200))
                 if (!cache.contains(id))
                 {
                     (void)cache.trim(cells, eye, 20);
@@ -132,7 +132,7 @@ void worker()
         World next;
         next.generate(123u + i);
         DetailStream shortLived(next);
-        auto order = detailOrder(shortLived.cells(), {}, detailPrefetchDistance);
+        auto order = detail_order(shortLived.cells(), {}, detailPrefetchDistance);
         shortLived.request(order);
     }
 }
@@ -185,6 +185,33 @@ void sectorPlan()
     }
     check(refused, "residency of another city is refused");
 }
+void checkCoastalMesh(const World &world, double edge)
+{
+    const double size = Sector::size;
+    std::array<std::vector<std::pair<float, float>>, 2> seams;
+    for (int side = 0; side < 2; ++side)
+    {
+        const double west = (side - 1) * size;
+        const auto chunk = city_chunk(world, west, edge - size, size);
+        const auto &water = chunk[Water];
+        check(!water.indices.empty(), "coastal sector has water");
+        for (const auto &v : water.vertices)
+        {
+            const auto &p = v.position;
+            check(p.x >= west && p.x <= west + size && p.z >= edge - size && p.z <= edge,
+                  "streamed water stays inside its sector and clear of the permanent sea");
+            check(std::abs(v.uv[0] - (CityLayout::waterLevel - world.terrain.bed_height(p.x, p.z))) < .001,
+                  "water depth follows the bed rather than elevated roads");
+            if (p.x == 0)
+                seams[side].emplace_back(p.z, v.uv[0]);
+        }
+        std::ranges::sort(seams[side]);
+    }
+    // One dry boundary cell can belong to only one mesh. All submerged samples must join.
+    for (auto &seam : seams)
+        std::erase_if(seam, [](const auto &sample) { return sample.second <= 0.f; });
+    check(!seams.front().empty() && seams.front() == seams.back(), "wet sector edges agree");
+}
 void sectorWorker()
 {
     auto world = std::make_unique<World>();
@@ -192,6 +219,7 @@ void sectorWorker()
     SectorStream stream(*world);
     const auto sectors = stream.sectors();
     const double edge = std::ceil(world->landEdge / Sector::size) * Sector::size;
+    checkCoastalMesh(*world, edge);
     const auto side = size_t(std::lround(2 * edge / Sector::size));
     check(sectors.size() == side * side && sectors.front().x == -edge && sectors.front().z == -edge &&
               sectors.back().x == edge - Sector::size && sectors.back().z == edge - Sector::size,
@@ -199,7 +227,7 @@ void sectorWorker()
     // A sector in the middle of the city, and what a direct build of it gives.
     const size_t centre = (side / 2) * side + side / 2;
     std::vector<LawnTile> lawn;
-    const auto reference = cityChunk(*world, sectors[centre].x, sectors[centre].z, Sector::size, &lawn);
+    const auto reference = city_chunk(*world, sectors[centre].x, sectors[centre].z, Sector::size, &lawn);
     check(!lawn.empty(), "central sector contains lawn");
     // By construction every root lies on one of the two rendered triangles,
     // even when their four corners do not share a plane.

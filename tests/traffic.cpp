@@ -77,7 +77,7 @@ void distantQueueAndSave()
     driver.routeFrom = from;
     driver.routeTo = from + 1;
     driver.routePhase = 1;
-    w.newRoute(driver);
+    w.new_route(driver);
     place(driver, 9);
     place(parked, 27);
     w.ownedGarage = w.nearestSite(ServiceKind::garage, {});
@@ -125,7 +125,7 @@ void laneChecks(World &w)
     driver.routeFrom = 1200;
     driver.routeTo = w.layout.neighbours(1200).front();
     driver.routePhase = 1;
-    w.newRoute(driver);
+    w.new_route(driver);
     auto [start, heading] = driver.route->sample(0);
     auto direction = forward(heading), right = perpendicular(direction);
     driver.body.p = start;
@@ -164,7 +164,7 @@ void laneChecks(World &w)
     check(std::abs(dot(end.first - destination, right)) < 1e-8, "merge arrives in the adjacent lane");
     pathClear(w, *driver.route);
     check(!w.tryChangeLane(driver, 0), "cannot immediately change lanes again");
-    w.newRoute(driver);
+    w.new_route(driver);
     check((driver.route->sample(0).first - end.first).length() < 1e-8, "crossing follows merged lane");
 
     // Approach every elevated and sunken link from a normal outer lane. Force the
@@ -180,11 +180,11 @@ void laneChecks(World &w)
                 probe.routeFrom = previous;
                 probe.routeTo = entry;
                 probe.laneIndex = 1;
-                w.newRoute(probe);
+                w.new_route(probe);
                 if (!w.levelEdge(probe.routeFrom, probe.routeTo))
                     continue;
                 auto corner = probe.route->sample(probe.route->length());
-                w.newRoute(probe);
+                w.new_route(probe);
                 check(probe.routePhase == 2 && probe.laneIndex == 0 &&
                           (corner.first - probe.route->sample(0).first).length() < 1e-8,
                       "outer lane joins the single lane of the deck or tunnel");
@@ -214,12 +214,12 @@ int main()
             c.routePhase = 0;
             auto f = (World::nodePoint(n) - World::nodePoint(c.routeFrom)).unit();
             auto start = World::nodePoint(n) - f * stopLine + perpendicular(f) * CityLayout::lane;
-            w.newRoute(c);
+            w.new_route(c);
             check(c.routePhase == 1 && c.routeFrom == n, "dead end enters turnaround");
             check((start - c.route->sample(0).first).length() < 1e-8, "turnaround starts on incoming lane");
             pathClear(w, *c.route, c.routeLevel);
             auto end = c.route->sample(c.route->length());
-            w.newRoute(c);
+            w.new_route(c);
             auto next = c.route->sample(0);
             check((end.first - next.first).length() < 1e-8,
                   "turnaround joins outgoing lane without teleport");
@@ -230,12 +230,12 @@ int main()
         c.routeFrom = 1200;
         c.routeTo = w.neighbours(1200)[0];
         c.routePhase = 1;
-        w.newRoute(c);
+        w.new_route(c);
         for (int i = 0; i < 1000; ++i)
         {
             pathClear(w, *c.route, c.routeLevel);
             auto end = c.route->sample(c.route->length());
-            w.newRoute(c);
+            w.new_route(c);
             auto begin = c.route->sample(0);
             check((begin.first - end.first).length() < 1e-8, "street and crossing endpoints agree");
             check(std::abs(wrap(begin.second - end.second)) < .13, "street and crossing directions agree");
@@ -247,7 +247,7 @@ int main()
 
         // Vertex heights on bridge edge and road paint must agree with collision support.
         double riverX = w.layout.coordinate(16) + 18, bridgeZ = w.layout.coordinate(24);
-        auto chunk = cityChunk(w, riverX - 72, bridgeZ - 72);
+        auto chunk = city_chunk(w, riverX - 72, bridgeZ - 72);
         int deckVertices = 0;
         for (auto &v : chunk[Road].vertices)
         {
@@ -296,7 +296,7 @@ int main()
         ai.routeFrom = 1200;
         ai.routeTo = w.neighbours(1200)[0];
         ai.routePhase = 1;
-        w.newRoute(ai);
+        w.new_route(ai);
         auto initial = ai.route->sample(0);
         ai.body.p = initial.first;
         ai.body.angle = -initial.second;

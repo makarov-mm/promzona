@@ -13,6 +13,9 @@
     <None Include="Content/Shaders/Native\effects.vert">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="Content/Shaders/Native\water.glsl">
+      <Filter>Shaders</Filter>
+    </None>
     <None Include="Content/Shaders/Native\environment.glsl">
       <Filter>Shaders</Filter>
     </None>

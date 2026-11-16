@@ -19,6 +19,7 @@ namespace Promzona
         double born{}, duration{};
         int level{};
         MarkKind kind{};
+        float waterFilm{};
         std::array<Vec3, 4> corners{};
     };
 

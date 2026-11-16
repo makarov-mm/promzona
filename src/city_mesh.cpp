@@ -344,16 +344,50 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
                                 mesh.indices.insert(mesh.indices.end(), {cap, cap + k + 1, cap + k});
                     }
                 }
-    // One water plane per chunk is depth-tested against the real bed/coast/decks.
-    // No overlapping alpha planes and no invisible collision on top of a canal.
-    const float y = float(CityLayout::waterLevel);
-    // Extend only the outside edges. Adjacent water patches still share vertices.
-    const double gridEdge = std::ceil(l.edge() / size) * size;
-    auto seaLimit = [&](double x)
-    { return l.revision() && std::abs(x) == gridEdge ? std::copysign(gridEdge + 1800., x) : x; };
-    float west = float(seaLimit(x0)), east = float(seaLimit(x0 + size));
-    float startZ = float(seaLimit(z0)), endZ = float(seaLimit(z0 + size));
-    quad(data[Water], {west, y, endZ}, {east, y, endZ}, {east, y, startZ}, {west, y, startZ}, float(size));
+    // Signed bed depth and exposure to the open sea are interpolated over wet cells.
+    // Shared positions are sampled in world coordinates, including sector boundaries.
+    auto &water = data[Water];
+    const int divisions = std::max(1, int(std::ceil(size / 3.)));
+    const double step = size / divisions;
+    struct WaterSample
+    {
+        Vertex vertex;
+        std::optional<std::uint32_t> meshIndex;
+    };
+    std::array<std::vector<WaterSample>, 2> waterRows;
+    for (auto &samples : waterRows)
+        samples.resize(divisions + 1);
+    auto indexOf = [&](WaterSample &sample)
+    {
+        if (!sample.meshIndex)
+        {
+            sample.meshIndex = static_cast<std::uint32_t>(water.vertices.size());
+            water.vertices.push_back(sample.vertex);
+        }
+        return *sample.meshIndex;
+    };
+    for (int iz = 0; iz <= divisions; ++iz)
+    {
+        auto &current = waterRows[iz % 2];
+        auto &previous = waterRows[(iz + 1) % 2];
+        for (int ix = 0; ix <= divisions; ++ix)
+        {
+            const double x = x0 + ix * step, z = z0 + iz * step;
+            const double inland = l.edge() - std::max(std::abs(x), std::abs(z));
+            const float depth = float(CityLayout::waterLevel - w.terrain.bed_height(x, z));
+            current[ix] = {.vertex = {.position = {float(x), float(CityLayout::waterLevel), float(z)},
+                                      .normal = {0, 1, 0},
+                                      .uv = {depth, float(1. - smooth((inland - 12.) / 42.))}},
+                           .meshIndex = std::nullopt};
+            if (!iz || !ix)
+                continue;
+            auto &a = current[ix - 1], &b = current[ix], &c = previous[ix], &d = previous[ix - 1];
+            if (std::max({a.vertex.uv[0], b.vertex.uv[0], c.vertex.uv[0], d.vertex.uv[0]}) < -.5f)
+                continue;
+            const auto ia = indexOf(a), ib = indexOf(b), ic = indexOf(c), id = indexOf(d);
+            water.indices.insert(water.indices.end(), {ia, ib, ic, ia, ic, id});
+        }
+    }
     if (l.revision() == CityLayout::districtRevision)
     {
         const double z = l.railZ();
@@ -391,7 +425,8 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
                     Vec2 p = CityLayout::direction(side) * shore +
                              perpendicular(CityLayout::direction(side)) * (along + k * 4.);
                     if (!owns(p) || l.riverDistance(p.x) < l.deckHalf() + 2 ||
-                        !l.sandyGround(p, l.roadDistance(p)) || w.terrain.bed_height(p.x, p.z) < y + .65)
+                        !l.sandyGround(p, l.roadDistance(p)) ||
+                        w.terrain.bed_height(p.x, p.z) < CityLayout::waterLevel + .65)
                         continue;
                     auto at = ground(p.x, p.z);
                     box(data[Metal], at + Vec3{0, 1.07f, 0}, {.032f, 1.07f, .032f});

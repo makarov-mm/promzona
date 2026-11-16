@@ -115,7 +115,7 @@ void plans()
 void visibility()
 {
     auto proj = Mat4::perspective(float(pi / 2), 2, 1, 100);
-    Frustum f(proj * Mat4::lookAt({0, 0, 0}, {0, 0, -1}));
+    Frustum f(proj * Mat4::look_at({0, 0, 0}, {0, 0, -1}));
     check(f.sphere({0, 0, -10}, 1), "forward object visible");
     check(!f.sphere({0, 0, 10}, 1), "behind camera rejected");
     check(!f.sphere({0, 0, -102}, 1), "beyond far clip rejected");
@@ -125,7 +125,7 @@ void visibility()
     check(!f.sphere({23, 0, -10}, .1f), "outside horizontal frustum rejected");
     check(!f.sphere({0, 13, -10}, .1f), "outside vertical frustum rejected");
     check(f.sphere({0, 11, -10}, 2), "large object crossing top plane retained");
-    Frustum rotated(proj * Mat4::lookAt({30, 5, -15}, {31, 5, -15}));
+    Frustum rotated(proj * Mat4::look_at({30, 5, -15}, {31, 5, -15}));
     check(rotated.sphere({40, 5, -15}, 1), "translated rotated view sees forward");
     check(!rotated.sphere({20, 5, -15}, 1), "translated rotated view rejects behind");
 }

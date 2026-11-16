@@ -33,21 +33,21 @@ void scooterTest(World &w)
           "fall must leave a dynamic scooter");
     Vec2 direction{0, 1};
     double speed = 1;
-    w.riderIntent(p, direction, speed);
+    w.rider_intent(p, direction, speed);
     check(s.rider == Scooter::free, "owner remounted without a recovery interval");
     w.time += 8;
-    w.riderIntent(p, direction, speed);
+    w.rider_intent(p, direction, speed);
     check(s.rider == s.owner && speed > 3, "owner did not reclaim scooter");
     w.releaseScooter(index, {});
     w.controlledCar = -1;
     w.player.p = s.body.p;
     w.player.height = s.body.height + 4;
-    check(!w.useScooter(), "mounted from a different storey");
+    check(!w.use_scooter(), "mounted from a different storey");
     w.player.height = s.body.height + .7;
     w.enter_exit();
     check(w.playerScooter == index && s.rider == Scooter::playerRider, "could not ride abandoned scooter");
     w.time += 8;
-    w.riderIntent(p, direction, speed);
+    w.rider_intent(p, direction, speed);
     check(s.rider == Scooter::playerRider, "owner stole player's scooter");
     w.toggle_drone(0);
     check(!w.drone.active, "rode a scooter and operated a drone at once");
@@ -74,24 +74,24 @@ void socialTest(World &w)
     p.body.height = w.terrain.height(at) + .85;
     w.alarmWitnesses(at + Vec2{2, 0}, p.body.height, false);
     check(p.watchUntil > w.time + 5 && p.fear > 0, "visible incident did not alarm its witness");
-    w.scarePerson(p, at + Vec2{-2, 0}, 2.);
+    w.scare_person(p, at + Vec2{-2, 0}, 2.);
     double speed = 3.;
     Vec2 dir{};
-    w.socialIntent(p, dir, speed);
+    w.social_intent(p, dir, speed);
     check(dir.x > .9, "recent threat must override curiosity");
     check(p.incident.x > at.x, "new scare replaced the remembered incident");
     p.fear = 0;
     p.body.p = at - Vec2{8, 0};
     speed = 1.2;
-    w.socialIntent(p, dir, speed);
+    w.social_intent(p, dir, speed);
     check(dir.x > .9 && speed > 0, "calmed witness did not investigate");
     p.body.p = at;
-    w.socialIntent(p, dir, speed);
+    w.social_intent(p, dir, speed);
     check(speed == 0, "bystander walked through incident");
     p.watchUntil = w.time - .1;
     speed = 1.2;
     dir = {0, 1};
-    w.socialIntent(p, dir, speed);
+    w.social_intent(p, dir, speed);
     check(dir.z == 1 && speed == 1.2, "expired interest stopped normal walking");
     p = old;
     bool checkedCompany = false;
@@ -107,9 +107,9 @@ void socialTest(World &w)
         c.body.p = at + Vec2{0, -4};
         c.fear = 0;
         c.watchUntil = 0;
-        w.socialIntent(c, dir, speed);
+        w.social_intent(c, dir, speed);
         check(c.next == b.next && dir.z > .8 && speed > 1.2, "surviving friends lost their leader");
-        w.scarePerson(c, at, 2.);
+        w.scare_person(c, at, 2.);
         check(c.fear > 0 && c.fear < 1.5, "company members should recover sooner");
         a = a0;
         b = b0;
@@ -129,13 +129,13 @@ void voiceTest()
     elder.style = 2;
     Vec2 dir{0, 1};
     double speed = 1.;
-    w.socialIntent(elder, dir, speed);
+    w.social_intent(elder, dir, speed);
     check(elder.idleVoiceAt >= 30. && w.sounds.empty(), "pedestrians wait before speaking");
     w.time = elder.idleVoiceAt + .1;
-    w.socialIntent(elder, dir, speed);
+    w.social_intent(elder, dir, speed);
     check(w.sounds.size() == 1 && w.sounds.back().name.starts_with("elder_") && w.sounds.back().speaker == 0,
           "nearby pensioner speaks from their own position");
-    w.scarePerson(elder, {}, 2.);
+    w.scare_person(elder, {}, 2.);
     check(w.sounds.size() == 2 && w.sounds.back().name.starts_with("fear_"),
           "a startle can immediately interrupt an idle line");
     w.sounds.clear();
@@ -448,7 +448,7 @@ void pavementAnimals()
         for (const auto &a : w.animals)
             if (a.flock == int(f))
             {
-                const Vec2 offset = World::flockOffset(member++, street);
+                const Vec2 offset = World::flock_offset(member++, street);
                 check((a.p - w.flocks[f].landing - offset).length() < 1e-9 &&
                           (a.offset - offset).length() < 1e-9,
                       "a flock stands in a spiral on a lawn and in two files on a pavement");
@@ -504,7 +504,7 @@ void pavementAnimals()
         }
         ++beside;
         for (int member = 0; member < 10; ++member)
-            check(onPavement(perch.at + World::flockOffset(member, true)),
+            check(onPavement(perch.at + World::flock_offset(member, true)),
                   "a file of pigeons reached the roadway");
     }
     check(beside > landings / 10 && beside < landings * 4 / 10,
@@ -515,7 +515,7 @@ void pavementAnimals()
     int member = 0;
     for (const auto &a : w.animals)
         if (a.flock == 0)
-            check((a.offset - World::flockOffset(member++, files)).length() < 1e-9,
+            check((a.offset - World::flock_offset(member++, files)).length() < 1e-9,
                   "a flock forms up for the place it flies to");
 }
 } // namespace

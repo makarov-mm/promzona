@@ -40,6 +40,8 @@ mat4 poseMatrix(float frame)
     }
     return skin;
 }
+#include "water.glsl"
+
 void main()
 {
     vec4 p = vec4(aPosition, 1.);
@@ -56,6 +58,8 @@ void main()
     vLocal = p.xyz;
     if (uSkin == 0 && aJoints.w == -1.) vLocal.y = aJoints.y;
     vec4 world = uModel * p;
+    if (uSurface == 4)
+        world.y += shoreWave(world.xz, uTime).x;
     vec4 detail = aJoints;
     if (uInstanced != 0) {
         mat3 rotation = mat3(aVariation.y,0,-aVariation.x, 0,1,0, aVariation.x,0,aVariation.y);

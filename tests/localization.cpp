@@ -86,7 +86,7 @@ std::vector<std::pair<std::string, std::wstring>> gameText(const fs::path &root)
                 while (end < source.size() && source[end] != '"')
                     end += source[end] == '\\' ? 2 : 1;
                 auto literal = widen(std::string_view(source).substr(at + 2, end - at - 2));
-                if (Promzona::hasCyrillic(literal))
+                if (Promzona::has_cyrillic(literal))
                     result.emplace_back(name, std::move(literal));
                 at = end + 1;
             }
@@ -137,7 +137,7 @@ int main(int argc, char **argv)
             const auto key = narrow(phrase.russian);
             require(keys.insert(phrase.russian).second, "duplicate catalogue key: " + key);
             require(!phrase.english.empty() && !phrase.ukrainian.empty(), "empty translation: " + key);
-            require(!Promzona::hasCyrillic(phrase.english), "Cyrillic in English text: " + key);
+            require(!Promzona::has_cyrillic(phrase.english), "Cyrillic in English text: " + key);
             require(phrase.russian.front() != L' ' && phrase.russian.back() != L' ', "untrimmed key: " + key);
         }
         require(Promzona::phrases().size() > 200, "catalogue is populated");
@@ -176,7 +176,7 @@ int main(int argc, char **argv)
                     Promzona::streetAt({-860, -900}) == Promzona::streetLabel(0),
                 "nearest road of a point");
         for (const auto &name : Promzona::streetNames())
-            require(!Promzona::hasCyrillic(
+            require(!Promzona::has_cyrillic(
                         Promzona::localize(L"ул. " + std::wstring(name.russian), Language::english)),
                     "street transliteration");
 
@@ -187,7 +187,7 @@ int main(int argc, char **argv)
             for (const auto &[source, literal] : text)
             {
                 const auto english = Promzona::localize(literal, Language::english);
-                require(!Promzona::hasCyrillic(english), "untranslated text in " + source + ": \"" +
+                require(!Promzona::has_cyrillic(english), "untranslated text in " + source + ": \"" +
                                                              narrow(literal) + "\" -> \"" + narrow(english) +
                                                              "\"");
             }

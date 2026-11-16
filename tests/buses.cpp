@@ -37,12 +37,12 @@ Car &place(World &w, size_t slot, unsigned model, int from, int to, int lane, do
     c = Car{};
     c.id = std::uint32_t(slot);
     c.body.id = 0x7000u + std::uint32_t(slot);
-    fitVehicle(c, model);
+    fit_vehicle(c, model);
     c.routeFrom = from;
     c.routeTo = to;
     c.routePhase = 1;
     c.laneIndex = lane;
-    w.newRoute(c);
+    w.new_route(c);
     c.routeDistance = along;
     const auto [at, heading] = c.route->sample(along);
     c.body.p = at;
@@ -302,7 +302,7 @@ void deadEnds()
     require(bus.routePhase == 2 && bus.laneIndex == 0, "a bus is not in the single lane of a level road");
     bus.routeDistance = bus.route->length();
     bus.body.p = bus.route->sample(bus.routeDistance).first;
-    w.newRoute(bus);
+    w.new_route(bus);
     require(bus.routePhase == 1 && bus.laneIndex == 1,
             "a bus leaves a level road in the middle of the street");
 }

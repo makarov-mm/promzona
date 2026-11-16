@@ -291,9 +291,9 @@ void precipitationAndTracks()
     for (double t : {0., 72., 732., 86401.})
         for (double eye : {-20., 0., 45.})
         {
-            double height = rainHeight(.32, t, eye);
+            double height = rain_height(.32, t, eye);
             check(height >= eye - 8 && height < eye + 20, "long-running rain stays in the camera column");
-            double follow = rainHeight(.32, t + .001, eye + .05) - height;
+            double follow = rain_height(.32, t + .001, eye + .05) - height;
             check(std::abs(std::remainder(follow, 28.) + .014) < 1e-7,
                   "rain falls in world space as camera moves");
         }
@@ -435,7 +435,7 @@ void precipitationAndTracks()
         check(jolted.verticalVelocity == .8 && w.potholeJolts == 2, "the kick is capped");
         // Every hole in a chunk is one textured quad just above the lane paint.
         const double x0 = std::floor(hole.p.x / 144) * 144, z0 = std::floor(hole.p.z / 144) * 144;
-        const auto chunk = cityChunk(w, x0, z0, 144);
+        const auto chunk = city_chunk(w, x0, z0, 144);
         size_t owned = 0, vertices = 0;
         for (const auto &other : w.potholes)
             owned += other.p.x >= x0 && other.p.x < x0 + 144 && other.p.z >= z0 && other.p.z < z0 + 144;
@@ -530,7 +530,7 @@ void hudAndMap()
     world.generate(42);
     auto offers = [&](const wchar_t *key, const wchar_t *label)
     {
-        auto hints = controlHints(world);
+        auto hints = control_hints(world);
         return std::ranges::any_of(hints, [&](const auto &h) { return h.key == key && h.action == label; });
     };
     check(offers(L"A/D", L"Руль"), "driving controls at spawn");
@@ -560,11 +560,11 @@ void hudAndMap()
     map.rebuild(world);
     constexpr int n = Minimap::size;
     std::array<std::uint32_t, n * n> pixels{};
-    map.copyView(clinic->entrance, pixels);
+    map.copy_view(clinic->entrance, pixels);
     check(pixels[n / 2 * n + n / 2] == 0x78cdf9, "centred clinic marker aligns with the player");
     Vec2 delta{12, 22}, dot = Minimap::offset(delta);
     check(dot.x < 0 && dot.z < 0, "north is up and the camera's right is east on the map");
-    map.copyView(clinic->entrance - delta, pixels);
+    map.copy_view(clinic->entrance - delta, pixels);
     check(pixels[(n / 2 + int(std::lround(dot.z))) * n + n / 2 + int(std::lround(dot.x))] == 0x78cdf9,
           "moving player keeps cached map and HUD markers aligned");
     for (int side = 0; side < 4; ++side)
@@ -574,12 +574,12 @@ void hudAndMap()
             // Atlas texels correspond to rounded world coordinates.
             const double x = std::lround(shore.x * Minimap::scale) / Minimap::scale;
             const double z = std::lround(shore.z * Minimap::scale) / Minimap::scale;
-            map.copyView(shore, pixels);
-            const bool submerged = world.terrain.bedHeight(x, z) <= CityLayout::waterLevel;
+            map.copy_view(shore, pixels);
+            const bool submerged = world.terrain.bed_height(x, z) <= CityLayout::waterLevel;
             check(pixels[n / 2 * n + n / 2] == (submerged ? 0x2b5565u : 0xab976cu),
                   "minimap coastline follows the physical waterline on each shore");
         }
-    map.copyView({10000, -10000}, pixels);
+    map.copy_view({10000, -10000}, pixels);
     check(std::ranges::all_of(pixels, [](auto p) { return p == 0x2b5565; }),
           "outside atlas draws open water");
 }
@@ -1030,13 +1030,13 @@ void effects()
     {
         w.sounds.clear();
         w.health = 1;
-        w.woundPlayer(.1);
+        w.wound_player(.1);
         check(heard("impact") == 1 && std::abs(w.sounds.back().gain - .5) < 1e-9 &&
                   std::abs(w.health - .9) < 1e-9,
               "a hit on the player is silent");
-        w.hurtPlayer(.1);
+        w.hurt_player(.1);
         w.godMode = true;
-        w.woundPlayer(.1);
+        w.wound_player(.1);
         w.godMode = false;
         check(heard("impact") == 1 && std::abs(w.health - .8) < 1e-9,
               "burns or an immortal player are heard");

@@ -213,7 +213,7 @@ void localDrive(World &w, const RoadLevel &s, bool east)
     c.routeFrom = east ? s.leftNode : s.rightNode;
     c.routeTo = east ? s.rightNode : s.leftNode;
     c.routePhase = 1;
-    w.newRoute(c);
+    w.new_route(c);
     auto first = c.route->sample(0);
     place(w, c, first.first, s.id);
     c.body.angle = -first.second;
@@ -317,7 +317,7 @@ int main()
                 w.player.height = ground + .85;
                 w.enter_exit();
                 check(w.controlledCar == -1, "cannot enter vehicle through tunnel roof");
-                auto mesh = cityChunk(w, s.x - 144, s.z - 12, 144);
+                auto mesh = city_chunk(w, s.x - 144, s.z - 12, 144);
                 int roadVertices = 0;
                 for (auto &v : mesh[Road].vertices)
                 {
@@ -348,7 +348,7 @@ int main()
         car.routeFrom = t.leftNode;
         car.routeTo = t.rightNode;
         car.routePhase = 1;
-        w.newRoute(car);
+        w.new_route(car);
         auto file = std::filesystem::current_path() / "promzona-native-level-test.json";
         w.save(file);
         World loaded;

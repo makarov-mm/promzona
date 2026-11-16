@@ -234,7 +234,7 @@ void peacePlaces(const std::filesystem::path &path)
           "the rings about a place are not those of the managed game");
     check((w.jobTarget() - w.peaceSpot(route[0], spots[0])).length() < 1e-9,
           "the route does not point at the chosen spot");
-    for (int a = 0; a < w.job.stopCount(); ++a)
+    for (int a = 0; a < w.job.stop_count(); ++a)
     {
         const int place = route[size_t(a)], spot = spots[size_t(a)];
         check(w.peacePlace(place), "a place of the route is neither a kiosk nor a bus stop");

@@ -347,17 +347,32 @@ void main() {
         float phase = (abs(n.x)>.5 ? vWorld.z : vWorld.x)*25.0;
         tex.rgb *= .9+.1*sin(phase)*(1.0-smoothstep(1.0,PI,fwidth(phase)));
     }
-    if (uSurface == 4) {
+    float foam = 0.0;
+    if (uSurface == 4)
+    {
         vec2 p = vWorld.xz;
-        float swell = dot(p, vec2(.33, .19)) + .72*sin(p.y*.08) + uTime*.63;
-        float chop = dot(p, vec2(-.57, .93)) + .8*sin(p.x*.14) - uTime*.91;
-        float ripple = dot(p, vec2(1.45, .39)) + .54*sin(p.y*.32) + uTime*1.32;
-        vec3 phases = vec3(swell, chop, ripple);
-        vec3 waves = cos(phases) * (1.-smoothstep(vec3(.55), vec3(PI), fwidth(phases)));
-        vec2 slope = waves.x*vec2(.024,.014) + waves.y*vec2(-.011,.019) + waves.z*vec2(.016,.004);
-        // As in the managed game the swell flattens with distance: far water is a calm mirror.
-        slope /= 1.+eyeDistance*.012;
-        n = normalize(vec3(slope.x, 1., slope.y));
+        float exposure = vUv.y;
+        float depth = max(0.0, vUv.x + vWorld.y - vLocal.y);
+        float bend = sin(dot(p, vec2(0.081, 0.056)));
+        vec3 phase = vec3(dot(p, vec2(0.36, 0.23)) + bend - uTime * 0.85,
+                          dot(p, vec2(-0.59, 0.91)) + 1.2 * bend + uTime * 1.14,
+                          dot(p, vec2(1.43, 0.51)) + sin(p.y * 0.35) - uTime * 1.76);
+        vec3 waves = cos(phase) * (1.0 - smoothstep(vec3(0.55), vec3(PI), fwidth(phase)));
+        vec2 slope = waves.x * vec2(0.051, 0.033) + waves.y * vec2(-0.021, 0.033)
+                   + waves.z * vec2(0.035, 0.012);
+        slope *= mix(0.38, 1.0, exposure) * (1.0 + 0.55 * uRain) / (1.0 + eyeDistance * 0.009);
+        slope -= shoreWave(p, uTime).yz;
+        n = normalize(vec3(slope.x, 1.0, slope.y));
+        float shallow = exposure * (1.0 - smoothstep(0.0, 1.9, depth));
+        // The sandy bed shows through the first metres of water. Moving bands break up
+        // against the small wave field and disappear as the sky becomes overcast.
+        float caustic = smoothstep(0.57, 0.94, 0.55 * waves.y + 0.45 * waves.z);
+        tex.rgb *= mix(vec3(1.0), vec3(2.6, 1.75, 1.18), shallow);
+        tex.rgb *= 1.0 + shallow * caustic * uDay * (1.0 - uRain) * 0.38;
+        float breakup = patches(vec3(p * 0.92, uTime * 0.15));
+        foam = exposure * (1.0 - smoothstep(0.035, 0.19, depth))
+             * smoothstep(0.29, 0.74, breakup + 0.15 * bend)
+             * smoothstep(-0.11, 0.06, vWorld.y - vLocal.y);
     }
     if (uHasNormal != 0) {
         // Cotangent frame handles mirrored UVs and both orientations of a facade.
@@ -391,15 +406,21 @@ void main() {
     // No rain falls under the roof of a tunnel.
     float damp = 0.;
     if (uSurface == 2 && uAir.w > .002 && tunnel < 0) {
-        damp = uAir.w*smoothstep(.2,.7,patches(vWorld*.7));
-        baseColor *= 1.-damp*.3;
+        float drainage = patches(vec3(vWorld.xz * 0.18, 0.42));
+        float aggregate = patches(vec3(vWorld.xz * 1.27, 0.81));
+        damp = uAir.w * smoothstep(0.27, 0.72, 0.70 * drainage + 0.30 * aggregate);
+        baseColor *= 1.0 - 0.34 * damp;
     }
     vec3 albedo = pow(max(baseColor,vec3(.001)),vec3(2.2));
     vec3 orm = uHasOrm != 0 ? texture(uOrm,vUv).rgb : vec3(1,uRoughness,uMetallic);
     float ao = clamp(orm.r,.15,1), metal = clamp(orm.b,0,1);
     float rainExposure = tunnel < 0 ? uAir.w : 0.;
     float rough = mix(clamp(orm.g,.08,1),.24,rainExposure*max(n.y,0));
-    rough = mix(rough,.14,damp);
+    if (uSurface == 2)
+    {
+        rough = mix(clamp(orm.g, 0.30, 1.0), 0.12, damp);
+        n = normalize(mix(n, normalize(vNormal), 0.65 * damp));
+    }
     if (uSurface == 1 || uSurface == 12) rough = mix(.96,.77,rainExposure);
     if (uSurface == 14) {
         metal = bakedFinish < .1 ? 0. : clamp((1.-bakedFinish)*2.55,0.,1.);
@@ -451,7 +472,7 @@ void main() {
     if (damp > 0.) {
         // A thin water film reflects most strongly at grazing angles.
         float film = .021 + .46*graze;
-        color = mix(color,cityReflection(vWorld,reflect(-v,n),.12,false),damp*film);
+        color = mix(color,cityReflection(vWorld,reflect(-v,n),rough,false),damp*film);
     }
     if (vehicleMaterial == 8) {
         bool blue = tex.b > tex.r * 1.4;
@@ -461,7 +482,12 @@ void main() {
         } else color += albedo * (1.-uDay) * .75;
     }
     if (uSurface == 6) color = apartment(n,v);
-    if (uSurface == 4) color = mix(color,cityReflection(vWorld,reflect(-v,n),.12,tunnel >= 0),.12+.75*pow(1.0-max(dot(n,v),0),4.0));
+    if (uSurface == 4)
+    {
+        float reflection = 0.12 + 0.75 * pow(1.0 - max(dot(n, v), 0.0), 4.0);
+        color = mix(color, cityReflection(vWorld, reflect(-v, n), 0.12, tunnel >= 0), reflection);
+        color = mix(color, vec3(0.56, 0.64, 0.61) * (0.045 + 0.955 * uDay), foam * 0.82);
+    }
     // The haze of the managed game takes a distant surface to the colour of the horizon.
     float air = airTransmission(uEye,vWorld);
     if (uProbePass != 0) {

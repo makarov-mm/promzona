@@ -22,11 +22,16 @@ vec3 puddle(vec3 bed)
     vec2 slope = vec2(cos(dot(q, vec2(.17, .11)) + uTime * .55), sin(dot(q, vec2(-.13, .21)) - uTime * .42)) * .04;
     slope += vec2(sin(dot(q, vec2(.31, -.16)) + uTime * .73), cos(dot(q, vec2(.22, .29)) + uTime * .32)) * .023;
     slope *= atten * .2;
-    vec2 cell = floor(q * 1.7), local = fract(q * 1.7) - .5;
-    float phase = fract(uTime * 1.9 + cellHash(vec3(cell, 1.0))), radius = length(local);
-    float ring = sin((radius - phase * .8) * 65.0) * exp(-abs(radius - phase * .8) * 30.0) * (1.0 - phase);
-    float filtered = exp(-dot(fwidth(q * 20.0), fwidth(q * 20.0)));
-    slope += local / max(.04, radius) * ring * .018 * uRain * filtered;
+    vec2 cell = floor(q * 1.7);
+    vec2 jitter = vec2(cellHash(vec3(cell, 2.0)), cellHash(vec3(cell, 3.0))) - 0.5;
+    vec2 local = fract(q * 1.7) - 0.5 - 0.27 * jitter;
+    float age = fract(uTime * 1.65 + cellHash(vec3(cell, 1.0)));
+    float radius = length(local);
+    float crest = radius - age * 0.33;
+    float ring = cos(crest * 95.0) * exp(-abs(crest) * 47.0) * (1.0 - age);
+    float filterWidth = length(fwidth(q * 22.0));
+    float fade = (1.0 - smoothstep(0.27, 0.35, radius)) * exp(-filterWidth * filterWidth);
+    slope += local / max(0.025, radius) * ring * 0.025 * uRain * fade;
     vec3 n = normalize(vec3(slope.x, 1.0, slope.y)), v = normalize(uEye - world);
     float fresnel = .12 + .75 * pow(1.0 - max(0.0, dot(n, v)), 4.0);
     return mix(bed, toDisplay(cityReflection(world, reflect(-v, n), .12, false)), fresnel);
@@ -49,6 +54,15 @@ void main()
     {
         coverage = 1.0 - smoothstep(0.70, 1.0, abs(shape.x));
     }
+    else if (shape.z > 5.5)
+    {
+        // Use world position along the track so adjoining segments have no visible caps.
+        float edge = abs(shape.x);
+        float pixel = max(fwidth(shape.x), 0.035);
+        float grain = sin(dot(world.xz, vec2(31.0, 24.0))) * sin(dot(world.xz, vec2(-21.0, 33.0)));
+        grain *= 1.0 - smoothstep(0.04, 0.12, length(fwidth(world.xz)));
+        coverage = (1.0 - smoothstep(0.51, 1.0 + pixel, edge)) * (0.82 + 0.15 * grain);
+    }
     else if (shape.z > 4.5)
     {
         float r = length(shape.xy);
@@ -60,7 +74,9 @@ void main()
     else
     {
         float edge = 0.92 + 0.04 * sin(shape.x * 8.0 + shape.y * 5.0) + 0.03 * sin(shape.y * 11.0 - shape.x * 4.0);
-        coverage = 1.0 - smoothstep(edge - 0.045, edge, length(shape.xy));
+        float rim = length(shape.xy);
+        float transition = 0.09 + fwidth(rim);
+        coverage = 1.0 - smoothstep(edge - transition, edge, rim);
     }
 
     vec3 shown = shape.z > 3.5 && shape.z < 4.5 ? puddle(color.rgb) : color.rgb;

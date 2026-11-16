@@ -395,6 +395,40 @@ namespace
         v.heading = a.cameraYaw;
         return v;
     }
+
+    View visual_route(const World &world, std::wstring_view scenario, View view, float progress)
+    {
+        if (scenario == L"seafront")
+        {
+            const double x = world.layout.coordinate(22) + std::lerp(-14.f, 26.f, progress);
+            const double z = world.layout.edge() - 14.;
+            view.eye = {float(x), float(world.terrain.bed_height(x, z)) + 1.68f, float(z)};
+            view.target = view.eye + Vec3{14.f, -.8f, 11.f};
+        }
+        else if (scenario == L"portal")
+        {
+            const auto &level = *std::ranges::find(world.roadLevels, true, &RoadLevel::tunnel);
+            auto lane = [&](double x)
+            {
+                const Vec2 point{x, level.centreZ(x) + CityLayout::lane};
+                const double ground =
+                    level.contains(point) ? level.floor(world.terrain, point) : world.terrain.height(point);
+                return Vec3{float(x), float(ground + 1.62), float(point.z)};
+            };
+            const double x =
+                level.x + std::lerp(RoadLevel::covered - 24., RoadLevel::length + 9., double(progress));
+            view.eye = lane(x);
+            view.target = lane(x + 9.);
+        }
+        else
+        {
+            // The facade fixture has already checked clearance in this forecourt.
+            view.eye = view.eye + (view.target - view.eye) * (.69f * progress);
+        }
+        view.heading = std::atan2(view.target.x - view.eye.x, view.target.z - view.eye.z);
+        view.distance = (view.target - view.eye).length();
+        return view;
+    }
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
@@ -404,6 +438,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     bool smoke = false;
     int smokeFrames = 180, captureWidth = 0, captureHeight = 0;
     std::optional<SceneMode> modeOverride;
+    std::optional<bool> visualRouteRain;
     bool profile = false, frameProfile = false, invalidDisplay = false;
     std::wstring scenario = L"day";
     // Smoke scenario "people": who stands where in the line-up.
@@ -423,6 +458,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         std::wstring arg = argv[i];
         if (arg == L"--smoke")
             smoke = windowed = true;
+        else if (arg == L"--visual-route")
+        {
+            const std::wstring_view weather = i + 1 < argc ? argv[++i] : L"";
+            if (weather == L"clear" || weather == L"rain")
+                visualRouteRain = weather == L"rain";
+            else
+                invalidDisplay = true;
+        }
         else if (arg == L"--gpu-profile")
             profile = frameProfile = true;
         else if (arg == L"--frame-profile")
@@ -531,6 +574,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
 
         if (invalidDisplay || (captureWidth && !smoke) || (profile && !smoke))
             throw std::runtime_error("Invalid mode, benchmark dimensions, or --smoke missing");
+
+        if (visualRouteRain && (!smoke || smokeOutput.empty() || smokeFrames < 62 ||
+                                (scenario != L"seafront" && scenario != L"portal" && scenario != L"facade")))
+            throw std::runtime_error(
+                "Visual route requires smoke output, 62+ frames and seafront, portal or facade");
 
         SceneMode displayMode = SceneMode::enhanced;
         const auto displayFile = app.saveFile.parent_path() / "display-mode.txt";
@@ -2231,6 +2279,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             app.look = world->drone.heading;
                         app.cameraYaw = app.look;
                         app.loading = false;
+                        if (visualRouteRain)
+                        {
+                            world->setWeather(*visualRouteRain ? 1.0 : 0.0);
+                            world->weatherClock = 120;
+                        }
                         menus.active = pendingSlot;
                         menus.open(MenuPage::home);
                         sinceSave = 0;
@@ -2650,6 +2703,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                        float(unit->body.p.z)};
                         view.eye = view.target + Vec3{10, 4, -12};
                     }
+                    if (visualRouteRain)
+                    {
+                        const float routeProgress =
+                            std::clamp(float(frames - 60) / float(smokeFrames - 61), 0.f, 1.f);
+                        view = visual_route(*world, scenario, view, routeProgress);
+                    }
                     Vec2 facing{view.target.x - view.eye.x, view.target.z - view.eye.z};
                     frame_trace.enter(FrameTrace::audio);
                     audio.update(*world,
@@ -2657,6 +2716,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     frame_trace.enter(FrameTrace::prepare);
                     renderer.render(*world, view, app.width, app.height);
                     frame_trace.enter(FrameTrace::other);
+                    if (visualRouteRain && frames >= 60 &&
+                        ((frames - 60) % 15 < 2 || frames == smokeFrames - 1))
+                        renderer.screenshot(smokeOutput / std::format("review-{:04}.bmp", frames), app.width,
+                                            app.height);
                     if (smoke && scenario == L"traffic-lanes")
                     {
                         const auto &driver = world->cars.at(1);

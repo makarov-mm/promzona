@@ -61,7 +61,7 @@ Vec2 water(const World &w, double least, double most)
         for (double x = -edge - 30; x < edge + 30; x += .5)
         {
             const Vec2 p{x, z};
-            const double bed = w.terrain.bedHeight(x, z);
+            const double bed = w.terrain.bed_height(x, z);
             const double depth = CityLayout::waterLevel - bed;
             if (depth > least && depth < most && w.terrain.height(p) == bed && !w.levelAt(p, 6) &&
                 std::max(std::abs(x), std::abs(z)) < edge - 4)
@@ -220,7 +220,7 @@ int main()
         // The body hangs half a metre under the surface and sinks to the bed at 0.6 m/s.
         {
             const auto &p = w.people[swimmer];
-            const double bed = w.terrain.bedHeight(p.body.p.x, p.body.p.z);
+            const double bed = w.terrain.bed_height(p.body.p.x, p.body.p.z);
             const double depth = CityLayout::waterLevel - bed;
             auto feet = [&] { return p.body.height - .85; };
             require(depth > 2.2 && std::abs(feet() - (CityLayout::waterLevel - .5)) < .02,

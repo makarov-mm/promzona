@@ -476,7 +476,7 @@ Car &onStreet(World &w, Car &car, int from, int to, double back)
     car.routePhase = 1;
     car.laneIndex = 0;
     car.plannedTo = car.previousNode = -1;
-    w.newRoute(car);
+    w.new_route(car);
     car.routeDistance = car.route->length() - back;
     const auto [at, heading] = car.route->sample(car.routeDistance);
     car.body.p = at;
