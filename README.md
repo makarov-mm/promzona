@@ -1,374 +1,160 @@
-# PROMZONA — C++23 migration
+# PROMZONA
 
-Отдельный Windows-проект переноса PROMZONA 0.44.1 на C++23.
+PROMZONA is an open-world game for Windows set in a procedurally generated industrial city. Walk from the apartment blocks to the waterfront, catch a tram across town, or take a courier job and find your own way through traffic.
 
-**Состояние: работающий нативный прототип, перенос ещё не завершён.** Он запускается,
-позволяет ходить и ездить по городу, брать заказы, вести бой, уходить от погони,
-управлять общественным транспортом и запускать разведывательный дрон. Город и многие игровые системы пока значительно проще исходной
-PROMZONA. Этот билд ещё не является её полноценной заменой. Подробности — в
-[MIGRATION.md](docs/MIGRATION.md).
+![A bus crossing a city street at night, with headlights reflected on the wet asphalt](promzona-night-crossing.jpg)
 
-Исходный репозиторий Suites не изменён. Из его solution ничего не удалено.
-Сборка и запуск этого проекта не требуют .NET, FSharp.Core, Python, Blender или
-DLL из Suites. Используются C++23, Win32, OpenGL, WIC и WinMM; библиотека JSON
-включена в исходники с лицензией MIT.
+## Build and run
 
-## Сборка
+You'll need Windows x64, a graphics driver with OpenGL 3.3 support, and Visual Studio with the **Desktop development with C++** workload, the Windows SDK, and **C++ CMake tools for Windows**.
 
-Нужны Windows x64, Visual Studio с компонентом **Desktop development with C++**,
-Windows SDK и **C++ CMake tools for Windows**. Проверено на MSVC 19.51 / CMake 4.3.
-Для графики требуется OpenGL 3.3. Текущая настройка MSVC для C++23 использует
-`/std:c++latest`, выбранный CMake; стандарт проекта — `CXX_STANDARD 23`.
-
-Из этой папки:
+To build the game and launch it, run this from the repository root in PowerShell:
 
 ```powershell
-# Компиляция, тесты, проверка нативного EXE, затем запуск
 .\build.ps1 -Configuration Debug -Run
-
-# Релиз, тесты и отдельная папка для распространения
-.\build.ps1 -Configuration Release -Package
 ```
 
-Результат: `artifacts/Release/Promzona.exe`. Копировать нужно всю папку Release,
-включая `Content`. В `build/native-Release` находятся также тестовые EXE и
-промежуточные файлы; эту папку распространять не нужно.
+To package a release:
 
-Скрипт автоматически находит MSVC через vswhere. Все C++ библиотеки проекта и
-CRT включены статически. Проверка `tools/verify-native.ps1` отклоняет EXE с CLR
-или импортами несистемных DLL. `CMakeLists.txt` допускает и сборку MinGW-w64 (статическая,
-с `-municode`); она используется для проверки без MSVC и не заменяет основную сборку. Наличие старых C# файлов в `migration/reference`
-не означает их использование в новом EXE.
+```powershell
+.\build.ps1 -Configuration Release -Package
+.\artifacts\Release\Promzona.exe
+```
 
-## Visual Studio 2026
+The build script finds MSVC, compiles the game, runs CTest, and verifies the native x64 executable. To share a build, copy the entire `artifacts/Release` directory. The game loads models, shaders, textures, and audio from the `Content` folder next to the executable.
 
-Откройте `Promzona.slnx` в корне репозитория. В решении один нативный проект
-`Promzona.vcxproj`. Выберите `Debug | x64` или `Release | x64`. **F5** собирает игру
-и запускает её с отладчиком в оконном режиме. Ресурсы читаются из `Content`.
-Для этого способа достаточно MSVC v145 и Windows SDK. EXE и PDB появятся в
-`build/msbuild/x64/Debug` или `build/msbuild/x64/Release`.
+## Around the city
 
-### Решение CMake со всеми тестами
+- **Districts.** A city seed determines the street grid, housing estates, courtyards, parks, garages, and factories. A freight line runs through the northern industrial district. On the coast, canals open into the sea. Five overpasses and four tunnels carry traffic between levels.
+- **Traffic and public transport.** Drivers leave space beyond junctions and yield at pedestrian crossings. Buses pull in at stops. Trams and trolleybuses carry passengers on four routes. You can ride as a passenger or take the controls. A trolleybus loses power if you drive more than three metres from its route's overhead wires.
+- **Work.** Pick up a parcel at a kiosk or open the job journal for vehicle deliveries, taxi fares, patient transport, and other assignments. On a passenger job, stop beside the person, press **E** to pick them up, and drive to the marked destination. A reconnaissance job takes you above the streets to inspect three rooftops by drone.
+- **Garages and supplies.** Stop outside a garage and press **E** for repairs. During a pursuit, an extra $30 pays for a respray. Press **G** to buy a garage for $400, then use **G** on its forecourt to store a personal car or van. You can keep up to three vehicles. Food is available at kiosks and vending machines. At a market stall, press **E** on foot and use **1–4** to buy supplies.
+- **Street life.** Pedestrians cross at signals, step around parked cars, and gather in groups. Emergency crews respond to incidents. Crimes can draw witnesses and police, with six wanted levels. Rain affects grip, tyre tracks, and spray, and the streets take several minutes to dry after a shower.
 
-Для работы с библиотеками и 20 тестовыми проектами откройте расширенное решение командой:
+## Controls
+
+Some keys have different functions on foot, in a vehicle, and in menus.
+
+| On foot and on the road | Input |
+| --- | --- |
+| Walk, drive, or steer a scooter | W, A, S, D |
+| Sprint on foot | Shift |
+| Look around on foot or as a passenger | Mouse |
+| Enter or leave a vehicle, mount or dismount a scooter, or buy food on foot | F |
+| Apply the handbrake or brake a scooter | Space |
+| Recover a vehicle | R |
+| Fire the selected weapon or an armoured vehicle's turret | Left mouse button |
+| Cycle weapons | Mouse wheel or the bracket keys |
+| Cycle chase, overhead, and top-down cameras | V |
+| Play the next radio track | M |
+| Open the job journal and select an entry | J, then 1–8 |
+| Start a three-contract series | J, then 8 |
+| Pick up or deliver a job, board a fare, or operate a loudspeaker | E |
+
+| Public transport and aircraft | Input |
+| --- | --- |
+| Board a stopped tram or trolleybus as a passenger | B |
+| Get off at a stop or request the next stop | F or B |
+| Drive a tram forward or in reverse | W / S |
+| Launch or recall the drone while on foot | K |
+| Ascend / descend in a helicopter or drone | Space or Q / Ctrl or Z |
+| Inspect a marked rooftop from the drone | Left mouse button |
+| Start or cancel a helicopter's automatic landing | L |
+
+| Menus and shortcuts | Input |
+| --- | --- |
+| Navigate and confirm a menu selection | Up / Down, then Enter, or use the mouse |
+| Select a save slot / load the selected slot in the menu | 1–3 / L |
+| Change a setting | Left / Right |
+| Quick save / quick load | F5 / F9 |
+| Cycle display modes in the main or pause menu | F2 |
+| Open the console / list its commands | F1 / `help` |
+| Recall a command / complete it / scroll console output | Up or Down / Tab / Page Up or Page Down |
+| Advance the clock by six hours / toggle rain | N / P |
+| Open the pause menu or close the console | Esc |
+
+## Saves, population, and language
+
+The game keeps three save slots in `%LOCALAPPDATA%\PromzonaCpp`: `save.json`, `save-2.json`, and `save-3.json`. It autosaves to the active slot every two minutes of play, on pause, and on exit. Use the menu to save a copy in another slot.
+
+Choose a population level in **Settings** when starting a city. A saved city keeps its own density when loaded.
+
+| Population | Vehicles | Residents |
+| --- | ---: | ---: |
+| Low | 260 | 720 |
+| Medium | 540 | 1,800 |
+| High | 1,080 | 3,240 |
+| Full (default) | 1,485 | 5,265 |
+
+The interface supports English, Russian, and Ukrainian. On first launch, the game uses the Windows language when available. Change it in **Settings**. Language and population preferences are stored in `language.txt` and `density.txt` alongside the saves. For a single launch, pass `--language en`, `ru`, or `uk`, and `--density low`, `medium`, `high`, or `full`.
+
+```powershell
+.\artifacts\Release\Promzona.exe --language en --density medium
+```
+
+## Graphics
+
+At night, street lamps and headlights illuminate the road. A passing bus can cast a shadow across a facade and appear in a nearby puddle. During the day, drifting clouds shade buildings and water. Apartment windows show room depth and curtains, while balconies, canopies, and drainpipes fade in as you approach. The renderer streams city blocks around the player. Draw distance is adjustable from 130 to 3,000 metres, with a default of 1,000 metres.
+
+Press **F2** in the main or pause menu to cycle through the display modes. The selection is saved separately from the game.
+
+| Mode | Rendering |
+| --- | --- |
+| Quality | Full-resolution scene with edge smoothing, bloom, and colour adjustments for weather and low sunlight |
+| Balanced | Scene rendered at 75% of each screen dimension, with full-resolution UI and the same shadow-map resolution |
+| Native | Full-resolution scene with post-processing disabled |
+
+For technical details, see [city geometry and streaming](docs/ARCHITECTURE.md) and [lighting, weather, and vegetation](docs/ENVIRONMENT.md) (both in Russian).
+
+## Development
+
+The game uses C++23, Win32, OpenGL, WIC, and WinMM. Open [Promzona.slnx](Promzona.slnx) in Visual Studio 2026, select **Debug | x64** or **Release | x64**, and press **F5** for a windowed debugging session. The project uses the v145 toolset and reads assets directly from the repository's `Content` directory.
+
+To generate a Visual Studio solution that also includes the libraries and tests, use CMake 4.2 or newer:
 
 ```powershell
 .\create-vs2026.ps1 -Open
 ```
 
-Он находит установленную **Visual Studio 2026**, создаёт C++ проекты и открывает
-`build/vs2026/Promzona.slnx`. С CMake 4.2 создаётся `Promzona.sln`; с CMake 4.3 —
-новый формат `.slnx`. Для генератора VS 2026 нужен CMake **4.2 или новее**:
-обновить его можно компонентом **C++ CMake tools for Windows** в Visual Studio
-Installer. Вызов без `-Open` только создаёт/обновляет решение.
-
-- Конфигурации: **Debug | x64** и **Release | x64**, toolset **v145**, C++23.
-- **Ctrl+Shift+B** собирает решение; **F5** запускает `Promzona` в отладчике.
-  Игра назначена стартовым проектом. Для отладки включён оконный режим,
-  ресурсы читаются непосредственно из исходной папки `Content`.
-- В папке **Game** находятся игра, её заголовки, манифест, иконка и нативные
-  GLSL-шейдеры; в **Libraries** — библиотеки; в **Tests** — 24 группы тестов.
-  У тестовых проектов настроены аргументы с путями к эталонам и ресурсам.
-- После сборки можно выбрать **Build → RUN_TESTS** в Solution Explorer и
-  выполнить **Build** для этого проекта. Тесты не запускаются при каждом F5.
-- Результат: `build/vs2026/Debug/Promzona.exe` или
-  `build/vs2026/Release/Promzona.exe`. В Debug создаётся `Promzona.pdb`
-  для отладки. Для распространения с ресурсами используйте прежнюю команду
-  `build.ps1 -Configuration Release -Package`.
-
-Из Developer PowerShell, где доступны `cmake` и `ctest`, работают также пресеты:
+The generated solution lives in `build/vs2026`. Build the **RUN_TESTS** target to run the suite from Visual Studio. From Developer PowerShell, you can use the same presets directly:
 
 ```powershell
+cmake --preset vs2026
 cmake --build --preset vs2026-debug
 ctest --preset vs2026-debug
-cmake --build --preset vs2026-release
-ctest --preset vs2026-release
 ```
 
-Новый игровой .cpp добавьте в корневой проект Visual Studio и в соответствующую цель
-в `CMakeLists.txt`. После переноса репозитория для пересоздания решения CMake запустите
-`create-vs2026.ps1`.
-Скрипт пересоздаёт кэш CMake, если тот ссылается на прежний путь.
+Use `vs2026-release` for the Release build and test presets. When adding a game source file, include it in both the root Visual Studio project and its CMake target.
 
-Описание генератора: [CMake — Visual Studio 18 2026](https://cmake.org/cmake/help/v4.3/generator/Visual%20Studio%2018%202026.html).
+### Tests and visual checks
 
-## Управление в текущем прототипе
-
-| Действие | Клавиши |
-|---|---|
-| Выбор в меню / загрузить выбранный слот | ↑ ↓ и Enter или мышь / L |
-| Идти / ехать | WASD |
-| Бежать пешком | Shift |
-| Ручной тормоз | Space |
-| Сесть в ближайшую машину / выйти | F |
-| Эвакуация | R |
-| Повернуть взгляд пешком | Мышь |
-| Стрелять | Левая кнопка мыши |
-| Переключить оружие | Колесо мыши или [ и ] |
-| Камера: погоня / дальний вид сверху / вид строго сверху | V |
-| Следующий трек «Радио Пустырь» | M |
-| Выбрать слот / изменить параметр в настройках | 1–3 / ← и → |
-| Быстрое сохранение / загрузка | F5 / F9 |
-| Подобрать свободный самокат / сойти | F |
-| Ехать на самокате / тормозить | WASD / Space |
-| Купить еду у автомата или киоска пешком | F |
-| Заказы / выбор в журнале | J / цифры 1–8 |
-| Взять и передать заказ или переключить громкоговоритель | E |
-| Запустить / вернуть дрон (пешком) | K |
-| Подъём / снижение на вертолёте или дроне | Space или Q / Ctrl или Z |
-| Автоматическая посадка вертолёта (повторно — отмена) | L |
-| Осмотреть крышу с дрона / выстрелить из башни бронемашины | ЛКМ |
-| Сесть пассажиром у остановившегося трамвая или троллейбуса | B |
-| Выйти на остановке или запросить выход на следующей | F или B |
-| Осмотреться во время поездки | Мышь |
-| Вести трамвай вперёд / назад по рельсам | W / S |
-| Серия из трёх контрактов | J, затем 8 |
-| Консоль / список команд | F1 / help |
-| Быстрая проверка: +6 часов / дождь | N / P |
-| Язык интерфейса | Настройки → Язык |
-| Население новой игры: низкое / среднее / высокое | Настройки → Население новой игры |
-| История / дополнение команды / прокрутка вывода | ↑ и ↓ / Tab / PgUp и PgDn |
-| Меню / закрыть консоль | Esc |
-
-В `%LOCALAPPDATA%/PromzonaCpp` первый слот использует прежний `save.json`, остальные — `save-2.json` и `save-3.json`. Автосохранение идёт в активный слот каждые две минуты игры, при паузе и выходе. В меню можно сохранить копию в другой слот. Новая игра и загрузка назначают активный слот. Формат файлов —
-`promzona-cpp-7`. Игра также загружает нативные форматы 5 и 6. После обновления с версии
-4 или более ранней требуется новая игра.
-
-Сохранение C# версии (форматы 1–3) переносится командой
-`Promzona.exe --import-save <путь к save.json>`. Исходный файл только читается. Результат
-записывается в первый свободный слот; если заняты все три, импорт отклоняется. Переносятся
-seed города, время суток, погода, деньги, здоровье, оружие с патронами и выбранное оружие,
-уровень розыска, счётчики заказов и серий. Кто сохранился за рулём, получает машину того же
-вида с её повреждениями и цветом; кто пешком — стоит рядом с машиной новой игры.
-Положение сохраняется только для города ревизии 0 на сетке 49×49 с широкими дорогами: его план
-улиц совпадает с нативным. В таком городе на свои места возвращаются также машины обычного
-потока и прохожие; маршруты, компании, животные, заказ в работе и состояние служб не
-переносятся. Для остальных сохранений строится нативный город ревизии 4 с тем же seed, игрок
-начинает на обычном месте. Город заселяется с населением, которое выбрано в настройках для
-новой игры.
-
-Население города задаётся для новой игры: низкое — 260 машин и 720 жителей, среднее — 540 и
-1800, высокое — 1080 и 3240, полное — 1485 и 5265. Высокое — первое заполнение города в C#
-версии. Полное — население, с которым она играет: после первого заполнения она добавляет
-половину легковых и доводит число жителей до 4860, а за первые три минуты игры пополняет город
-примерно до 1485 машин и 5265 жителей; здесь такой город создаётся сразу. На полном уровне и
-животных столько же, сколько в C#: 120 стай голубей и 160 кошек, собак и птиц против 354
-животных на остальных уровнях. По умолчанию полное. Выбор хранится в
-`density.txt` рядом с сохранениями, параметр `--density low|medium|high|full` действует на один
-запуск. Плотность записывается в сохранение и при загрузке не меняется; сохранения без неё
-открываются с низкой, с которой они были созданы.
-
-Жители одеты и сложены по-разному (перенос палитры `Actor.frag`: 19 вариантов одежды, шесть
-тонов кожи, рост и ширина по номеру жителя), службы носят форму и фуражки. Отдыхающие стоят на
-пляже, ночью у обочин появляются ночные работницы, бездомные держатся одного места. У
-перекрёстков со светофором пешеходы ждут у бордюра, пока едет поперечный поток, и торопятся,
-если сигнал сменился на середине дороги. Встречных и стоящих обходят, справа, если ничто не
-мешает; стоящую машину — вокруг ближнего конца.
-
-Машины въезжают на перекрёсток по одной, и только если за ним есть место на выбранной улице.
-Трамвай или троллейбус, готовый ехать на зелёный, получает перекрёсток следующим. Перед
-зеброй водитель ждёт и того, кто идёт к его полосе. Стоящая на тормозе машина не сползает по
-уклону; машину игрока без газа удерживает автоматический тормоз.
-
-Интерфейс доступен на русском, английском и украинском. Язык выбирается в настройках
-и хранится в `language.txt` рядом с сохранениями; при первом запуске берётся язык Windows.
-Параметр `--language ru|en|uk` действует на один запуск. Названия улиц и проспектов
-перенесены из C# версии и показываются на выбранном языке.
-
-В городе работают шесть уровней розыска, бронетехника и вертолёт с одиночным огнём.
-Экипаж на вызове не стоит в пробке и не ждёт светофора: объезжает стоящих по свободной
-части улицы и притормаживает только перед тем, кто прямо перед бампером. Когда розыск снят,
-экипажи возвращаются в поток.
-Трамваи и троллейбусы возят пассажиров по четырём маршрутам. Угнанный троллейбус едет только
-под проводами своего маршрута: дальше трёх метров от них тяги нет. У киоска можно взять
-посылку. В журнале доступны перегон, устранение цели, листовки, громкоговоритель, такси и перевозка пациента. В пассажирском рейсе остановитесь у человека, нажмите E для посадки и довезите его до отметки.
-У рыночного прилавка нажмите E пешком, кнопками 1–4 купите оружие, патроны,
-таблетки или энергетик. Перед гаражом остановите машину и нажмите E для ремонта.
-При розыске за дополнительные $30 машину перекрасят и погоня закончится.
-Кнопкой G можно купить один гараж за $400. На его площадке G оставляет личную
-легковую машину или фургон. Всего можно сохранить до трёх машин.
-Для разведки запустите дрон пешком и осмотрите три отмеченные крыши.
-
-Наезд на прохожего имеет те же последствия, что в C# версии. При сближении медленнее
-5,5 м/с человек падает, через несколько секунд поднимается и около минуты хромает рядом;
-игроку за рулём сразу начисляется розыск. Более быстрый наезд смертелен, а розыск появляется,
-только если его видел свидетель или милиция. Машина так же сбивает пешего игрока: он получает
-урон и на 1–4 секунды теряет управление. Розыск держится 12 секунд после преступления, затем
-медленно спадает; если милиция 15 секунд не видит игрока, спад ускоряется в пять раз.
-На карте лежат таблетки (+35% здоровья), энергетики и оружие, в том числе две базуки и два
-огнемёта. В консоли добавлены `god on|off` и `spawn pills|energy`.
-
-Небо перенесено из C# версии: градиент от дымки у горизонта к зениту, солнце с ореолом, луна,
-медленно плывущие облака и звёзды; у низкого солнца горизонт становится золотым. Дальние дома,
-дым и брызги уходят в цвет горизонта, дымка редеет с высотой. Окна, вода, лужи, мокрый асфальт,
-стёкла, хром и лак машин отражают город: вокруг игрока снимается кубическая карта неподвижного
-города и неба (128 пикселей на грань, по одной грани за кадр; заново — через 22 м, четверть
-игрового часа, при смене дождя и каждые 12 секунд), вдали от неё берётся расчётный силуэт. В
-углах и под выступами добавлено затенение по глубине кадра (SSAO): 12 выборок на высоком
-качестве, 8 на среднем. На низком качестве нет ни его, ни карты отражений; SSAO нет и в режиме
-без обработки (F2).
-
-После дождя улицы остаются мокрыми, как в C#: намокают за полминуты и сохнут несколько минут.
-От мокрой дороги, а не от самого дождя зависят сцепление, мокрые следы шин и брызги из-под
-колёс. Ливень длится 45–135 секунд, сухой промежуток — от двух до шести минут.
-
-Ночью улицу освещают фонари, фары четырёх ближайших едущих машин и маячки спецтранспорта
-на вызове. В тоннеле днём и ночью горят потолочные светильники. Индикатор показывает здоровье
-игрока и отдельно состояние машины; рядом — панель оружия со значком, названием и числом
-патронов. Над миникартой подписаны район и улица. Адрес заказа и подсказки прохожих тоже
-называют улицу.
-
-Город восстанавливается вне поля зрения, как в C# версии. Тело, к которому три минуты не
-приехала скорая, разбитая машина (через шесть секунд) и брошенная машина без водителя исчезают,
-когда игрок отошёл дальше 245 м; на их месте в другой части города появляются новый прохожий
-и обычная машина. Число жителей и машин не меняется. Личные машины из гаража, машина игрока,
-машины заказов и служб на вызове не трогаются.
-
-Машина, съехавшая в воду глубже 0,85 м, тонет и выходит из игры. Прохожий на глубине больше
-1,15 м тонет без розыска и вызова скорой. Вода выше колена гасит горящего человека и игрока.
-На улицах есть ямы: их положение задаёт seed города тем же генератором, что в C#. На скорости
-больше 4 м/с яма подбрасывает машину и качает кузов.
-
-Новый город генерируется по планировке ревизии 4 на сетке 49×49 узлов.
-В центре стоят высокие дома, в жилмассиве — длинные корпуса. В других районах
-есть дворы, частные дома с двускатными крышами, гаражные ряды и заводы.
-По северной промзоне проложен грузовой путь с вагонами, переездами и тупиком.
-На побережье песок подходит к краю асфальта, каналы выходят в море,
-а на сухих участках пляжа стоят зонты.
-
-В новом городе пять эстакад и четыре тоннеля. Сохранения старых городов
-загружаются с исходной застройкой и четырьмя развязками.
-Обычный трафик использует их как двусторонние рёбра дорожного графа. Высота
-настила, дорожная геометрия и опора машины берутся из одного профиля; машины
-под мостом и над тоннелем сохраняют свой уровень. При падении с настила
-сохраняется мировая высота, затем действует гравитация, в том числе на обломки.
-Выход из машины внутри тоннеля не переносит игрока на поверхность.
-Камера и снаряды учитывают настил, стены и потолок. Детальный исходный рендер
-ещё не перенесён: эти сооружения пока выглядят проще, чем в C# игре.
-
-Добавлено оформление зданий: фасадные материалы с картами нормалей и ORM,
-окна на длинных стенах, три варианта балконов, подъезды и кондиционеры.
-Окна имитируют глубину комнат, используют десять вариантов оформления шторами
-и медленно меняют освещение. Это шейдерная имитация: войти в эти комнаты нельзя.
-Крупная геометрия и окна видны до выбранной дальности (130–3000 м, по умолчанию 1000 м); мелкие детали плавно
-исчезают между 135 и 185 м. Объекты вне объёма камеры отсекаются.
-Балконы, входы и прочие детали соседних кварталов собираются в фоне; при удалении
-их GPU-буферы освобождаются. Земля, дороги, стены и базовые окна разбиты на секторы по 144 м.
-В памяти остаются секторы в пределах дальности прорисовки: при загрузке строятся те, что вокруг
-игрока, затем фоновый поток достраивает въезжающие в дальность (ближние первыми), а оставшиеся
-на 40 м позади освобождаются. При дальности 1000 м в центре города в памяти почти весь остров
-(180 секторов из 196, 248 МиБ; раньше весь город занимал 349), у побережья — около половины.
-Подробнее — [ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-Добавлены берёзы, липы и ели с общими instanced-моделями, двумя LOD, ветром
-и коллизиями стволов. Деревья размещаются с отступами от зданий, дорог и воды.
-Локальная карта солнечных теней работает для зданий, транспорта, людей и листвы;
-ночью этот проход отключается. Подробнее — [ENVIRONMENT.md](docs/ENVIRONMENT.md).
-
-## Проверки
-
-Каждая сборка запускает CTest: проверки математики, автомобилей, контактов,
-инвентаря, анимации, сохранений и звукового микшера; отдельный набор проверяет
-ракеты, огнемёт, распространение огня, урон столкновений, взрывы и преграды.
-Отдельные группы проверяют планировку, маршруты и геометрию мостов.
-`native_levels` проверяет связность трёх генерируемых городов, переходы между
-уровнями, вырезы тоннелей, падение обломков, вход/выход из машин и сохранения.
-Восемь проездов AI в локальной физике охватывают каждое сооружение в обе стороны.
-`native_architecture` проверяет размещение окон, размеры и целостность геометрии,
-бюджет деталей и отсечение объёмом камеры. Изображение проверяется отдельно на GPU.
-`native_environment` проверяет размещение деревьев на трёх seed, коллайдеры,
-геометрию LOD, солнечные тени, укрытия от дождя, следы шин, проекцию миникарты, небо и
-погоду, частицы и следы столкновений.
-`native_streaming` проверяет очереди фоновой работы, бюджет и выгрузку деталей,
-повторную сборку той же геометрии и остановку рабочего потока.
-`native_street_life` проверяет владельцев самокатов, поведение свидетелей и компаний,
-смену укрытий, прерывание реплик, перелёт стаи и сохранение состояния.
-Группа `native_emergency_response` проверяет выезд бригады, лечение и возврат фельдшера, включая сохранение на вызове.
-`native_consequences` проверяет наезды: сбитого на малой скорости прохожего, который
-поднимается и хромает, смертельный наезд со свидетелем и без, удар машины по пешему игроку,
-спад розыска, режим god, подбираемые предметы и автопосадку вертолёта.
-`native_localization` проверяет переводчик фраз и требует английский текст для каждой
-русской строки исходников. `native_managed_import` проверяет перенос сохранений C# версии:
-прогресс и карьеру игрока, его машину, расстановку машин и прохожих в городе старой планировки
-(в том числе целого города с полным населением), население импортированного города и отказ для
-повреждённых файлов. `native_renewal` проверяет замену тел и разбитых машин вне поля
-зрения, затопление машины, гибель прохожего в воде, тушение водой и сохранение этих состояний.
-`native_density` проверяет четыре уровня населения: размеры, файл настройки, генерацию среднего,
-высокого и полного города, животных полного уровня, сохранение и загрузку, старые сохранения без
-плотности.
-`native_people` проверяет выбор пути от угла к углу перекрёстка (оба тротуара, четыре перехода,
-сигналы, тупик, сохранение углов и старые сохранения без них), одежду и телосложение, походки,
-роли (пляж, ночная смена, бездомные,
-конец дежурства), ожидание у бордюра, обход встречных и стоящих, перестроение компании за
-ведущим, мусор под ногами остановившегося прохожего и удержание стоящей машины на уклоне.
-`native_flow` проверяет правила перекрёстка (одна машина, место за перекрёстком, трамвай,
-грузовики в соседних полосах, очередь у светофора), зебру и стоящую на ней машину, балки под
-настилом эстакад, проезд высоких машин по эстакаде, очередь на встречной полосе у въезда на
-эстакаду, скорость стоящего у светофора грузовика, поворот на границе дальней и ближней моделей,
-выезд задним ходом из положения нос к носу и двенадцать минут города без единой машины,
-простоявшей дольше двух минут.
-`native_transit` проверяет маршруты и остановки, посадку и высадку, тягу троллейбуса под
-проводами, а также трамвай и троллейбус, которые поворачивают на перекрёстке навстречу друг
-другу, трамвай, который поворачивает на улицу с прохожим на переходе, и трамвай, подъезжающий на
-крутой улице к стоящему трамваю.
-Такси ловят у остановки автобуса, и рейс заканчивается у другой остановки; это проверяет `native_jobs`.
-`native_buses` проверяет автобусы и машины газовой службы в составе потока, размещение остановок
-без пересечения с домами и деревьями, остановку автобуса у павильона и интервал до следующей,
-перестроение идущих следом, выбор улиц без тупиков и сохранение города с автобусами.
-Ямы проверяются в `native_environment`: последовательность генератора сверена с независимым
-переносом алгоритма C#.
-Также проверяется чтение игровых GLB,
-скинов, изображений и WAV теми же загрузчиками, что использует игра.
-
-60 сохранённых эталонных случаев сравнивают C++ VehicleDynamics с исходным C#
-для 12 видов транспорта и пяти режимов движения на плоской поверхности.
-Это проверка конкретного расчёта, а не доказательство эквивалентности всей игры.
-
-12 эталонных городов сравнивают дороги, парки, размеры/координаты зданий и
-уличных объектов с исходным C# генератором ревизии 0. Проверка рельефа не входит
-в эти эталоны. Дополнительно автомобиль AI ездит в локальной физике четыре
-минуты модельного времени; проверяются продвижение по маршруту и удержание дороги.
+CTest covers city generation, vehicle physics, traffic, transit, pedestrians, jobs, emergency response, saves, localisation, asset loading, and audio. Rendering checks use a graphics desktop and the packaged game. Run the full smoke suite or capture a repeatable route:
 
 ```powershell
-# 65 игровых сценариев, включая скорую, курьера, таксофон, автобус у остановки, город с полным населением, взрыв и горящую машину, проезд по луже и по яме
 .\tools\smoke.ps1
-
-# Проверка, что извлечённые исходники и ресурсы не потеряны/не изменены
-.\tools\verify-import.ps1
+.\tools\smoke.ps1 -VisualRoute rain -Scenarios night-crossing
+.\tools\smoke.ps1 -VisualRoute clear -Scenarios bus-puddle,cloud-coast
 ```
 
-В главном меню или меню паузы **F2** переключает три режима. По умолчанию город
-рисуется в полном разрешении со сглаживанием, мягкими ореолами вокруг ярких
-источников и поправкой цвета при низком солнце и дожде. В режиме 75% уменьшаются
-обе стороны кадра города; тени и интерфейс сохраняют разрешение. Третий режим —
-прежнее изображение без обработки. Выбор сохраняется отдельно от игры.
-
-Для сравнения на одном городе и маршруте (замените `quality` на `native` или
-`balanced`, а `day` на `night` или `storm`; `--quality 0|1|2` задаёт качество на один запуск):
+The script writes logs and screenshots under `build/smoke`. Compare the same frame numbers across builds. For timing, run a separate GPU profile:
 
 ```powershell
-.\artifacts\Release\Promzona.exe --smoke --gpu-profile --smoke-size 3440 1440 --scene-mode quality --scenario day --frames 360 --smoke-output build/bench-day-quality
+.\artifacts\Release\Promzona.exe --smoke --gpu-profile --smoke-size 1920 1080 --scene-mode quality --quality 2 --scenario shadow-avenue --frames 421 --smoke-output build/bench-shadow
 ```
 
-В `native.log` — медиана и 95-й процентиль времени всего кадра и отдельно
-команд GPU от теней до вывода города (без HUD и показа окна). Первые 60 кадров
-пропускаются; результаты GPU читаются без ожидания. Запрос отключения VSync
-действует только в тесте с `--gpu-profile`.
+The profiler skips the first 60 frames. In `native.log`, `frame` reports whole-frame timing and `scene GPU` covers rendering from shadows through post-processing, before the HUD and window presentation. Both report the median and 95th percentile.
 
-GPU smoke-тест требует доступного графического рабочего стола. Результаты и
-кадры находятся в `build/smoke`. Проверено на NVIDIA GeForce RTX 4060 Laptop GPU.
-Замеров производительности, сопоставимых с исходной C# игрой, пока нет.
+### Repository layout
 
-## Структура
+| Path | Contents |
+| --- | --- |
+| [src](src), [include/promzona](include/promzona) | Game implementation and C++ headers |
+| [Content](Content) | Models, textures, audio, and other runtime assets |
+| [Content/Shaders/Native](Content/Shaders/Native) | GLSL shaders |
+| [tests](tests) | Automated tests and reference data |
+| [tools](tools) | Build verification and gameplay capture scripts |
+| [docs](docs) | Technical documentation and screenshots |
 
-- `src`, `include/promzona` — компилируемый C++ код.
-- `Content` — собственная копия игровых ресурсов; часть пока ожидает подключения.
-- `Content/Shaders/Native` — GLSL текущего нативного рендера.
-- `tests` — нативные тесты и сохранённые эталонные данные.
-- `migration/reference` — неизменённый снимок исходной игры и её зависимостей для переноса.
-- `migration/import-manifest.json` — происхождение, размер и SHA-256 каждого извлечённого файла.
-- `tests/reference`, `tests/layout-reference` — необязательные C# генераторы эталонов; обычная сборка их не запускает и не требует .NET.
-- `tools/import_reference.py` — одноразовое извлечение исходной версии; повторно запускать не требуется.
-- `docs` — состояние переноса и скриншоты проверенного билда.
+## License
 
-Лицензии сторонних ресурсов сохранены; см. `THIRD-PARTY.txt` и исходные credits в Content.
+The project code is licensed under the [MIT License](LICENSE). Third-party libraries and game assets carry their respective notices. See [third-party credits](THIRD-PARTY.txt) and [asset credits](Content/IMPORTED-ASSET-CREDITS.txt).
