@@ -1,5 +1,6 @@
 #pragma once
 #include "math.hpp"
+#include <optional>
 
 namespace Promzona
 {
@@ -41,4 +42,72 @@ namespace Promzona
         s.matrix = projection * view;
         return s;
     }
-}
+
+    class FarShadowCache
+    {
+        struct Map
+        {
+            Mat4 matrix;
+            Vec3 focus, sun;
+            size_t revision;
+        };
+        std::optional<Map> front_, pending_;
+        int frontTarget_{1};
+
+      public:
+        enum class Portion
+        {
+            none,
+            full,
+            left,
+            right
+        };
+        struct Update
+        {
+            Portion portion{Portion::none};
+            int readTarget{1}, writeTarget{1};
+            Mat4 visible{Mat4::identity()}, draw{Mat4::identity()};
+        };
+
+        Update advance(bool enabled, Vec3 focus, Vec3 sun, size_t revision)
+        {
+            if (!enabled)
+            {
+                *this = {};
+                return {};
+            }
+            auto capture = [&]
+            {
+                return Map{sunShadow(focus, sun, SunShadow::farHalfSize, SunShadow::farResolution).matrix,
+                           focus, sun, revision};
+            };
+            Update update;
+            const float motion = front_ ? (front_->focus - focus).length() : 0.f;
+            const float rotation = front_ ? (front_->sun - sun).length() : 0.f;
+            if (!front_ || motion > 24.f || rotation > .06f)
+            {
+                pending_.reset();
+                front_ = capture();
+                update.portion = Portion::full;
+            }
+            else if (pending_)
+            {
+                front_ = pending_;
+                pending_.reset();
+                frontTarget_ = 3 - frontTarget_;
+                update.portion = Portion::right;
+            }
+            else if (motion > 4.f || rotation > .002f || front_->revision != revision)
+            {
+                pending_ = capture();
+                update.portion = Portion::left;
+            }
+            // Publish the new centre, projection and texture together, only after both halves draw.
+            update.readTarget = frontTarget_;
+            update.writeTarget = pending_ ? 3 - frontTarget_ : frontTarget_;
+            update.visible = front_->matrix;
+            update.draw = pending_ ? pending_->matrix : front_->matrix;
+            return update;
+        }
+    };
+    } // namespace Promzona

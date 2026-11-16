@@ -5,9 +5,10 @@ in vec3 shape;
 in vec3 world;
 out vec4 pixel;
 uniform vec3 uEye;
-uniform float uTime;
 uniform sampler2D uSceneDepth;
-uniform bool uSoftDepth;
+uniform bool uSoftDepth, uReflectPuddles;
+uniform sampler2D uSceneColor;
+uniform mat4 uViewProjection;
 uniform vec2 uClip;
 
 float eyeDepth(float depth)
@@ -16,10 +17,52 @@ float eyeDepth(float depth)
 }
 
 #include "environment.glsl"
+#include "rain_cover.glsl"
 
 float cellHash(vec3 p)
 {
     return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+}
+
+vec3 puddleReflection(vec3 direction, vec3 fallback)
+{
+    float distanceToEye = length(uEye - world);
+    if (!uReflectPuddles || distanceToEye >= 32.0 || direction.y <= 0.02) return fallback;
+
+    vec4 start = uViewProjection * vec4(world + vec3(0.0, 0.045, 0.0), 1.0);
+    vec4 stepClip = uViewProjection * vec4(direction, 0.0);
+    float previous = 0.10;
+    for (int i = 0; i < 30; ++i)
+    {
+        float t = previous * 1.15 + 0.16;
+        vec4 clip = start + stepClip * t;
+        if (clip.w < uClip.x || t > 32.0) break;
+        vec2 uv = 0.5 + 0.5 * clip.xy / clip.w;
+        if (any(lessThanEqual(uv, vec2(0.0))) || any(greaterThanEqual(uv, vec2(1.0)))) break;
+        float depth = eyeDepth(texture(uSceneDepth, uv).r);
+        if (clip.w >= depth)
+        {
+            float lo = previous, hi = t;
+            for (int j = 0; j < 5; ++j)
+            {
+                float mid = 0.5 * (lo + hi);
+                vec4 probe = start + stepClip * mid;
+                vec2 sampleUv = 0.5 + 0.5 * probe.xy / probe.w;
+                if (probe.w > eyeDepth(texture(uSceneDepth, sampleUv).r)) hi = mid;
+                else lo = mid;
+            }
+            clip = start + stepClip * hi;
+            uv = 0.5 + 0.5 * clip.xy / clip.w;
+            float gap = clip.w - eyeDepth(texture(uSceneDepth, uv).r);
+            vec2 edge = min(uv, 1.0 - uv);
+            float weight = smoothstep(0.005, 0.075, min(edge.x, edge.y))
+                         * (1.0 - smoothstep(0.08, 0.35, gap))
+                         * (1.0 - smoothstep(20.0, 32.0, max(hi, distanceToEye)));
+            return mix(fallback, texture(uSceneColor, uv).rgb, weight);
+        }
+        previous = t;
+    }
+    return fallback;
 }
 
 // A puddle of the managed game: a nearly still mirror of the city and the sky, with rings where the rain falls into it.
@@ -42,11 +85,14 @@ vec3 puddle(vec3 bed)
     slope += local / max(0.025, radius) * ring * 0.025 * uRain * fade;
     vec3 n = normalize(vec3(slope.x, 1.0, slope.y)), v = normalize(uEye - world);
     float fresnel = .12 + .75 * pow(1.0 - max(0.0, dot(n, v)), 4.0);
-    return mix(bed, toDisplay(cityReflection(world, reflect(-v, n), .12, false)), fresnel);
+    vec3 direction = reflect(-v, n);
+    vec3 fallback = toDisplay(cityReflection(world, direction, .12, false));
+    return mix(bed, puddleReflection(direction, fallback), fresnel);
 }
 
 void main()
 {
+    if (shape.z == 7.0 && roofDistance(world) < 0.0) discard;
     float coverage;
 
     if (shape.z < 1.5 || shape.z >= 7.0)

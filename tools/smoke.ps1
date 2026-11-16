@@ -14,7 +14,7 @@ $output = Join-Path $root "build/smoke/$Configuration"
 if ($VisualRoute) {
     if (-not $PSBoundParameters.ContainsKey('Scenarios')) { $Scenarios = @('seafront','portal','facade') }
     foreach ($scene in $Scenarios) {
-        if ($scene -notin 'seafront','portal','facade','night-crossing','wire-street','shadow-avenue','entrance','entrance-night') { throw "Unsupported visual route: $scene" }
+        if ($scene -notin 'seafront','portal','facade','night-crossing','wire-street','shadow-avenue','entrance','entrance-night','beam-wall','bus-puddle','dry-canopy','cloud-coast') { throw "Unsupported visual route: $scene" }
     }
     $output = Join-Path $output "routes/$VisualRoute"
 }

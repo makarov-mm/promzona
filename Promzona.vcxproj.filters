@@ -16,6 +16,21 @@
     <None Include="Content/Shaders/Native\headlight.glsl">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="Content/Shaders/Native\cloud_layer.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Content/Shaders/Native\beam_occlusion.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Content/Shaders/Native\rain_cover.glsl">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Content/Shaders/Native\static_depth.vert">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Content/Shaders/Native\static_depth.frag">
+      <Filter>Shaders</Filter>
+    </None>
     <None Include="Content/Shaders/Native\water.glsl">
       <Filter>Shaders</Filter>
     </None>
@@ -157,6 +172,12 @@
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="src\leaf_mask.hpp">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="src\street_lighting.hpp">
+      <Filter>Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="src\cloud_map.hpp">
       <Filter>Headers</Filter>
     </ClInclude>
     <ClInclude Include="src\effect_batch.hpp">

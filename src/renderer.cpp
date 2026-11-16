@@ -5,7 +5,8 @@
 #include "promzona/fleet.hpp"
 #include "json.hpp"
 #include "effect_batch.hpp"
-#include "headlights.hpp"
+#include "street_lighting.hpp"
+#include "cloud_map.hpp"
 #include "leaf_mask.hpp"
 #include "post_processing.hpp"
 #include "promzona/minimap.hpp"
@@ -361,8 +362,9 @@ GLuint bonePalette(const SkinData &s)
 struct Renderer::Impl
 {
     std::filesystem::path root;
-    GLuint scene{}, ui{}, white{}, bones[2]{}, rug{};
-    std::array<GLuint, 2> shadowTexture{}, shadowFbo{};
+    GLint staticLightMatrix{};
+    GLuint staticDepth{}, scene{}, ui{}, white{}, bones[2]{}, rug{};
+    std::array<GLuint, 3> shadowTexture{}, shadowFbo{};
     Mesh uiQuad, cube, marker, skin[2], patrolCap[2];
     struct
     {
@@ -373,6 +375,7 @@ struct Renderer::Impl
         GLint eye{}, time{}, sun{}, fog{}, zenith{}, air{}, day{}, rain{}, probeReady{}, probeCentre{},
             probeRoofed{}, waterEdge{}, lamps{}, colors{}, axes{}, clip{}, softDepth{};
     } effectUniforms;
+    GLint reflectPuddlesUniform{};
     GLint uiSample{};
     GLuint effectShader{};
     EffectBatch effects;
@@ -388,11 +391,12 @@ struct Renderer::Impl
     // The sky fills what the scenery left open: one triangle at the far plane. `forward`
     // and `up` are those of the view, `tangent` that of half its vertical angle.
     void drawSky(const Atmosphere &air, Vec3 sun, Vec3 forward, Vec3 up, float tangent, float aspect,
-                 float time, bool probePass)
+                 float time, bool probePass, Vec3 eye)
     {
         const Vec3 ahead = forward.unit(), right = cross(ahead, up).unit(), top = cross(right, ahead);
         const Vec3 across = right * (tangent * aspect), rise = top * tangent;
         UseProgram(sky);
+        Uniform3f(cloudEye, eye.x, eye.y, eye.z);
         Uniform3f(skyUniforms.right, across.x, across.y, across.z);
         Uniform3f(skyUniforms.up, rise.x, rise.y, rise.z);
         Uniform3f(skyUniforms.forward, ahead.x, ahead.y, ahead.z);
@@ -501,13 +505,42 @@ struct Renderer::Impl
     PostProcessing post;
     SceneTimer timer;
     HeadlightSelection headlights;
-    struct FarShadowCache
+    StreetLighting street;
+    struct StreetUniforms
     {
-        SunShadow shadow;
-        Vec3 focus, sun;
-        size_t sectorRevision;
-    };
-    std::optional<FarShadowCache> farShadowCache;
+        GLint pair, blockers, centres, sizes, axes, covers, roofs, spans;
+        void locate(GLuint program)
+        {
+            auto get = [&](const char *name) { return GetUniformLocation(program, name); };
+            *this = {get("uBlockedPair"), get("uBlockerCount"), get("uBoxCentre"),   get("uBoxHalf"),
+                     get("uBoxForward"),  get("uCoverCount"),   get("uCoverCentre"), get("uCoverHalf")};
+        }
+        void upload(const StreetLighting &data) const
+        {
+            std::array<float, 36> values;
+            auto send = [&](GLint location, const auto &items, auto member, int count)
+            {
+                for (int i = 0; i < count; ++i)
+                {
+                    const Vec3 v = items[i].*member;
+                    values[i * 3] = v.x;
+                    values[i * 3 + 1] = v.y;
+                    values[i * 3 + 2] = v.z;
+                }
+                if (count)
+                    Uniform3fv(location, count, values.data());
+            };
+            Uniform1i(pair, data.lampIndex);
+            Uniform1i(blockers, data.blockerCount);
+            send(centres, data.blockers, &LightBlocker::centre, data.blockerCount);
+            send(sizes, data.blockers, &LightBlocker::halfSize, data.blockerCount);
+            send(axes, data.blockers, &LightBlocker::forward, data.blockerCount);
+            Uniform1i(covers, data.coverCount);
+            send(roofs, data.covers, &RainCover::centre, data.coverCount);
+            send(spans, data.covers, &RainCover::halfSize, data.coverCount);
+        }
+    } sceneStreet, effectStreet;
+    FarShadowCache farShadowCache;
     int poses[2]{};
     std::map<std::uint32_t, ActorMotion> actorMotion;
     std::map<std::filesystem::path, GLuint> textures;
@@ -569,7 +602,8 @@ struct Renderer::Impl
     // outer sectors carry it; this plane stands in for those that are not in memory.
     std::optional<Batch> openSea;
     std::vector<const Batch *> visibleRails;
-    GLuint leafCoverage{};
+    GLuint leafCoverage{}, cloudDensity{};
+    GLint cloudEye{};
     std::unique_ptr<SectorStream> sectorStream;
     // In memory or being uploaded, and the orders the worker still has to deliver.
     std::vector<bool> sectorResident;
@@ -677,6 +711,9 @@ struct Renderer::Impl
         }
         scene = program(readShader(root / "Shaders/Native/scene.vert"),
                         readShader(root / "Shaders/Native/scene.frag"));
+        staticDepth = program(readShader(root / "Shaders/Native/static_depth.vert"),
+                              readShader(root / "Shaders/Native/static_depth.frag"));
+        staticLightMatrix = GetUniformLocation(staticDepth, "lightMatrix");
         ui = program(read_text(root / "Shaders/Native/ui.vert"), read_text(root / "Shaders/Native/ui.frag"));
         effectShader = program(readShader(root / "Shaders/Native/effects.vert"),
                                readShader(root / "Shaders/Native/effects.frag"));
@@ -695,6 +732,17 @@ struct Renderer::Impl
             GetUniformLocation(sky, "uRain"),
             GetUniformLocation(sky, "uTime"),
             GetUniformLocation(sky, "uProbePass")};
+        UseProgram(sky);
+        cloudEye = GetUniformLocation(sky, "uCloudEye");
+        Uniform1i(GetUniformLocation(sky, "uCloudMap"), 12);
+        UseProgram(scene);
+        Uniform1i(GetUniformLocation(scene, "uCloudMap"), 12);
+        sceneStreet.locate(scene);
+        effectStreet.locate(effectShader);
+        UseProgram(effectShader);
+        Uniform1i(GetUniformLocation(effectShader, "uSceneColor"), 11);
+        Uniform1i(GetUniformLocation(effectShader, "uCloudMap"), 12);
+        reflectPuddlesUniform = GetUniformLocation(effectShader, "uReflectPuddles");
         effectUniforms = {GetUniformLocation(effectShader, "uEye"),
                           GetUniformLocation(effectShader, "uTime"),
                           GetUniformLocation(effectShader, "uSun"),
@@ -767,16 +815,18 @@ struct Renderer::Impl
         post.initialize(program(fullscreen, read_text(root / "Shaders/Native/glow.frag")),
                         program(fullscreen, read_text(root / "Shaders/Native/resolve.frag")),
                         program(fullscreen, read_text(root / "Shaders/Native/occlusion.frag")));
-        glGenTextures(2, shadowTexture.data());
-        GenFramebuffers(2, shadowFbo.data());
+        glGenTextures(GLsizei(shadowTexture.size()), shadowTexture.data());
+        GenFramebuffers(GLsizei(shadowFbo.size()), shadowFbo.data());
         for (size_t i = 0; i < shadowFbo.size(); ++i)
         {
             const int size = i == 0 ? SunShadow::resolution : SunShadow::farResolution;
             glBindTexture(GL_TEXTURE_2D, shadowTexture[i]);
             glTexImage2D(GL_TEXTURE_2D, 0, DEPTH_COMPONENT24, size, size, 0, GL_DEPTH_COMPONENT,
                          GL_UNSIGNED_INT, nullptr);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, TEXTURE_COMPARE_MODE, COMPARE_REF_TO_TEXTURE);
+            glTexParameteri(GL_TEXTURE_2D, TEXTURE_COMPARE_FUNC, GL_LEQUAL);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, CLAMP_TO_EDGE);
             BindFramebuffer(FRAMEBUFFER, shadowFbo[i]);
@@ -787,6 +837,13 @@ struct Renderer::Impl
                 throw std::runtime_error("Sun shadow framebuffer incomplete");
         }
         BindFramebuffer(FRAMEBUFFER, 0);
+        const auto density = cloudMap(512);
+        glGenTextures(1, &cloudDensity);
+        glBindTexture(GL_TEXTURE_2D, cloudDensity);
+        glTexImage2D(GL_TEXTURE_2D, 0, R8, 512, 512, 0, GL_RED, GL_UNSIGNED_BYTE, density.data());
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        GenerateMipmap(GL_TEXTURE_2D);
         const auto leaves = leafMask(256);
         glGenTextures(1, &leafCoverage);
         glBindTexture(GL_TEXTURE_2D, leafCoverage);
@@ -1298,8 +1355,8 @@ struct Renderer::Impl
             DeleteVertexArrays(1, &skyVao);
         if (sky)
             DeleteProgram(sky);
-        DeleteFramebuffers(2, shadowFbo.data());
-        glDeleteTextures(2, shadowTexture.data());
+        DeleteFramebuffers(GLsizei(shadowFbo.size()), shadowFbo.data());
+        glDeleteTextures(GLsizei(shadowTexture.size()), shadowTexture.data());
         sectorStream.reset();
         sectors.clear();
         openSea.reset();
@@ -1307,6 +1364,7 @@ struct Renderer::Impl
             v.lods.clear();
         for (auto &[path, t] : textures)
             glDeleteTextures(1, &t);
+        glDeleteTextures(1, &cloudDensity);
         glDeleteTextures(1, &leafCoverage);
         glDeleteTextures(1, &white);
         glDeleteTextures(GLsizei(hudTextures.size()), hudTextures.data());
@@ -1314,6 +1372,7 @@ struct Renderer::Impl
         glDeleteTextures(2, bones);
         for (auto &rig : animalRigs)
             glDeleteTextures(1, &rig.palette);
+        if (staticDepth) DeleteProgram(staticDepth);
         if (scene)
             DeleteProgram(scene);
         if (ui)
@@ -2058,6 +2117,70 @@ struct Renderer::Impl
         setModel(model);
         apply(b.color, b.normal, b.orm, b.tint, beacon ? 1.f : b.emissive, b.surface, b.alpha, b.roughness,
               b.metallic, b.detail);
+        drawGeometry(b);
+    }
+    std::vector<const Batch *> shadowCutouts;
+    void drawStaticShadows(const auto &visible, const Mat4 &matrix, bool distant)
+    {
+        UseProgram(staticDepth);
+        UniformMatrix4fv(staticLightMatrix, 1, GL_FALSE, matrix.m.data());
+        shadowCutouts.clear();
+        struct Ranges
+        {
+            std::array<GLsizei, SurfaceCount> counts;
+            std::array<GLint, SurfaceCount> bases;
+            std::array<const void *, SurfaceCount> offsets;
+            GLsizei size{};
+        };
+        for (const auto &sector : sectors)
+        {
+            if (!sector.installed)
+                continue;
+            Ranges ranges[2];
+            for (const auto &b : sector.batches)
+            {
+                if (b.slot == Water || b.slot >= PotholeDecal || !visible(b.centre, b.radius))
+                    continue;
+                if (distant && (b.slot == Windows || b.slot == Glass || b.slot == Frame || b.slot == Lamps ||
+                                (b.slot >= Sign && b.slot < Rust)))
+                    continue;
+                if (b.color != white && b.slot > Paint && b.slot != Roof && b.slot != Foundation &&
+                    b.slot != Metal && b.slot != Sand && b.slot != WorkshopSteel)
+                {
+                    shadowCutouts.push_back(&b);
+                    continue;
+                }
+                auto &group = ranges[b.mesh.indexType == GL_UNSIGNED_INT];
+                const auto i = group.size++;
+                group.counts[i] = b.mesh.count;
+                group.offsets[i] = reinterpret_cast<const void *>(b.indexOffset);
+                group.bases[i] = b.baseVertex;
+            }
+            if (!ranges[0].size && !ranges[1].size)
+                continue;
+            BindVertexArray(sector.storage.vao);
+            for (int wide = 0; wide < 2; ++wide)
+            {
+                const auto &group = ranges[wide];
+                if (group.size)
+                {
+                    MultiDrawElementsBaseVertex(GL_TRIANGLES, group.counts.data(),
+                                                wide ? GL_UNSIGNED_INT : GL_UNSIGNED_SHORT,
+                                                group.offsets.data(), group.size, group.bases.data());
+                    ++shadowBatches;
+                }
+            }
+        }
+        UseProgram(scene);
+        for (const auto *cutout : shadowCutouts)
+        {
+            draw(*cutout, Mat4::identity());
+            ++shadowBatches;
+        }
+    }
+
+    static void drawGeometry(const Batch &b)
+    {
         if (b.sectorVao)
         {
             BindVertexArray(b.sectorVao);
@@ -2371,8 +2494,9 @@ StreamingStats Renderer::streamingStats() const
 void Renderer::prepare(const World &world)
 {
     impl_->headlights = {};
-    impl_->farShadowCache.reset();
+    impl_->farShadowCache = {};
     auto &r = *impl_;
+    r.street.prepare(world);
     r.effects.clearWeatherCache();
     r.grassCell.reset();
     r.grassInstances.clear();
@@ -2522,6 +2646,9 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     r.updateDetails(view.eye);
     frame_trace.enter(FrameTrace::prepare);
     r.timer.begin();
+    ActiveTexture(TEXTURE0 + 12);
+    glBindTexture(GL_TEXTURE_2D, r.cloudDensity);
+    ActiveTexture(TEXTURE0);
     float day = float(world.clock.daylight()), rain = float(world.rain);
     // The sky and the haze of the managed game for this hour and weather.
     const auto air = Atmosphere::create(world.rain, world.clock.daylight(), world.clock.sunHeight(),
@@ -2545,23 +2672,14 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     const bool farEnabled = view.shadows && r.graphics.quality > 1 && shadow.strength > 0.f;
     const Vec3 farFocus = shadowFocus + (view.target - view.eye).unit() * 54.f;
     const Vec3 lightDirection = sun.unit();
-    const size_t sectorRevision = r.sectorUploads + r.sectorEvictions;
-    auto &cache = r.farShadowCache;
-    if (!farEnabled)
-        cache.reset();
-    // Only static casters enter this map. Keep its original matrix while the
-    // camera and sun move less than a visible distance at the cascade boundary.
-    const bool refreshFar = farEnabled && (!cache || (cache->focus - farFocus).length() > 4.f ||
-                                           (cache->sun - lightDirection).length() > .002f ||
-                                           cache->sectorRevision != sectorRevision);
-    if (refreshFar)
-        cache =
-            Impl::FarShadowCache{sunShadow(farFocus, sun, SunShadow::farHalfSize, SunShadow::farResolution),
-                                 farFocus, lightDirection, sectorRevision};
-    const Mat4 &farMatrix = cache ? cache->shadow.matrix : shadow.matrix;
+    const auto farUpdate =
+        r.farShadowCache.advance(farEnabled, farFocus, lightDirection, r.sectorUploads + r.sectorEvictions);
+    using Portion = FarShadowCache::Portion;
+    const bool refreshFar = farUpdate.portion != Portion::none;
+    r.timer.farRefresh(refreshFar);
     Uniform1i(r.uniform("uFarShadow"), 10);
     Uniform1i(r.uniform("uFarEnabled"), farEnabled);
-    UniformMatrix4fv(r.uniform("uFarShadowMatrix"), 1, GL_FALSE, farMatrix.m.data());
+    UniformMatrix4fv(r.uniform("uFarShadowMatrix"), 1, GL_FALSE, farUpdate.visible.m.data());
     if (!view.shadows || r.graphics.quality == 0)
         shadow.strength = 0;
     UniformMatrix4fv(r.uniform("uShadowMatrix"), 1, GL_FALSE, shadow.matrix.m.data());
@@ -2624,6 +2742,9 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 colour * (1 - .92f * day), {});
         }
     }
+    const bool localLights = day < .999f || std::ranges::any_of(lampColor, [](float c) { return c > 0.f; });
+    r.street.update(world, view.eye, r.headlights);
+    r.sceneStreet.upload(r.street);
     // Covered tunnels for the shader: centre and half-length of the roofed part, then
     // the linear floor under the roof and the phase of the ceiling lamps along x.
     std::array<float, 24> tunnelVolume{}, tunnelFloor{};
@@ -2674,13 +2795,50 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                                  ? Mat4::identity()
                                  : ReflectionProbe::projection() * ReflectionProbe::view(probeEye, probeFace);
     const Vec3 sunRay{float(std::cos((world.clock.hour - 6) * pi / 12)), float(world.clock.sunHeight()), .3f};
+    Uniform3f(r.uniform("uFog"), fog.x, fog.y, fog.z);
+    Uniform3f(r.uniform("uZenith"), air.zenith.x, air.zenith.y, air.zenith.z);
+    Uniform4f(r.uniform("uAir"), air.density, air.heightScale, air.golden, float(world.wetness));
+    Uniform3f(r.uniform("uSun"), sunRay.x, sunRay.y, sunRay.z);
+    Uniform1f(r.uniform("uDay"), day);
+    Uniform1f(r.uniform("uTime"), float(world.time));
+    Uniform1f(r.uniform("uHour"), float(world.clock.hour));
+    Uniform1f(r.uniform("uRain"), rain);
+    Uniform1i(r.uniform("uColor"), 0);
+    Uniform1i(r.uniform("uNormal"), 1);
+    Uniform1i(r.uniform("uBones"), 2);
+    Uniform1i(r.uniform("uOrm"), 3);
+    Uniform1i(r.uniform("uRug"), 4);
+    Uniform1i(r.uniform("uLocalLights"), localLights);
+    Uniform1f(r.uniform("uWaterEdge"), float(world.layout.edge()));
+    Uniform1i(r.uniform("uGridNodes"), r.lampNodes);
+    Uniform1f(r.uniform("uGridLow"), r.lampLow);
+    Uniform1f(r.uniform("uLampSide"), r.lampSide);
+    Uniform1i(r.uniform("uLampMap"), 6);
+    Uniform3fv(r.uniform("uLampPosition"), 12, lampPosition.data());
+    Uniform3fv(r.uniform("uLampColor"), 12, lampColor.data());
+    Uniform3fv(r.uniform("uLampDirection"), 12, lampDirection.data());
+    Uniform1i(r.uniform("uTunnelCount"), tunnels);
+    Uniform3fv(r.uniform("uTunnels"), 8, tunnelVolume.data());
+    Uniform3fv(r.uniform("uTunnelFloors"), 8, tunnelFloor.data());
+    ActiveTexture(TEXTURE0 + 6);
+    glBindTexture(GL_TEXTURE_2D, r.lampMap);
+    ActiveTexture(TEXTURE0 + 8);
+    glBindTexture(GL_TEXTURE_2D, r.yardMask);
+    Uniform1i(r.uniform("uYardMask"), 8);
+    ActiveTexture(TEXTURE0);
+    Uniform1f(r.uniform("uDetailStart"), building_detail_start * detailScale);
+    Uniform1f(r.uniform("uDetailEnd"), building_detail_end * detailScale);
+    ActiveTexture(TEXTURE0 + 4);
+    glBindTexture(GL_TEXTURE_2D, r.rug);
+    ActiveTexture(TEXTURE0);
+    const auto shadowReceivers = Frustum(vp).extruded(lightDirection * SunShadow::depth);
     // Far and near sunlight, the pending reflection face, then the camera view.
     for (int pass = 0; pass < 4; ++pass)
     {
         const bool farPass = pass == 0, depthPass = pass <= 1, probePass = pass == 2, viewPass = pass == 3;
         if (farPass && !refreshFar)
             continue;
-        const int cascade = farPass ? 1 : 0;
+        const int cascade = farPass ? farUpdate.writeTarget : 0;
         const int shadowSize = farPass ? SunShadow::farResolution : SunShadow::resolution;
         if (probePass)
             r.timer.mark(SceneTimer::reflection);
@@ -2690,7 +2848,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             continue;
         frame_trace.enter(depthPass ? FrameTrace::shadow : probePass ? FrameTrace::probe : FrameTrace::scene);
         const Vec3 eye = probePass ? probeEye : view.eye;
-        const Mat4 &passMatrix = depthPass   ? (farPass ? farMatrix : shadow.matrix)
+        const Mat4 &passMatrix = depthPass   ? (farPass ? farUpdate.draw : shadow.matrix)
                                  : probePass ? probeMatrix
                                              : vp;
         const float passRange = probePass ? ReflectionProbe::farPlane : range;
@@ -2698,7 +2856,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         // Never sample a depth texture while rendering into it.
         glBindTexture(GL_TEXTURE_2D, depthPass ? 0 : r.shadowTexture[0]);
         ActiveTexture(TEXTURE0 + 10);
-        glBindTexture(GL_TEXTURE_2D, depthPass ? 0 : r.shadowTexture[1]);
+        glBindTexture(GL_TEXTURE_2D, depthPass ? 0 : r.shadowTexture[farUpdate.readTarget]);
         ActiveTexture(TEXTURE0 + Impl::probeUnit);
         glBindTexture(TEXTURE_CUBE_MAP, r.probeCubes[r.probeFront]);
         ActiveTexture(TEXTURE0);
@@ -2722,14 +2880,20 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             glDisable(GL_POLYGON_OFFSET_FILL);
             glClearColor(fog.x, fog.y, fog.z, 1);
         }
+        const bool halfMap = farPass && farUpdate.portion != Portion::full;
+        Mat4 clipRegion = Mat4::identity();
+        if (halfMap)
+        {
+            const bool right = farUpdate.portion == Portion::right;
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(right ? shadowSize / 2 : 0, 0, shadowSize / 2, shadowSize);
+            clipRegion.m[0] = 2.f;
+            clipRegion.m[12] = right ? -1.f : 1.f;
+        }
         glClear(GL_DEPTH_BUFFER_BIT | (depthPass ? 0 : GL_COLOR_BUFFER_BIT));
         Uniform1i(r.uniform("uDepthPass"), depthPass ? 1 : 0);
         UniformMatrix4fv(r.uniform("uViewProjection"), 1, GL_FALSE, passMatrix.m.data());
         Uniform3f(r.uniform("uEye"), eye.x, eye.y, eye.z);
-        Uniform3f(r.uniform("uFog"), fog.x, fog.y, fog.z);
-        Uniform3f(r.uniform("uZenith"), air.zenith.x, air.zenith.y, air.zenith.z);
-        Uniform4f(r.uniform("uAir"), air.density, air.heightScale, air.golden, float(world.wetness));
-        Uniform3f(r.uniform("uSun"), sunRay.x, sunRay.y, sunRay.z);
         // A face of the probe mirrors only the sky and the analytic city: no recursion.
         Uniform1i(r.uniform("uProbe"), Impl::probeUnit);
         Uniform1i(r.uniform("uProbePass"), probePass ? 1 : 0);
@@ -2739,51 +2903,26 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         Uniform1i(r.uniform("uProbeRoofed"), probeUnderRoof(probeCentre));
         Uniform1i(r.uniform("uCoat"), 0);
         Uniform1i(r.uniform("uPaintMask"), 0);
-        Uniform1f(r.uniform("uDay"), day);
-        Uniform1f(r.uniform("uTime"), float(world.time));
-        Uniform1f(r.uniform("uHour"), float(world.clock.hour));
-        Uniform1f(r.uniform("uRain"), rain);
-        Uniform1i(r.uniform("uColor"), 0);
-        Uniform1i(r.uniform("uNormal"), 1);
-        Uniform1i(r.uniform("uBones"), 2);
-        Uniform1i(r.uniform("uOrm"), 3);
-        Uniform1i(r.uniform("uRug"), 4);
-        Uniform1i(r.uniform("uLocalLights"), depthPass ? 0 : 1);
-        Uniform1f(r.uniform("uWaterEdge"), float(world.layout.edge()));
-        Uniform1i(r.uniform("uGridNodes"), r.lampNodes);
-        Uniform1f(r.uniform("uGridLow"), r.lampLow);
-        Uniform1f(r.uniform("uLampSide"), r.lampSide);
-        Uniform1i(r.uniform("uLampMap"), 6);
-        Uniform3fv(r.uniform("uLampPosition"), 12, lampPosition.data());
-        Uniform3fv(r.uniform("uLampColor"), 12, lampColor.data());
-        Uniform3fv(r.uniform("uLampDirection"), 12, lampDirection.data());
-        Uniform1i(r.uniform("uTunnelCount"), depthPass ? 0 : tunnels);
-        Uniform3fv(r.uniform("uTunnels"), 8, tunnelVolume.data());
-        Uniform3fv(r.uniform("uTunnelFloors"), 8, tunnelFloor.data());
-        ActiveTexture(TEXTURE0 + 6);
-        glBindTexture(GL_TEXTURE_2D, r.lampMap);
-        ActiveTexture(TEXTURE0 + 8);
-        glBindTexture(GL_TEXTURE_2D, r.yardMask);
-        Uniform1i(r.uniform("uYardMask"),8);
-        ActiveTexture(TEXTURE0);
-        Uniform1f(r.uniform("uDetailStart"), building_detail_start * detailScale);
-        Uniform1f(r.uniform("uDetailEnd"), building_detail_end * detailScale);
-        ActiveTexture(TEXTURE0 + 4);
-        glBindTexture(GL_TEXTURE_2D, r.rug);
-        ActiveTexture(TEXTURE0);
         Uniform1i(r.uniform("uSkin"), 0);
         r.forgetConstants();
         r.setScalar(Impl::Constant::alpha, 1);
         if (probePass)
             r.probeBatches = r.probeTriangles = 0;
-        Frustum frustum(passMatrix);
+        Frustum frustum(halfMap ? clipRegion * passMatrix : passMatrix);
+        auto inPass = [&](Vec3 p, float radius)
+        {
+            return frustum.sphere(p, radius) &&
+                   (!depthPass || farPass || probeFace >= 0 || shadowReceivers.sphere(p, radius));
+        };
         auto visible = [&](Vec3 p, float radius, float objectRange)
         {
             auto delta = p - eye;
             const float limit = std::min(passRange, objectRange) + radius;
-            return (depthPass || dot(delta, delta) < limit * limit) && frustum.sphere(p, radius);
+            return (depthPass || dot(delta, delta) < limit * limit) && inPass(p, radius);
         };
         r.visibleRails.clear();
+        if (depthPass)
+            r.drawStaticShadows(inPass, passMatrix, farPass);
         auto drawScenery = [&](const auto &b)
         {
             if (b.slot == ThinRail)
@@ -2818,7 +2957,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         // The standing city is drawn surface by surface, not sector by sector: all of
         // its road, then all of its pavement. The batches of one surface share their
         // textures and constants, so only the first of a run has to set them.
-        for (int slot = 0; slot < SurfaceCount; ++slot)
+        for (int slot = 0; !depthPass && slot < SurfaceCount; ++slot)
         {
             for (const auto &sector : r.sectors)
                 if (const int at = sector.at[size_t(slot)]; at >= 0)
@@ -2842,7 +2981,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             Vec3 at{float(body.p.x), float(body.height), float(body.p.z)};
             const auto delta = at - view.eye;
             const float limit = std::min(range, f.kind >= World::FixtureKind::bag ? 38.f : 145.f);
-            if (dot(delta, delta) > limit * limit || !frustum.sphere(at, 1.6f))
+            if (dot(delta, delta) > limit * limit || !inPass(at, 1.6f))
                 continue;
             float yaw = -float(body.angle), roll = float(f.tilt);
             if (f.kind == World::FixtureKind::drinkMachine)
@@ -2916,7 +3055,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             // Conservative sphere covers both LODs, the crown and the wind deformation.
             float radius = t.height * .8f, distance = (centre - eye).length();
             if (distance - radius > std::min(float(treeDrawDistance), passRange) ||
-                !frustum.sphere(centre, radius))
+                !inPass(centre, radius))
                 continue;
             float angle = float(t.seed % 1000) * .01f;
             std::array<float, 8> instance{
@@ -2963,14 +3102,17 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         };
         drawTrees(false);
         if (farPass)
+        {
+            if (halfMap) glDisable(GL_SCISSOR_TEST);
             continue;
+        }
         if (viewPass) frame_trace.enter(FrameTrace::actors);
         if (probePass)
         {
             // The probe holds the city that stands still and the sky, as in the managed
             // game: nothing that moves, and nothing small.
             r.drawSky(air, sunRay, ReflectionProbe::direction(probeFace), ReflectionProbe::up(probeFace), 1,
-                      1, float(world.time), true);
+                      1, float(world.time), true, probeEye);
             if (r.probe.finish(world.time))
             {
                 r.probeFront = 1 - r.probeFront;
@@ -3014,7 +3156,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             frame_trace.enter(FrameTrace::sky);
             // Before anything translucent: glass does not write depth.
             r.drawSky(air, sunRay, view.target - view.eye, {0, 1, 0}, float(std::tan(pi / 6)), float(w) / h,
-                      float(world.time), false);
+                      float(world.time), false, view.eye);
             frame_trace.enter(FrameTrace::actors);
         }
         auto vehicleTransform = [](const Car &c)
@@ -3489,9 +3631,21 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         // Puddles mirror the city, and the haze takes distant smoke: the effects share
         // the sky, the haze and the probe of the scene.
         UseProgram(r.effectShader);
+        r.effectStreet.upload(r.street);
         const Vec3 probeCentre = r.probe.centre();
+        const Frustum camera(vp);
+        const bool reflectPuddles =
+            post && r.graphics.quality > 1 &&
+            std::ranges::any_of(world.puddles,
+                                [&](const RoadPuddle &puddle)
+                                {
+                                    const Vec3 centre = (puddle.corners[0] + puddle.corners[2]) * .5f;
+                                    const Vec3 delta = centre - view.eye;
+                                    return dot(delta, delta) < 34.f * 34.f && camera.sphere(centre, 2.5f);
+                                });
         if (post)
-            r.post.beginEffects(9);
+            r.post.beginEffects(9, reflectPuddles);
+        Uniform1i(r.reflectPuddlesUniform, reflectPuddles);
         Uniform1i(r.effectUniforms.softDepth, post);
         Uniform2f(r.effectUniforms.clip, nearPlane, farPlane);
         Uniform3fv(r.effectUniforms.lamps, 8, lampPosition.data());

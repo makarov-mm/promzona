@@ -1,5 +1,6 @@
 #include "promzona/world.hpp"
-#include "../src/headlights.hpp"
+#include "../src/street_lighting.hpp"
+#include "../src/cloud_map.hpp"
 #include "promzona/atmosphere.hpp"
 #include "promzona/city_mesh.hpp"
 #include "promzona/reflection_probe.hpp"
@@ -66,8 +67,64 @@ void headlightSelection()
     check(std::ranges::all_of(lights.slots, [](auto slot) { return slot.car < 0; }),
           "daylight clears active pairs");
 }
+void streetLighting()
+{
+    World world;
+    world.buildings.push_back({{0, 15}, {3, 2}, 7});
+    world.busStops.push_back({10, 0});
+    world.terrain.generate(12, 33, world.buildings);
+    world.setWeather(1);
+    world.cars.resize(3);
+    world.cars[0].body.p = {0, 0};
+    world.cars[1].body.p = {0, 6};
+    world.cars[2].body.p = {0, -16};
+    HeadlightSelection lights;
+    lights.slots[2] = {0, 1.f};
+    StreetLighting street;
+    street.prepare(world);
+    street.update(world, {}, lights);
+    check(street.lampIndex == 4 && street.blockerCount == 2,
+          "beam retains the crossing car and the wall ahead");
+    check(street.coverCount == 2, "both a bus stop and an apartment canopy keep rain off the pavement");
+    const auto centre = World::shelter(world.busStops.front());
+    check(std::abs(street.covers[0].centre.x - centre.x) < .001, "bus shelter rain uses model origin");
+    world.cars[1].body.p = {35, 2};
+    world.setWeather(0);
+    street.update(world, {}, lights);
+    check(street.coverCount == 0 && street.blockerCount == 1,
+          "dry weather and moving traffic update independently");
+    street.update(world, {}, {});
+    check(street.lampIndex == -1 && street.blockerCount == 0, "daylight clears occluders");
+    Frustum view(Mat4::identity());
+    const auto casters = view.extruded({10, 0, 0});
+    check(!view.sphere({5, 0, 0}, .1f) && casters.sphere({5, 0, 0}, .1f),
+          "off-screen casters toward the sun remain visible");
+    check(!casters.sphere({-4, 0, 0}, .1f), "caster beyond the viewing volume casts away from it");
+    const auto clouds = cloudMap(64);
+    const auto [low, high] = std::ranges::minmax(clouds);
+    check(clouds == cloudMap(64) && low < 100 && high > 160,
+          "cloud deck has repeatable clear and overcast patches");
+}
 void shadows()
 {
+    FarShadowCache cache;
+    using Portion = FarShadowCache::Portion;
+    const Vec3 testSun = Vec3{1, 1, 0}.unit();
+    const auto first = cache.advance(true, {}, testSun, 1);
+    const auto left = cache.advance(true, {5, 0, 0}, testSun, 1);
+    const auto right = cache.advance(true, {6, 0, 0}, testSun, 2);
+    check(first.portion == Portion::full && left.portion == Portion::left && right.portion == Portion::right,
+          "first map is complete and normal refresh takes two frames");
+    check(left.readTarget != left.writeTarget && left.visible.m == first.visible.m &&
+              right.readTarget == left.writeTarget && right.visible.m == left.draw.m,
+          "the visible shadow map keeps a matching matrix through either half");
+    check(cache.advance(true, {6, 0, 0}, testSun, 2).portion == Portion::left,
+          "streaming changes survive a pending capture");
+    check(cache.advance(true, {100, 0, 0}, testSun, 2).portion == Portion::full,
+          "teleport replaces a partial capture");
+    check(cache.advance(false, {}, testSun, 2).portion == Portion::none &&
+              cache.advance(true, {}, testSun, 2).portion == Portion::full,
+          "enabling daylight restores a complete map");
     for (auto sun : {Vec3{1, 1, .3f}, Vec3{0, 1, 0}, Vec3{-1, .12f, .3f}, Vec3{1, -1, 0}})
     {
         Vec3 focus{127, 19, -235};
@@ -1088,6 +1145,7 @@ int main()
     {
         effects();
         headlightSelection();
+        streetLighting();
         shadows();
         skyAndProbe();
         weather();

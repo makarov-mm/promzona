@@ -5,8 +5,8 @@
 in vec2 uv;
 out vec4 fragColor;
 #include "environment.glsl"
+uniform vec3 uCloudEye;
 uniform vec3 uRight, uUp, uForward; // axes of the view; the first two reach the edges of the frame
-uniform float uTime;
 uniform int uProbePass;
 
 float skyHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -15,15 +15,6 @@ float skyNoise(vec2 p) {
     f = f * f * (3.0 - 2.0 * f);
     return mix(mix(skyHash(cell), skyHash(cell + vec2(1, 0)), f.x),
                mix(skyHash(cell + vec2(0, 1)), skyHash(cell + 1.0), f.x), f.y);
-}
-float clouds(vec2 p) {
-    float value = 0.0, amplitude = 0.53;
-    for (int octave = 0; octave < 4; ++octave) {
-        value += amplitude * skyNoise(p);
-        p = p * 2.03 + vec2(13.2, 7.1);
-        amplitude *= 0.48;
-    }
-    return value;
 }
 void main() {
     vec3 ray = normalize(uForward + uRight * (uv.x * 2.0 - 1.0) + uUp * (uv.y * 2.0 - 1.0));
@@ -47,17 +38,16 @@ void main() {
         // The clouds drift by seconds on the screen, whatever the speed of the game clock.
         vec2 skyPlane = ray.xz / (ray.y + 0.18);
         vec2 p = skyPlane * 2.15 + uTime * vec2(0.0030, 0.0012);
-        float density = clouds(p);
-        float upper = smoothstep(mix(0.44, 0.29, rain), mix(0.69, 0.56, rain), density);
+        vec2 deck = cloudUv(uCloudEye, ray, uTime);
+        float density = texture(uCloudMap, deck).r;
+        float upper = cloudCoverage(density, rain);
         vec2 lowPlane = skyPlane * 3.8 + uTime * vec2(-0.006, 0.0035);
         float lowNoise = 0.68 * skyNoise(lowPlane) + 0.32 * skyNoise(lowPlane * 2.31);
         float lower = smoothstep(0.47, 0.77, lowNoise) * mix(0.19, 0.78, rain);
         float horizonFade = smoothstep(0.015, 0.22, altitude);
 
         // Sample toward the light: the sunward rim sees less cloud in front of it.
-        vec2 lightStep = sun.xz * 0.24;
-        float towardSun = 0.67 * skyNoise(p + lightStep)
-                        + 0.33 * skyNoise((p + lightStep) * 2.03 + vec2(13.2, 7.1));
+        float towardSun = texture(uCloudMap, deck + sun.xz * 0.027).r;
         float edgeLight = smoothstep(-0.06, 0.24, density - towardSun)
                         * (1.0 - 0.78 * upper);
         vec3 shade = mix(vec3(0.53, 0.60, 0.69), vec3(0.25, 0.30, 0.37), rain);

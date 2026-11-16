@@ -34,6 +34,7 @@ namespace Promzona::gl
     X(BindBuffer, void, GLenum, GLuint) \
     X(BufferData, void, GLenum, std::ptrdiff_t, const void *, GLenum) \
     X(BufferSubData, void, GLenum, std::ptrdiff_t, std::ptrdiff_t, const void *) \
+    X(MultiDrawElementsBaseVertex, void, GLenum, const GLsizei *, GLenum, const void *const *, GLsizei, const GLint *) \
     X(DrawElementsBaseVertex, void, GLenum, GLsizei, GLenum, const void *, GLint) \
     X(DeleteBuffers, void, GLsizei, const GLuint *) \
     X(GenVertexArrays, void, GLsizei, GLuint *) \
@@ -75,6 +76,7 @@ inline void load()
                      PIXEL_UNPACK_BUFFER = 0x88ec, STREAM_DRAW = 0x88e0, DYNAMIC_DRAW = 0x88e8, VERTEX_SHADER = 0x8b31, FRAGMENT_SHADER = 0x8b30,
                      COMPILE_STATUS = 0x8b81, LINK_STATUS = 0x8b82, TEXTURE0 = 0x84c0, RGBA32F = 0x8814,
                      CLAMP_TO_EDGE = 0x812f, FRAMEBUFFER = 0x8d40, DEPTH_ATTACHMENT = 0x8d00,
+                     TEXTURE_COMPARE_MODE = 0x884C, TEXTURE_COMPARE_FUNC = 0x884D, COMPARE_REF_TO_TEXTURE = 0x884E,
                      FRAMEBUFFER_COMPLETE = 0x8cd5, DEPTH_COMPONENT24 = 0x81a6, COLOR_ATTACHMENT0 = 0x8ce0,
                      TIMESTAMP = 0x8e28, TIME_ELAPSED = 0x88bf, QUERY_RESULT = 0x8866, QUERY_RESULT_AVAILABLE = 0x8867, R8 = 0x8229,
                      RGBA16F = 0x881a, TEXTURE_CUBE_MAP = 0x8513, TEXTURE_CUBE_MAP_POSITIVE_X = 0x8515,

@@ -22,6 +22,16 @@ class Frustum
                     v /= std::max(1e-8f, length);
             }
     }
+    // Conservative hull of the camera volume swept toward the sun. An off-screen
+    // caster is retained whenever its projected shadow can reach a visible receiver.
+    Frustum extruded(Vec3 displacement) const
+    {
+        Frustum result = *this;
+        for (auto &plane : result.planes_)
+            plane[3] += std::max(
+                0.f, -(plane[0] * displacement.x + plane[1] * displacement.y + plane[2] * displacement.z));
+        return result;
+    }
     bool sphere(Vec3 p, float radius) const
     {
         for (auto &plane : planes_)

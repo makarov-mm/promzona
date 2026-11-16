@@ -13,11 +13,13 @@ uniform int uCoat;
 // 1 while a face of the reflection probe is rendered: linear light is kept.
 uniform int uProbePass;
 uniform vec3 uEye, uTint;
-uniform float uEmissive, uAlpha, uTime, uHour;
+uniform float uEmissive, uAlpha, uHour;
 #include "environment.glsl"
 #include "headlight.glsl"
+#include "beam_occlusion.glsl"
+#include "rain_cover.glsl"
 uniform float uRoughness, uMetallic, uDetailStart, uDetailEnd;
-uniform sampler2D uShadow, uFarShadow;
+uniform sampler2DShadow uShadow, uFarShadow;
 uniform mat4 uFarShadowMatrix;
 uniform bool uFarEnabled;
 uniform mat4 uShadowMatrix;
@@ -42,7 +44,7 @@ float patches(vec3 p) {
                mix(mix(latticeHash(i+vec3(0,0,1)), latticeHash(i+vec3(1,0,1)), f.x),
                    mix(latticeHash(i+vec3(0,1,1)), latticeHash(i+vec3(1,1,1)), f.x), f.y), f.z);
 }
-float shadowCoverage(sampler2D map, mat4 matrix, vec3 position, float bias, out float weight)
+float shadowCoverage(sampler2DShadow map, mat4 matrix, vec3 position, float bias, out float weight)
 {
     vec4 clip = matrix * vec4(position, 1.0);
     vec3 p = clip.xyz / clip.w * 0.5 + 0.5;
@@ -50,11 +52,15 @@ float shadowCoverage(sampler2D map, mat4 matrix, vec3 position, float bias, out 
     weight = (p.z > 0.0 && p.z < 1.0) ? 1.0 - smoothstep(0.80, 0.99, edge) : 0.0;
     if (weight <= 0.0) return 0.0;
     vec2 texel = 1.0 / vec2(textureSize(map, 0));
-    float cover = 0.0;
-    for (int y = -1; y <= 1; ++y)
-        for (int x = -1; x <= 1; ++x)
-            cover += step(texture(map, p.xy + vec2(x, y) * texel).r + bias, p.z);
-    return cover / 9.0;
+    // Each filtered comparison averages four depths. Four overlapping taps
+    // approximate the previous three-texel footprint with continuous edges.
+    vec2 delta = 0.75 * texel;
+    float reference = p.z - bias;
+    float lit = texture(map, vec3(p.xy - delta, reference))
+              + texture(map, vec3(p.xy + vec2(delta.x, -delta.y), reference))
+              + texture(map, vec3(p.xy + vec2(-delta.x, delta.y), reference))
+              + texture(map, vec3(p.xy + delta, reference));
+    return 1.0 - 0.25 * lit;
 }
 
 float sunlight(vec3 normal)
@@ -107,10 +113,10 @@ int tunnelAt(vec3 p) {
     }
     return -1;
 }
-vec3 localLights(vec3 n, vec3 albedo, bool underground) {
+vec3 localLights(vec3 n, vec3 albedo, bool underground, float exposure) {
     vec3 sum = vec3(0.);
     float dark = underground ? 0. : 1. - uDay;
-    float wet = underground ? 0. : uAir.w * max(n.y, 0.);
+    float wet = exposure * max(n.y, 0.);
     if (dark > .001 && uGridNodes > 0) {
         // Each node owns the posts beside its northern and eastern streets; the lamp
         // map holds the height of every lamp head, or a large negative value for none.
@@ -130,7 +136,12 @@ vec3 localLights(vec3 n, vec3 albedo, bool underground) {
     }
     for (int i = 0; i < 12; ++i)
         if (dot(uLampColor[i], uLampColor[i]) > .001)
-            sum += localLamp(uLampPosition[i], uLampColor[i], uLampDirection[i], n, albedo, i < 8 ? 34.0 : 22.0, wet);
+        {
+            vec3 contribution = localLamp(uLampPosition[i], uLampColor[i], uLampDirection[i], n, albedo, i < 8 ? 34.0 : 22.0, wet);
+            if (uBlockedPair >= 0 && (i == uBlockedPair || i == uBlockedPair + 1) && dot(contribution, contribution) > 0.0000001)
+                contribution *= beamVisibility(uLampPosition[i], vWorld);
+            sum += contribution;
+        }
     return sum;
 }
 // Clothes of the managed Actor.frag on the 16-slot people palette: 0 top, 1 skin,
@@ -449,19 +460,31 @@ void main() {
     // Wet asphalt of the managed game: the street does not wet evenly. Patches of it
     // darken, turn smooth and mirror the city for as long as the street stays wet.
     // No rain falls under the roof of a tunnel.
+    float rainExposure = tunnel < 0 ? uAir.w : 0.0;
+    float edgeWater = 0.0;
+    if (rainExposure > 0.002 && n.y > 0.25 && uCoverCount > 0)
+    {
+        float edge = roofDistance(vWorld);
+        rainExposure *= smoothstep(-0.18, 0.12, edge);
+        edgeWater = (1.0 - smoothstep(0.04, 0.26, abs(edge - 0.12))) * rainExposure;
+    }
     float damp = 0.;
     if (uSurface == 2 && uAir.w > .002 && tunnel < 0) {
         float drainage = patches(vec3(vWorld.xz * 0.18, 0.42));
         float aggregate = patches(vec3(vWorld.xz * 1.27, 0.81));
-        damp = uAir.w * smoothstep(0.27, 0.72, 0.70 * drainage + 0.30 * aggregate);
+        damp = rainExposure * smoothstep(0.27, 0.72, 0.70 * drainage + 0.30 * aggregate);
         baseColor *= 1.0 - 0.34 * damp;
+    }
+    if (uSurface == 3 && n.y > 0.35)
+    {
+        damp = clamp(0.42 * rainExposure + 0.58 * edgeWater, 0.0, 1.0);
+        baseColor *= 1.0 - 0.33 * damp;
     }
     vec3 albedo = pow(max(baseColor,vec3(.001)),vec3(2.2));
     vec3 orm = uHasOrm != 0 ? texture(uOrm,vUv).rgb : vec3(1,uRoughness,uMetallic);
     float ao = clamp(orm.r,.15,1), metal = clamp(orm.b,0,1);
-    float rainExposure = tunnel < 0 ? uAir.w : 0.;
     float rough = mix(clamp(orm.g,.08,1),.24,rainExposure*max(n.y,0));
-    if (uSurface == 2)
+    if (uSurface == 2 || uSurface == 3)
     {
         rough = mix(clamp(orm.g, 0.30, 1.0), 0.12, damp);
         n = normalize(mix(n, normalize(vNormal), 0.65 * damp));
@@ -487,7 +510,11 @@ void main() {
     float golden = exp(-pow((uSun.y-.15)*4.0,2.0))*uDay;
     vec3 light = mix(vec3(1,.97,.91),vec3(1,.64,.34),golden*.55);
     vec3 sky = pow(uFog,vec3(2.2));
-    float sunVisibility = sunlight(n);
+    // A back-facing opaque surface receives only indirect light. Foliage also
+    // transmits light through the back of the leaf.
+    float sunVisibility = 0.0;
+    if (tunnel < 0 && (nl > 0.0 || uSurface == 9))
+        sunVisibility = sunlight(n) * transmittedSun(vWorld, l, uTime, uRain);
     // Cool skylight at night sets off the warm street lamps.
     vec3 skylight = mix(vec3(.60, .76, 1.10), vec3(1.), uDay);
     vec3 color = albedo*skylight*(.12+.28*uDay)*ao+(diffuse+specular)*light*nl*(.15+2.8*uDay)*sunVisibility;
@@ -503,7 +530,7 @@ void main() {
             color += localLamp(vec3(x, f.x + (x - t.x)*f.y + 4.7, t.y), vec3(3.2,2.9,2.1), vec3(0.), n, albedo, 13., 0.);
         }
     }
-    if (uLocalLights != 0) color += localLights(n, albedo, tunnel >= 0);
+    if (uLocalLights != 0) color += localLights(n, albedo, tunnel >= 0, rainExposure);
     if (vDetail.z < 0.0 && (vDetail.w == -1.0 || vDetail.w == -2.0))
     {
         vec2 fromLamp = vec2(vLocal.x, vLocal.y - 2.26);

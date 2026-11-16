@@ -74,6 +74,7 @@ void PostProcessing::resize(int w, int h)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, CLAMP_TO_EDGE);
     };
     allocate(depth_, w, h, Kind::depth);
+    if (sceneCopy_) allocate(sceneCopy_, w, h, Kind::colour);
     for (unsigned i = 0; i < fb_.size(); ++i)
     {
         if (i == 3)
@@ -95,8 +96,28 @@ void PostProcessing::resize(int w, int h)
     glBindTexture(GL_TEXTURE_2D, 0);
     BindFramebuffer(FRAMEBUFFER, 0);
 }
-void PostProcessing::beginEffects(unsigned depthUnit) const
+void PostProcessing::beginEffects(unsigned depthUnit, bool reflectPuddles)
 {
+    if (reflectPuddles)
+    {
+        BindFramebuffer(FRAMEBUFFER, fb_[0]);
+        ActiveTexture(TEXTURE0 + 11);
+        if (!sceneCopy_)
+        {
+            glGenTextures(1, &sceneCopy_);
+            glBindTexture(GL_TEXTURE_2D, sceneCopy_);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, CLAMP_TO_EDGE);
+            glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, 0, 0, w_, h_, 0);
+        }
+        else
+        {
+            glBindTexture(GL_TEXTURE_2D, sceneCopy_);
+            glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, w_, h_);
+        }
+    }
     BindFramebuffer(FRAMEBUFFER, effectsFb_);
     ActiveTexture(TEXTURE0 + depthUnit);
     glBindTexture(GL_TEXTURE_2D, depth_);
@@ -163,6 +184,8 @@ void PostProcessing::releaseTargets()
         DeleteFramebuffers(GLsizei(fb_.size()), fb_.data());
         glDeleteTextures(GLsizei(color_.size()), color_.data());
         glDeleteTextures(1, &depth_);
+        glDeleteTextures(1, &sceneCopy_);
+        sceneCopy_ = 0;
         DeleteFramebuffers(1, &effectsFb_);
         effectsFb_ = 0;
         depth_ = 0;
@@ -203,9 +226,11 @@ void SceneTimer::begin()
         for (int i = 0; i < finish; ++i)
             milliseconds_[i].push_back(double(stamps[i + 1] - stamps[i]) * 1e-6);
         milliseconds_[finish].push_back(double(stamps.back() - stamps.front()) * 1e-6);
+        samples_.push_back({frameIds_[cursor_], refreshed_[cursor_], milliseconds_[finish].back()});
         pending_[cursor_] = false;
     }
     active_ = true;
+    frameIds_[cursor_] = frame_;
     mark(shadows);
 }
 void SceneTimer::mark(Stage stage)
@@ -227,7 +252,10 @@ std::string SceneTimer::report() const
     if (milliseconds_.back().empty())
         return "scene GPU: no samples";
     constexpr std::array names{"shadows", "reflection", "opaque", "particles", "post", "scene"};
-    std::string result;
+    std::string result = "GPU frames (frame:far_refresh:ms)";
+    for (const auto &sample : samples_)
+        result += std::format(" {}:{}:{:.3f}", sample.frame, int(sample.refreshed), sample.elapsed);
+    result += '\n';
     for (size_t i = 0; i < names.size(); ++i)
     {
         auto samples = milliseconds_[i];

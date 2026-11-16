@@ -3,6 +3,8 @@
 // LocalLighting.glsl. "Display" colours are those of the finished picture, in which the
 // managed game shaded; the scene shader works in linear light and compresses at its end.
 #include "water.glsl"
+#include "cloud_layer.glsl"
+uniform float uTime;
 
 uniform vec3 uSun;          // towards the sun, not normalised
 uniform vec3 uFog, uZenith; // display colours of the sky at the horizon (the haze) and overhead
@@ -38,7 +40,7 @@ float openSeaView(vec3 position, vec3 ray)
          * smoothstep(-0.16, 0.20, dot(ray.xz, coast));
 }
 
-vec3 cityEnvironment(vec3 ray, float roughness, bool roofed, float seaward) {
+vec3 cityEnvironment(vec3 position, vec3 ray, float roughness, bool roofed, float seaward) {
     if (roofed) return fromDisplay(vec3(.13, .14, .13));
     vec3 ground = mix(vec3(.012, .016, .022), vec3(.12, .14, .12), uDay);
     vec3 sky = mix(uFog, uZenith, smoothstep(0., .8, ray.y));
@@ -48,13 +50,15 @@ vec3 cityEnvironment(vec3 ray, float roughness, bool roofed, float seaward) {
     float edge = smoothstep(skyline - .03 - roughness*.09, skyline + .03 + roughness*.09, ray.y);
     edge = mix(edge, 1.0, seaward);
     float sun = pow(max(0., dot(ray, normalize(uSun))), mix(500., 22., roughness));
+    if (sun > 0.0001 && uDay > 0.01)
+        sun *= transmittedSun(position, normalize(uSun), uTime, uRain);
     return fromDisplay(mix(ground, sky, edge) + vec3(1., .84, .60)*sun*.55*uDay*(1. - uRain));
 }
 // The city around `position` seen along `direction`: the local probe with a spherical
 // parallax correction, fading into the analytic environment away from its centre.
 vec3 cityReflection(vec3 position, vec3 direction, float roughness, bool roofed) {
     float seaward = openSeaView(position, direction);
-    vec3 beyond = cityEnvironment(direction, roughness, roofed, seaward);
+    vec3 beyond = cityEnvironment(position, direction, roughness, roofed, seaward);
     if (uProbeReady == 0 || roofed != (uProbeRoofed != 0)) return beyond;
     // The sky is at infinity: clouds keep their direction outside the local parallax volume.
     // Never borrow a city-centre probe for a distant stretch of coast.

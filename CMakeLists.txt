@@ -131,11 +131,12 @@ if(WIN32)
       VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
       VS_DEBUGGER_COMMAND_ARGUMENTS "\"${CMAKE_SOURCE_DIR}/Content\"")
   endif()
-  add_executable(Promzona WIN32 src/main.cpp src/renderer.cpp src/effect_batch.cpp src/effect_batch.hpp src/headlights.hpp src/leaf_mask.hpp src/frame_trace.hpp src/post_processing.cpp src/post_processing.hpp src/audio_device.cpp src/promzona.rc src/app.manifest)
+  add_executable(Promzona WIN32 src/main.cpp src/renderer.cpp src/effect_batch.cpp src/effect_batch.hpp src/headlights.hpp src/leaf_mask.hpp src/street_lighting.hpp src/cloud_map.hpp src/frame_trace.hpp src/post_processing.cpp src/post_processing.hpp src/audio_device.cpp src/promzona.rc src/app.manifest)
   set(native_shaders
     Content/Shaders/Native/scene.vert Content/Shaders/Native/scene.frag
     Content/Shaders/Native/fullscreen.vert Content/Shaders/Native/resolve.frag Content/Shaders/Native/glow.frag
     Content/Shaders/Native/occlusion.frag Content/Shaders/Native/environment.glsl Content/Shaders/Native/water.glsl Content/Shaders/Native/headlight.glsl
+    Content/Shaders/Native/cloud_layer.glsl Content/Shaders/Native/beam_occlusion.glsl Content/Shaders/Native/rain_cover.glsl Content/Shaders/Native/static_depth.vert Content/Shaders/Native/static_depth.frag
     Content/Shaders/Native/sky.vert Content/Shaders/Native/sky.frag
     Content/Shaders/Native/ui.vert Content/Shaders/Native/ui.frag
     Content/Shaders/Native/effects.vert Content/Shaders/Native/effects.frag)

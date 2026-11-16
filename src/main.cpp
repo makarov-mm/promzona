@@ -458,12 +458,14 @@ namespace
 
     View visual_route(const World &world, std::wstring_view scenario, View view, float progress)
     {
-        if (scenario == L"seafront")
+        if (scenario == L"seafront" || scenario == L"cloud-coast")
         {
-            const double x = world.layout.coordinate(22) + std::lerp(-14.f, 26.f, progress);
+            const double x = world.layout.coordinate(22) +
+                             std::lerp(-14.f, 26.f, scenario == L"cloud-coast" ? .45f : progress);
             const double z = world.layout.edge() - 14.;
             view.eye = {float(x), float(world.terrain.bed_height(x, z)) + 1.68f, float(z)};
-            view.target = view.eye + Vec3{14.f, -.8f, 11.f};
+            view.target =
+                view.eye + (scenario == L"cloud-coast" ? Vec3{-20.f, -.2f, -.8f} : Vec3{14.f, -.8f, 11.f});
         }
         else if (scenario == L"portal")
         {
@@ -485,13 +487,15 @@ namespace
             const Vec3 motion = scenario == L"shadow-avenue" ? Vec3{0, 0, 32.f}
                                 : scenario == L"wire-street" ? Vec3{2.4f, 0, 0}
                                                              : Vec3{};
-            const auto offset = motion * progress;
+            const auto offset = motion * (scenario == L"shadow-avenue" ? 3.f * progress : progress);
+            if (scenario == L"shadow-avenue")
+                view.target.x += 42.f * std::sin(progress * float(pi));
             const float height = float(world.terrain.height(view.eye.x + offset.x, view.eye.z + offset.z) -
                                        world.terrain.height(view.eye.x, view.eye.z));
             view.eye = view.eye + offset + Vec3{0, height, 0};
             view.target = view.target + offset + Vec3{0, height, 0};
         }
-        else
+        else if (scenario != L"beam-wall" && scenario != L"bus-puddle" && scenario != L"dry-canopy")
         {
             // The facade fixture has already checked clearance in this forecourt.
             view.eye = view.eye + (view.target - view.eye) * (.69f * progress);
@@ -594,7 +598,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         const bool yardCar = scenario == L"yard-car-day" || scenario == L"yard-car-evening";
         const bool yardReview = yardCar || scenario == L"yard-foot-day" ||
                                 scenario == L"yard-foot-evening" || scenario == L"yard-estate";
-        const bool entranceReview = scenario == L"entrance" || scenario == L"entrance-night";
+        const bool wallReview = scenario == L"beam-wall" || scenario == L"bus-puddle";
+        const bool entranceReview = wallReview || scenario == L"dry-canopy" || scenario == L"entrance" ||
+                                    scenario == L"entrance-night";
         if (!streetReview(scenario) && !entranceReview && !yardReview && scenario != L"day" &&
             scenario != L"drive" && scenario != L"walk" && scenario != L"storm" && scenario != L"night" &&
             scenario != L"canal" && scenario != L"bridge" && scenario != L"overpass" &&
@@ -614,7 +620,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             scenario != L"bus" && scenario != L"job-board" && scenario != L"contract-series" &&
             scenario != L"console" && scenario != L"street-hail" && scenario != L"estate" &&
             scenario != L"courtyard" && scenario != L"cottages" && scenario != L"centre" &&
-            scenario != L"garages" && scenario != L"rail-yard" && scenario != L"seafront" &&
+            scenario != L"garages" && scenario != L"rail-yard" && scenario != L"cloud-coast" && scenario != L"seafront" &&
             scenario != L"canal-mouth" && scenario != L"crowd")
             throw std::runtime_error("Unknown smoke scenario");
 
@@ -649,7 +655,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             throw std::runtime_error("Invalid mode, benchmark dimensions, or --smoke missing");
 
         if (visualRouteRain && (!smoke || smokeOutput.empty() || smokeFrames < 62 ||
-                                (!streetReview(scenario) && !entranceReview && scenario != L"seafront" &&
+                                (!streetReview(scenario) && !entranceReview && scenario != L"cloud-coast" && scenario != L"seafront" &&
                                  scenario != L"portal" && scenario != L"facade")))
             throw std::runtime_error(
                 "Visual route requires smoke output, at least 62 frames and a supported review scenario");
@@ -710,7 +716,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         {
             std::vector<std::pair<int, Vec2>> lineup;
             std::optional<View> reviewView;
-            Vec2 reviewCrossing{};
+            Vec2 reviewCrossing{}, reviewNormal{};
             double riderStartDistance{};
             int reviewRider = -1;
             Context context(app.window, !profile);
@@ -2147,6 +2153,30 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                     v.eye = front + n * 6.4f + r * 2.8f + Vec3{0, 1.68f, 0};
                                     v.target = front + Vec3{0, 1.42f, 0};
                                 }
+                                if (wallReview)
+                                {
+                                    reviewCrossing = {front.x, front.z};
+                                    reviewNormal = {n.x, n.z};
+                                    v.eye = front + n * 10.5f - r * 5.5f + Vec3{0, 1.75f, 0};
+                                    v.target = front - r * 1.2f + Vec3{0, 1.05f, 0};
+                                    if (scenario == L"bus-puddle")
+                                    {
+                                        const auto centre = front + n * 7.5f + r * 1.8f;
+                                        RoadPuddle puddle{};
+                                        puddle.centre = {centre.x, centre.z};
+                                        size_t index = 0;
+                                        for (auto offset :
+                                             {r * -2.f - n, r * 2.f - n, r * 2.f + n, r * -2.f + n})
+                                        {
+                                            const auto p = centre + offset;
+                                            puddle.corners[index++] = {
+                                                p.x, float(world->terrain.height(p.x, p.z)) + .035f, p.z};
+                                        }
+                                        world->puddles.push_back(puddle);
+                                        v.eye = centre + n * 5.f + r * 1.f + Vec3{0, 1.1f, 0};
+                                        v.target = centre - n * 3.f + Vec3{0, .7f, 0};
+                                    }
+                                }
                                 v.heading = std::atan2(v.target.x - v.eye.x, v.target.z - v.eye.z);
                                 reviewView = v;
                                 auto &c = world->cars[0];
@@ -2156,8 +2186,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                 c.body.roadLevel = 0;
                                 c.body.height = world->terrain.height(c.body.p) + .8;
                                 world->clock.set_hour(
-                                    scenario == L"facade-night" || scenario == L"entrance-night" ? 22 : 10);
-                                world->setWeather(0);
+                                    scenario == L"facade-night" || scenario == L"entrance-night" || scenario == L"beam-wall" ? 22 : 10);
+                                world->setWeather(scenario == L"dry-canopy" || scenario == L"beam-wall" ? 1. : 0.);
                                 world->weatherClock = 120;
                             }
                             if (scenario == L"far-vehicle")
@@ -2821,10 +2851,18 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                        float(unit->body.p.z)};
                         view.eye = view.target + Vec3{10, 4, -12};
                     }
-                    if (visualRouteRain)
+                    if (smoke && scenario == L"cloud-coast")
+                    {
+                        world->dayNightCycle = false;
+                        world->clock.set_hour(16.5);
+                    }
+                    if (smoke && scenario == L"dry-canopy" && visualRouteRain.value_or(true) &&
+                        frames == smokeFrames / 2)
+                        world->rain = world->rainTarget = 0.;
+                    if (visualRouteRain || (smoke && scenario == L"cloud-coast") || (profile && scenario == L"shadow-avenue"))
                     {
                         const float routeProgress =
-                            std::clamp(float(frames - 60) / float(smokeFrames - 61), 0.f, 1.f);
+                            std::clamp(float(frames - 60) / float(std::max(1, smokeFrames - 61)), 0.f, 1.f);
                         view = visual_route(*world, scenario, view, routeProgress);
                     }
                     Vec2 facing{view.target.x - view.eye.x, view.target.z - view.eye.z};
@@ -2834,6 +2872,26 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     frame_trace.enter(FrameTrace::prepare);
                     if (smoke && scenario == L"night-crossing")
                         renderCrossing(renderer, *world, view, reviewCrossing, frames, app.width, app.height);
+                    else if (smoke && wallReview)
+                    {
+                        const Vec2 across{reviewNormal.z, -reviewNormal.x};
+                        auto drawTraffic = [&](int index, unsigned model, Vec2 offset, Vec2 direction)
+                        {
+                            auto &car = world->cars.at(index);
+                            fit_vehicle(car, model);
+                            car.body.p = reviewCrossing + offset;
+                            car.body.height = world->terrain.height(car.body.p) + .8;
+                            car.body.angle = -std::atan2(direction.x, direction.z);
+                            car.driverless = false;
+                        };
+                        const auto savedBus = world->cars.at(1), savedCar = world->cars.at(2);
+                        drawTraffic(1, busModel, reviewNormal * 4. + across * (double(frames) / 12. - 16.),
+                                    across);
+                        drawTraffic(2, 0, reviewNormal * 8.7 - across * 2., reviewNormal * -1.);
+                        renderer.render(*world, view, app.width, app.height);
+                        world->cars[1] = savedBus;
+                        world->cars[2] = savedCar;
+                    }
                     else
                         renderer.render(*world, view, app.width, app.height);
                     frame_trace.enter(FrameTrace::other);
