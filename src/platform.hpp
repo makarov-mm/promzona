@@ -67,6 +67,9 @@ namespace Promzona
         void capturePointer(bool captured);
         // Pointer motion in pixels since the last call.
         std::pair<double, double> takeMotion();
+        // Typed characters are reported only while on. Off, a held key is just a key: macOS
+        // would otherwise offer its accent picker ("Ŵ 1 2 3") over the game for a held W.
+        void textInput(bool on);
     };
 
     // Shows an error to the player; usable with or without a window.

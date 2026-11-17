@@ -27,6 +27,14 @@ void World::alarmWitnesses(Vec2 origin, double height, bool playerCaused)
     }
 }
 
+bool World::surrendering() const
+{
+    if (controlledCar < 0)
+        return player.v.length() < 1.2 && !aiming && playerKnockedUntil <= time && playerScooter < 0;
+    const auto &car = cars[controlledCar];
+    return car.body.v.length() < 1 && car.grounded() && !car.recovering;
+}
+
 void World::civilianCombat(Person &p, double dt)
 {
     const auto *gun = weapon(p.sidearm);
@@ -35,6 +43,16 @@ void World::civilianCombat(Person &p, double dt)
     if (!gun || p.dead || p.riding >= 0 || p.burnUntil > time || p.alertUntil <= time || health <= 0 ||
         (controlledCar >= 0 && (cars[controlledCar].destroyed || cars[controlledCar].falling)) ||
         range <= 3 || range >= 24)
+    {
+        p.aimSeconds = 0;
+        p.burstLeft = 0;
+        return;
+    }
+
+    // Below four stars the militia come to arrest, not to kill: an officer holds his fire at a
+    // suspect who gives himself up -- standing still with no weapon raised, or with the car
+    // stopped -- as the managed game's officers did.
+    if (p.officer() && wantedLevel() < 4 && surrendering())
     {
         p.aimSeconds = 0;
         p.burstLeft = 0;

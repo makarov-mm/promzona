@@ -757,6 +757,7 @@ int main(int argc, char *argv[])
                     app.posted.pop_front();
                     handle(&app, event);
                 }
+                window->textInput(app.console);
                 if (!app.running)
                     break;
                 frame_trace.enter(FrameTrace::other);

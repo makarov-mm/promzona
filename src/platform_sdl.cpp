@@ -91,7 +91,7 @@ struct GameWindow::Impl
     SDL_GLContext context{};
     double motionX{}, motionY{};
     float wheel{};
-    bool minimized{};
+    bool minimized{}, typing{};
 
     explicit Impl(const WindowOptions &o)
     {
@@ -148,8 +148,8 @@ struct GameWindow::Impl
         SDL_GL_MakeCurrent(window, context);
         SDL_GL_SetSwapInterval(o.vsync ? 1 : 0);
         SDL_ShowWindow(window);
-        // The console reads typed characters; text input is harmless while it is closed.
-        SDL_StartTextInput(window);
+        // Text input stays off until the console opens.
+        SDL_StopTextInput(window);
     }
 
     ~Impl()
@@ -276,6 +276,17 @@ void GameWindow::capturePointer(bool captured)
     else
         SDL_ShowCursor();
     impl_->motionX = impl_->motionY = 0;
+}
+
+void GameWindow::textInput(bool on)
+{
+    if (on == impl_->typing)
+        return;
+    impl_->typing = on;
+    if (on)
+        SDL_StartTextInput(impl_->window);
+    else
+        SDL_StopTextInput(impl_->window);
 }
 
 std::pair<double, double> GameWindow::takeMotion()

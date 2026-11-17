@@ -794,6 +794,62 @@ void finiteCrewTest()
     check(fromCar.size() == 1 && car.crewLost == 1, "patrol car sent out more officers than its crew");
 }
 
+// Below four stars an officer holds his fire at a suspect who stands still with no weapon
+// raised; at four he opens fire.
+void surrenderTest()
+{
+    World w;
+    w.generate(20261105);
+    w.controlledCar = -1;
+    // Stand the suspect on a pavement where somebody was walking, clear of every car.
+    for (size_t i = 1; i < w.people.size(); ++i)
+    {
+        const auto &walker = w.people[i];
+        if (walker.riding >= 0 || walker.dead || walker.body.roadLevel ||
+            std::ranges::any_of(w.cars, [&](const Car &c) { return (c.body.p - walker.body.p).length2() < 15 * 15; }))
+            continue;
+        w.player.p = walker.body.p;
+        w.player.height = walker.body.height;
+        w.player.roadLevel = 0;
+        break;
+    }
+    w.player.v = {};
+    auto &cop = w.people[0];
+    for (auto &p : w.people)
+        if (&p != &cop)
+            p.body.p = {p.body.p.x + 2000, p.body.p.z};
+    cop.uniform = Person::Uniform::police;
+    cop.sidearm = WeaponId::pistol;
+    cop.riding = -1;
+    // Somewhere in plain sight of the player, on the same ground.
+    bool placed = false;
+    for (int k = 0; k < 16 && !placed; ++k)
+    {
+        cop.body.p = w.player.p + forward(k * pi / 8) * 8;
+        cop.body.height = w.player.height;
+        placed = w.blastVisible(cop.body.p, cop.body.height + .42, w.player.p, w.player.height) &&
+                 w.traceAttack(cop.body.p, (w.player.p - cop.body.p).unit(), cop.body.height + .42, 0, 9, -1, true, &cop)
+                         .kind == HitKind::player;
+    }
+    check(placed, "no clear line of fire in fixture");
+    cop.body.roadLevel = w.player.roadLevel;
+    cop.heading = std::atan2(w.player.p.x - cop.body.p.x, w.player.p.z - cop.body.p.z);
+    auto fire = [&](int level)
+    {
+        w.wanted = level;
+        w.health = 1;
+        for (int i = 0; i < 600; ++i)
+        {
+            cop.alertUntil = w.time + 5;
+            w.civilianCombat(cop, 1. / 60);
+            w.time += 1. / 60;
+        }
+        return w.health < 1;
+    };
+    check(w.surrendering() && !fire(2), "officer shot a surrendering suspect at two stars");
+    check(fire(4), "officer held fire at four stars");
+}
+
 int main()
 {
     try
@@ -805,6 +861,7 @@ int main()
         arrestTest();
         vehicleEntryTest();
         finiteCrewTest();
+        surrenderTest();
         std::println("Dispatch, routes, save, mounted gun, flight, wreck and release passed");
     }
     catch (const std::exception &e)

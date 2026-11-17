@@ -699,6 +699,8 @@ struct World
     double patrolScanAt{};
     void updatePatrol();
     void officerIntent(Vec2 &direction, double &speed) const;
+    // The suspect gives himself up: still on foot with no weapon raised, or stopped in a car.
+    bool surrendering() const;
     void arrestStep(double dt);
     std::optional<Vec2> clearEntrance(Vec2 door) const;
     enum class RescueStage

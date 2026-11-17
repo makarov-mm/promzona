@@ -3268,9 +3268,10 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         for (const auto &car : world.cars)
         {
             bool driving = int(car.id) == world.controlledCar && !world.transitPassenger();
-            if ((car.kind != 0 && car.kind != 3 && car.kind != 13) || car.destroyed ||
-                (!driving && (car.driverless || car.personal || car.summoned || car.id == 0 ||
-                              (world.patrol.car == int(car.id) && world.patrol.officer >= 0))))
+            // Kind 6 is the second militia unit on the same glazed sedan body as kind 3.
+            if ((car.kind != 0 && car.kind != 3 && car.kind != 6 && car.kind != 13) || car.destroyed ||
+                // The arresting officer rides beside the driver, who stays at the wheel.
+                (!driving && (car.driverless || car.personal || car.summoned || car.id == 0)))
                 continue;
             Vec3 centre{float(car.body.p.x), float(car.body.height), float(car.body.p.z)};
             if (!visible(centre, 2, 38))
@@ -3284,7 +3285,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             person(seated,
                    driving ? heroAppearance()
                            : appearance(seated.id, car.id % 2,
-                                        car.kind == 3    ? Person::Uniform::police
+                                        car.kind == 3 || car.kind == 6 ? Person::Uniform::police
                                         : car.kind == 13 ? Person::Uniform::fsb
                                                          : Person::Uniform::none),
                    car.heading(), 0, false, driving, &car);

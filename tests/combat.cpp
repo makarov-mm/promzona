@@ -241,6 +241,19 @@ int main()
         w.cars[0].fireTime = .001;
         advanceCombat(w, 13);
         check(w.cars[0].destroyed, "NPC vehicle fire explodes after twelve seconds");
+        // A burning car the player keeps standing in burns down as any other; stepping out
+        // of it leaves the time it had, not a car already past its twelve seconds.
+        w = empty();
+        w.cars.push_back(car({0, 20}));
+        w.controlledCar = 0;
+        w.cars[0].fireTime = .001;
+        advanceCombat(w, 8);
+        check(!w.cars[0].destroyed && w.cars[0].fireTime > 7, "standing player car keeps burning");
+        w.controlledCar = -1;
+        advanceCombat(w, 1);
+        check(!w.cars[0].destroyed, "player car exploded the moment it was left");
+        advanceCombat(w, 4);
+        check(w.cars[0].destroyed, "abandoned burning car never burned down");
         w = empty();
         w.cars.push_back(car({0, 20}));
         w.vehicleImpact(w.cars[0], 0);

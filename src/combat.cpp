@@ -569,21 +569,25 @@ void World::combatStep(double dt)
         if (c.fireTime <= 0)
             continue;
         // The fire is heard every three seconds for as long as it burns.
-        if (inSight && int(c.fireTime / 3) != int((c.fireTime + dt) / 3))
+        const double burning = c.fireTime + c.safeDrivingTime;
+        if (inSight && int(burning / 3) != int((burning + dt) / 3))
             sounds.push_back({"fire", c.body.p, .5});
-        c.fireTime += dt;
-        if (controlledCar >= 0 && !transitPassenger() && &c == &cars[controlledCar])
+        const bool driven = controlledCar >= 0 && !transitPassenger() && &c == &cars[controlledCar];
+        // Driving steadily fans the flames out; standing still lets them spread. A car the player
+        // sits in burns down like any other, rather than burning for ever and then going up the
+        // moment he steps out of it.
+        const bool fanned = driven && time - c.lastDamageAt > 4 && c.body.v.length() > 2 && c.grounded();
+        if (fanned)
+            c.safeDrivingTime += dt;
+        else
+            c.fireTime += dt;
+        if (driven && c.safeDrivingTime >= 18)
         {
-            if (time - c.lastDamageAt > 4 && c.body.v.length() > 2 && c.grounded())
-                c.safeDrivingTime += dt;
-            if (c.safeDrivingTime >= 18)
-            {
-                c.fireTime = 0;
-                c.firePlayerCaused = false;
-                c.safeDrivingTime = 0;
-            }
+            c.fireTime = 0;
+            c.firePlayerCaused = false;
+            c.safeDrivingTime = 0;
         }
-        else if (c.fireTime > 12)
+        else if (c.fireTime > 12 && !(driven && godMode))
             destroyCar(c);
         if (!c.destroyed && inSight && effectNoise() < dt * 35)
         {
