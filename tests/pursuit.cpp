@@ -1,5 +1,6 @@
 #include "promzona/world.hpp"
 #include <print>
+#include <set>
 #include <chrono>
 #include <source_location>
 #include <format>
@@ -760,6 +761,39 @@ void trafficTest()
     }
 }
 } // namespace
+// A patrol car carries a crew of two: once its officer is shot it has only the driver left
+// and sends nobody else out, however long the suspect waits beside it.
+void finiteCrewTest()
+{
+    World w;
+    w.generate(20261105);
+    w.controlledCar = -1;
+    w.wanted = 2;
+    w.wantedCooldown = 1e9;
+    w.updateDispatch();
+    int unitId = unit(w, 3);
+    auto &car = w.cars[unitId];
+    car.body.v = {};
+    auto exit = w.vehicleExit(car);
+    check(exit.has_value(), "patrol has no clear door");
+    w.player.p = *exit + (*exit - car.body.p).unit() * 2.5;
+    w.player.v = {};
+    w.player.height = w.terrain.height(w.player.p) + .85;
+    std::set<int> fromCar;
+    for (int frame = 0; frame < 60 * 90; ++frame)
+    {
+        w.step(PlayerInput{}, 1. / 60);
+        w.wanted = 2;
+        if (w.patrol.car == unitId && w.patrol.officer >= 0 &&
+            w.patrol.stage == World::PatrolStage::approaching && !w.people[w.patrol.officer].dead)
+        {
+            fromCar.insert(w.patrol.officer);
+            w.killPerson(w.people[w.patrol.officer], {}, true);
+        }
+    }
+    check(fromCar.size() == 1 && car.crewLost == 1, "patrol car sent out more officers than its crew");
+}
+
 int main()
 {
     try
@@ -770,6 +804,7 @@ int main()
         trafficTest();
         arrestTest();
         vehicleEntryTest();
+        finiteCrewTest();
         std::println("Dispatch, routes, save, mounted gun, flight, wreck and release passed");
     }
     catch (const std::exception &e)

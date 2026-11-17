@@ -1586,6 +1586,21 @@ namespace Promzona
             throw std::invalid_argument(usage);
         return number;
     }
+    // A weapon by its console name or a common alias ("rifle", "rpg", "flame").
+    const Weapon *consoleWeapon(std::string_view name)
+    {
+        static constexpr std::pair<std::string_view, WeaponId> aliases[]{
+            {"gun", WeaponId::pistol},           {"rifle", WeaponId::automatic}, {"ak", WeaponId::automatic},
+            {"automat", WeaponId::automatic},    {"rpg", WeaponId::bazooka},     {"launcher", WeaponId::bazooka},
+            {"rocket", WeaponId::bazooka},       {"flame", WeaponId::flamethrower}};
+        for (const auto &w : weapons())
+            if (std::ranges::equal(w.name, name, [](char a, char b) { return std::tolower(a) == b; }))
+                return &w;
+        for (auto [alias, id] : aliases)
+            if (alias == name)
+                return weapon(id);
+        return nullptr;
+    }
     bool consoleToggle(std::string_view arg)
     {
         if (arg == "on" || arg == "1")
@@ -1659,13 +1674,9 @@ namespace Promzona
         {
             if (args.size() != 2 && args.size() != 3)
                 throw std::invalid_argument("weapon TYPE [1..9999]");
-            auto it = std::ranges::find_if(weapons(),
-                                           [&](const Weapon &w) {
-                                               return std::ranges::equal(w.name, args[1], [](char a, char b)
-                                                                         { return std::tolower(a) == b; });
-                                           });
-            if (it == weapons().end())
-                throw std::invalid_argument("Unknown weapon");
+            const Weapon *it = consoleWeapon(args[1]);
+            if (!it)
+                throw std::invalid_argument("Unknown weapon: pistol, automatic, bazooka, flamethrower");
             int ammo = args.size() == 3 ? consoleNumber(args[2], 1, Inventory::ammoLimit, "Ammo: 1..9999")
                                         : it->pickupAmmo;
             if (!inventory.give(it->id, ammo))
@@ -1710,6 +1721,13 @@ namespace Promzona
         else if (cmd == "spawn")
         {
             count(2, "spawn TYPE");
+            // "spawn pistol" reads as naturally as "spawn car": the weapon goes straight to the player.
+            if (const Weapon *w = consoleWeapon(args[1]))
+            {
+                if (!inventory.give(w->id))
+                    throw std::invalid_argument("Ammunition already full");
+                return L"OK";
+            }
             if (args[1] == "pills" || args[1] == "energy")
             {
                 if (!spawn_pickup(args[1] == "energy"))

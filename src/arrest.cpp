@@ -35,6 +35,10 @@ void World::updatePatrol()
         bool distant = (c.body.p - position()).length2() > 180 * 180;
         if (invalid || distant)
         {
+            // An officer who died or stays behind on the street is gone from the crew; one still
+            // seated simply rides on, and the pedestrian lent to the patrol is released.
+            if (cop && (cop->dead || cop->riding < 0))
+                ++c.crewLost;
             if (cop && cop->riding >= 0)
             {
                 if (c.destroyed || c.falling)
@@ -58,7 +62,23 @@ void World::updatePatrol()
                 patrol.stage = PatrolStage::seated;
             }
             else if (time > patrol.deadline)
-                patrol = {};
+            {
+                // Blocked on the way back: an officer near the car still gets in rather than
+                // being left behind while the car later sends another out of the same door.
+                if (!cop->dead && (cop->body.p - c.body.p).length2() < 25 * 25)
+                {
+                    cop->riding = patrol.car;
+                    cop->seat = 0;
+                    cop->alight = -1;
+                    seatPassenger(*cop);
+                    patrol.stage = PatrolStage::seated;
+                }
+                else
+                {
+                    ++c.crewLost;
+                    patrol = {};
+                }
+            }
             return;
         }
         else if (patrol.stage == PatrolStage::approaching)
@@ -98,7 +118,9 @@ void World::updatePatrol()
         {
             const auto &c = cars[i];
             double distance = (c.body.p - suspect.p).length2();
-            if ((c.kind == 3 || c.kind == 6 || c.kind == 7) && distance < best && closeEnough(c))
+            // The driver stays at the wheel, so a car with only its driver left sends nobody.
+            if ((c.kind == 3 || c.kind == 6 || c.kind == 7) && distance < best &&
+                crew_size(c) - c.crewLost >= 2 && closeEnough(c))
             {
                 patrol.car = int(i);
                 best = distance;

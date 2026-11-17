@@ -130,6 +130,7 @@ json carState(const Car &c)
     WRITE(safeDrivingTime);
     WRITE(impactCooldown);
     WRITE(responding);
+    WRITE(crewLost);
     WRITE(summoned);
     WRITE(personal);
     WRITE(driverless);
@@ -210,6 +211,7 @@ void loadCar(const json &j, Car &c)
     c.paint = j.value("paint", 0);
     c.summoned = j.value("summoned", false);
     c.responding = j.value("responding", false);
+    c.crewLost = std::clamp(j.value("crewLost", 0), 0, 4);
     c.nextShot = j.value("nextShot", 0.);
     c.firePlayerCaused = j.value("firePlayerCaused", false);
     READ(routeDistance);

@@ -16,7 +16,7 @@ namespace Promzona
             L"god on|off",
             L"weapons",
             L"weapon pistol|automatic|bazooka|flamethrower [1..9999]",
-            L"spawn car|van|truck|ambulance|police|rosguard|fsb|btr|tank|helicopter|pills|energy",
+            L"spawn car|van|truck|ambulance|police|rosguard|fsb|btr|tank|helicopter|pills|energy|pistol|automatic|bazooka|flamethrower",
             L"wanted 0..6",
             L"hour 0..24",
             L"rain on|off",
@@ -108,7 +108,26 @@ namespace Promzona
             caret_ = input_.size();
         }
         else if (matches > 1)
+        {
+            // "wea" offers both weapon and weapons: type on as far as they agree.
+            std::wstring common;
+            for (auto usage : usages)
+            {
+                auto name = usage.substr(0, usage.find(L' '));
+                if (!name.starts_with(prefix))
+                    continue;
+                if (common.empty())
+                    common = name;
+                else
+                    common.resize(std::ranges::mismatch(common, name).in1 - common.begin());
+            }
+            if (common.size() > prefix.size())
+            {
+                input_ = common;
+                caret_ = input_.size();
+            }
             write(std::move(choices));
+        }
     }
 
     std::wstring GameConsole::submit()

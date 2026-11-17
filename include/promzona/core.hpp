@@ -165,6 +165,9 @@ namespace Promzona
         int doorSide{};
         double doorOpen{}, doorHold{};
         bool responding{}, seesSuspect{}, firePlayerCaused{}, summoned{};
+        // Crew members who left the vehicle for good (killed, or left behind on the street).
+        // A crew is finite: a patrol car cannot send out more officers than it carries.
+        int crewLost{};
         double nextShot{}, nextSightCheck{};
         std::uint32_t model{}, id{};
         int routeFrom{}, routeTo{}, previousNode{-1}, routePhase{};

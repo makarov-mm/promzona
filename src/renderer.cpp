@@ -3294,7 +3294,10 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             Vec3 p{float(c.body.p.x), float(c.body.height - .8), float(c.body.p.z)};
             if (!visible(p, float(c.body.halfH + 2), 400))
                 continue;
+            const bool reversed = fleet[c.model].reversed;
             auto transform = vehicleTransform(c);
+            if (reversed)
+                transform = transform * Mat4::yaw(float(pi));
             auto &model = r.cars.at(c.model);
             const auto *crew = c.model == ambulanceModel ? world.ambulanceCall(c.id) : nullptr;
             const bool beacon = crew && crew->stage != World::RescueStage::standby && !c.destroyed;
@@ -3318,7 +3321,8 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                     // Imported manifest joints: 0 body, 1/2 doors, 3+ wheels, 100+ special equipment.
                     if ((b.part == 1 || b.part == 2) && c.doorOpen > 0)
                     {
-                        const int side = b.part == 1 ? -1 : 1;
+                        // Turned round, the model's left door is on the vehicle's right.
+                        const int side = (b.part == 1) != reversed ? -1 : 1;
                         if (c.doorSide == 0 || c.doorSide == side)
                         {
                             const auto pivot = model.hinges[b.part - 1];

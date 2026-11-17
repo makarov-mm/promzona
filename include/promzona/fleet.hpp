@@ -9,6 +9,9 @@ namespace Promzona
         const char *folder;
         int kind;
         double width, height, length, mass, wheelbase;
+        // The imported model faces -Z (its windscreen at the rear of the body) and is turned
+        // round when drawn.
+        bool reversed{};
     };
 
     inline constexpr VehicleSpec fleet[] = {
@@ -21,7 +24,7 @@ namespace Promzona
         {"army_btr", 14, 2.9, 2.65, 7.3, 13600, 4.3},
         {"promzona_helicopter", 12, 2.4, 3.1, 8.6, 2100, 3.2},
         {"free_soviet_tram_x-series", 9, 2.533, 4.061, 10.4, 17000, 3.8},
-        {"ziu_9", 10, 2.962, 3.36, 11.9, 10500, 6},
+        {"ziu_9", 10, 2.962, 3.36, 11.9, 10500, 6, true},
         {"promzona_tank", 11, 3.35, 2.45, 6.3, 32000, 3.7},
         {"u469", 0, 1.92, 1.92, 4.02, 1650, 2.38},
         {"ukrainer_79_-_low_poly_model", 0, 1.51, 1.32, 3.75, 840, 2.16},

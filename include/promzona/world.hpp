@@ -597,6 +597,8 @@ struct World
     bool vehicleSpace(Vec2 at, double height, const Car *ignore, bool includePlayer) const;
     bool entry_path(const Car &car, Vec2 door) const;
     bool unload_crew(Car &car);
+    // Everyone a vehicle carries, driver included, before any of them left it.
+    static int crew_size(const Car &car);
     void step_entry(PlayerInput &input, double dt);
     void enter_exit();
     void generateServices();

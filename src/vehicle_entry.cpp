@@ -50,10 +50,7 @@ namespace Promzona
             return true;
         const int index = int(car.id);
         const bool police = car.kind == 3 || car.kind == 6 || car.kind == 7 || car.kind == 13 || car.kind == 14;
-        int count = police          ? (car.kind == 7 || car.kind == 14 ? 4 : 2)
-                    : car.kind == 4 ? 2
-                    : car.line >= 0 ? 1
-                                    : 1 + index % 3;
+        int count = std::max(0, crew_size(car) - car.crewLost);
         std::vector<int> occupants;
         auto includeCrew = [&](int actor)
         {
@@ -151,6 +148,15 @@ namespace Promzona
         if (count > 1)
             car.doorSide = 0;
         return true;
+    }
+
+    int World::crew_size(const Car &car)
+    {
+        const bool police = car.kind == 3 || car.kind == 6 || car.kind == 7 || car.kind == 13 || car.kind == 14;
+        return police          ? (car.kind == 7 || car.kind == 14 ? 4 : 2)
+               : car.kind == 4 ? 2
+               : car.line >= 0 ? 1
+                               : 1 + int(car.id) % 3;
     }
 
     void World::enter_exit()

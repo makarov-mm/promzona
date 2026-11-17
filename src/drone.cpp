@@ -208,7 +208,7 @@ namespace Promzona
             sounds.push_back({drone.scanned == 2 ? "cash" : "energy", player.p, .5, true});
             if (++drone.scanned == 3)
             {
-                money += 200;
+                money = std::min(999999999, money + 200); // the cap every other reward keeps
                 stop_drone(L"Разведка завершена   +$200", 60);
             }
         }

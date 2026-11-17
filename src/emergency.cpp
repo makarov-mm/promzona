@@ -88,6 +88,10 @@ namespace Promzona
             if (c.destroyed || c.falling || c.fireTime > 0 || controlledCar == r.car || medic.dead ||
                 (r.stage != RescueStage::standby && time >= r.deadline))
             {
+                // A medic killed or left on the street is gone from the crew, so the same
+                // ambulance cannot keep fielding new ones.
+                if (medic.dead || medic.riding != r.car)
+                    ++c.crewLost;
                 if (medic.riding == r.car)
                 {
                     if (c.destroyed || c.falling)
@@ -218,6 +222,9 @@ namespace Promzona
                      (job.kind != JobKind::none && (job.actor == int(c.id) || job.ride.car == int(c.id)))))
                     continue;
                 if (!crew && std::ranges::none_of(rescues, [](const Rescue &r) { return r.car < 0; }))
+                    continue;
+                // A new crew needs a medic besides the driver.
+                if (!crew && c.kind == 4 && crew_size(c) - c.crewLost < 2)
                     continue;
                 double score = spacing * route.distances[c.routeTo] + (nodePoint(c.routeTo) - c.body.p).length() +
                                (replace ? 650. : 0.);
