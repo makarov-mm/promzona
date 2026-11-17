@@ -24,7 +24,7 @@ void passengerJourney(World &w, Car &car, const std::filesystem::path &save)
         car.body.angle = -heading;
         car.body.v = {};
         car.body.height = w.terrain.height(pos) + .8;
-        car.nextStop = (stop + 1) % int(line.stops.size());
+        car.next_stop = (stop + 1) % int(line.stops.size());
         car.dwell = 4;
     };
     w.controlledCar = -1;
@@ -173,15 +173,15 @@ void test(std::uint32_t seed)
         c.along = route.stops.front();
         c.body.p = route.pose(c.along).first;
         c.body.v = {};
-        c.nextStop = 0;
+        c.next_stop = 0;
         for (int frame = 0; frame < 810; ++frame)
         {
             w.time += 1. / 60;
             w.runTransit(c, {}, false, false, 1. / 60);
             if (frame == 100)
-                check(c.dwell > 0 && c.nextStop == 1, "did not wait at stop");
+                check(c.dwell > 0 && c.next_stop == 1, "did not wait at stop");
         }
-        check(c.dwell == 0 && c.nextStop == 1 && c.along > route.stops.front() + 1,
+        check(c.dwell == 0 && c.next_stop == 1 && c.along > route.stops.front() + 1,
               "stalled after exchanging riders");
     }
     // A trolleybus runs on the wires over its route: three metres from them the pedal does
@@ -273,7 +273,7 @@ void crossing()
         {
             // Nobody else is near: the two meet on an empty street.
             if (c.line >= 0)
-                c.along = w.lines[c.line].wrapDistance(c.along + 500);
+                c.along = w.lines[c.line].wrap_distance(c.along + 500);
             else
                 c.destroy();
             c.body.p = c.line >= 0 ? w.lines[c.line].pose(c.along).first
@@ -284,14 +284,14 @@ void crossing()
     auto put = [&](Car &c, Vec2 at)
     {
         const auto &line = w.lines[c.line];
-        c.along = line.track.closestDistance(at);
+        c.along = line.track.closest_distance(at);
         const auto [p, heading] = line.pose(c.along);
         check((p - at).length() < .4 && forward(heading).z > .99, "a line of city 99 left this street");
         // Past the junction one has turned right and the other left.
         check(forward(line.pose(c.along + (c.kind == 9 ? 24 : 36)).second).x * (c.kind == 9 ? -1 : 1) > .99,
               "the lines of city 99 no longer cross here");
-        c.nextStop = line.nextStopAfter(c.along);
-        c.dwell = c.checkTrafficAt = 0;
+        c.next_stop = line.next_stop_after(c.along);
+        c.dwell = c.check_traffic_at = 0;
         c.claimed = -1;
         c.body.p = p;
         c.body.angle = -heading;
@@ -303,8 +303,8 @@ void crossing()
     const double trolleyStart = put(*trolley, centre + Vec2{-5.2, -16.4});
     for (int i = 0; i < 60 * 60; ++i)
         w.step({}, 1. / 60);
-    check(w.lines[2].wrapDistance(tram->along - tramStart) > 45 &&
-              w.lines[1].wrapDistance(trolley->along - trolleyStart) > 45,
+    check(w.lines[2].wrap_distance(tram->along - tramStart) > 45 &&
+              w.lines[1].wrap_distance(trolley->along - trolleyStart) > 45,
           "a tram and a trolleybus that turn across each other stand at the junction");
 }
 // A tram turns into a street where somebody stands on the crossing.
@@ -333,7 +333,7 @@ void zebra()
         else if (&c != &own && (c.body.p - centre).length() < 160)
         {
             if (c.line >= 0)
-                c.along = w.lines[c.line].wrapDistance(c.along + 500);
+                c.along = w.lines[c.line].wrap_distance(c.along + 500);
             else
                 c.destroy();
             c.body.p = c.line >= 0 ? w.lines[c.line].pose(c.along).first
@@ -341,13 +341,13 @@ void zebra()
         }
     }
     check(tram, "city 99 has no tram on its third line");
-    const double start = line.track.closestDistance(centre + Vec2{-1.9, -22});
+    const double start = line.track.closest_distance(centre + Vec2{-1.9, -22});
     check((line.pose(start).first - centre - Vec2{-1.9, -22}).length() < .4 &&
               forward(line.pose(start).second).z > .99 && forward(line.pose(start + 34).second).x < -.99,
           "the tram line of city 99 no longer turns here");
     tram->along = start;
-    tram->nextStop = line.nextStopAfter(start);
-    tram->dwell = tram->checkTrafficAt = 0;
+    tram->next_stop = line.next_stop_after(start);
+    tram->dwell = tram->check_traffic_at = 0;
     tram->claimed = -1;
     tram->body.p = line.pose(start).first;
     tram->body.angle = -line.pose(start).second;
@@ -372,7 +372,7 @@ void zebra()
         w.step({}, 1. / 60);
     check(w.pedestrianImpacts == 0 && !walker->dead && (walker->body.p - spot).length() < .5,
           "a tram that turns into a street runs over whoever stands on its crossing");
-    check(tram->body.v.length() < .2 && line.wrapDistance(tram->along - start) > 8 &&
+    check(tram->body.v.length() < .2 && line.wrap_distance(tram->along - start) > 8 &&
               (walker->body.p - tram->body.p).length() > tram->body.halfH + .5,
           "a tram does not pull up before the walker on the crossing");
     // The walker goes, and so does the tram.
@@ -381,7 +381,7 @@ void zebra()
     const double held = tram->along;
     for (int i = 0; i < 60 * 12; ++i)
         w.step({}, 1. / 60);
-    check(line.wrapDistance(tram->along - held) > 12, "the tram stays where the walker stood");
+    check(line.wrap_distance(tram->along - held) > 12, "the tram stays where the walker stood");
 }
 
 // A tram comes to the steepest stretch of its line, where another stands.
@@ -418,7 +418,7 @@ void hill()
         else if (&c != &w.cars[0] && (c.body.p - slope).length() < 160)
         {
             if (c.line >= 0)
-                c.along = w.lines[c.line].wrapDistance(c.along + 500);
+                c.along = w.lines[c.line].wrap_distance(c.along + 500);
             else
                 c.destroy();
             c.body.p = c.line >= 0 ? w.lines[c.line].pose(c.along).first
@@ -428,9 +428,9 @@ void hill()
     check(lead && follower, "the line has fewer than two trams");
     auto put = [&](Car &c, double along, double speed)
     {
-        c.along = line.wrapDistance(along);
-        c.nextStop = line.nextStopAfter(c.along);
-        c.checkTrafficAt = 0;
+        c.along = line.wrap_distance(along);
+        c.next_stop = line.next_stop_after(c.along);
+        c.check_traffic_at = 0;
         c.claimed = -1;
         const auto [p, heading] = line.pose(c.along);
         c.body.p = p;
@@ -446,7 +446,7 @@ void hill()
     for (int i = 0; i < 60 * 15; ++i)
         w.step({}, 1. / 60);
     // Behind it, or before the junction the other stands on: never inside it.
-    const double gap = line.wrapDistance(lead->along - follower->along);
+    const double gap = line.wrap_distance(lead->along - follower->along);
     check(follower->body.v.length() < .1 && gap > 2 * lead->body.halfH + .5 &&
               gap < 2 * lead->body.halfH + 16,
           "a tram does not stop behind the one that stands on the hill ahead of it");

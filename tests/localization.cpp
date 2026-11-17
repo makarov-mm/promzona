@@ -114,7 +114,7 @@ int main(int argc, char **argv)
                                       std::chrono::steady_clock::now().time_since_epoch().count());
         require(Promzona::loadLanguage(file, Language::ukrainian) == Language::ukrainian,
                 "missing preference uses fallback");
-        require(Promzona::saveLanguage(file, Language::russian) &&
+        require(Promzona::save_language(file, Language::russian) &&
                     Promzona::loadLanguage(file, Language::english) == Language::russian,
                 "language preference round trip");
         fs::remove(file);
@@ -161,21 +161,22 @@ int main(int argc, char **argv)
         require(Promzona::localize(L"PROMZONA", Language::ukrainian) == L"PROMZONA",
                 "Latin title is untouched");
 
-        require(Promzona::streetNames().size() == 49 && Promzona::avenueNames().size() == 49, "name tables");
-        require(Promzona::streetLabel(0) == L"ул. Ленина" &&
-                    Promzona::streetLabel(49) == Promzona::streetLabel(0) &&
-                    Promzona::streetLabel(-1) == Promzona::streetLabel(48),
+        require(Promzona::street_names().size() == 49 && Promzona::avenue_names().size() == 49,
+                "name tables");
+        require(Promzona::street_label(0) == L"ул. Ленина" &&
+                    Promzona::street_label(49) == Promzona::street_label(0) &&
+                    Promzona::street_label(-1) == Promzona::street_label(48),
                 "street index wraps");
-        require(Promzona::localize(Promzona::streetLabel(0), Language::english) == L"Lenina St" &&
-                    Promzona::localize(Promzona::avenueLabel(2), Language::ukrainian) == L"вул. Паркова",
+        require(Promzona::localize(Promzona::street_label(0), Language::english) == L"Lenina St" &&
+                    Promzona::localize(Promzona::avenue_label(2), Language::ukrainian) == L"вул. Паркова",
                 "street names follow the language");
         // Node (24, 24) is the origin of a 49-node city; a point just east of it lies on avenue 24.
-        require(Promzona::streetAt({0, 5}) == Promzona::streetLabel(24) &&
-                    Promzona::streetAt({5, 0}) == Promzona::avenueLabel(24) &&
-                    Promzona::streetAt({-900, 0}) == Promzona::avenueLabel(24) &&
-                    Promzona::streetAt({-860, -900}) == Promzona::streetLabel(0),
+        require(Promzona::street_at({0, 5}) == Promzona::street_label(24) &&
+                    Promzona::street_at({5, 0}) == Promzona::avenue_label(24) &&
+                    Promzona::street_at({-900, 0}) == Promzona::avenue_label(24) &&
+                    Promzona::street_at({-860, -900}) == Promzona::street_label(0),
                 "nearest road of a point");
-        for (const auto &name : Promzona::streetNames())
+        for (const auto &name : Promzona::street_names())
             require(!Promzona::has_cyrillic(
                         Promzona::localize(L"ул. " + std::wstring(name.russian), Language::english)),
                     "street transliteration");

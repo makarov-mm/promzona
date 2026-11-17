@@ -90,15 +90,15 @@ void World::planExit(Car &car)
     if (car.planned_to >= 0 || car.routePhase == 1 || car.responding || car.line >= 0 || !car.route)
         return;
     const auto *call = car.kind == 4 ? ambulanceCall(int(car.id)) : nullptr;
-    if ((call && call->stage == RescueStage::driving) || neighbours(car.routeTo).empty())
+    if ((call && call->stage == RescueStage::driving) || !degree(car.routeTo))
         return;
     car.planned_to = choose_next(car.routeTo, car.routeFrom);
     // A bus does not turn into a street it could leave only by turning round. It is too
     // long for the turn at the end, and stood across the street there.
-    if (car.kind == 5 && neighbours(car.planned_to).size() < 2)
+    if (car.kind == 5 && degree(car.planned_to) < 2)
     {
         auto ways = neighbours(car.routeTo);
-        std::erase_if(ways, [&](int n) { return n == car.routeFrom || neighbours(n).size() < 2; });
+        std::erase_if(ways, [&](int n) { return n == car.routeFrom || degree(n) < 2; });
         if (!ways.empty())
             car.planned_to = ways[size_t(car.id + car.routeTo) % ways.size()];
     }
@@ -155,7 +155,9 @@ bool World::intersectionClear(const Car &car) const
     // IsResponding); whoever is crossing still has the junction, and beyond it there has
     // to be room, as for anybody.
     const auto *call = car.kind == 4 ? ambulanceCall(int(car.id)) : nullptr;
-    if (!(call && call->stage == RescueStage::driving) && neighbours(node).size() >= 3 &&
+    // Asked by every car that waits at a junction, on every step: the neighbours are counted,
+    // not listed.
+    if (!(call && call->stage == RescueStage::driving) && degree(node) >= 3 &&
         !CityLayout::green(node % nodes, node / nodes, d, time))
         return false;
     auto each = [&](double radius, auto visit) { return eachCarNear(*this, centre, radius, visit); };

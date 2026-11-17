@@ -27,7 +27,7 @@ if ('Visual Studio 18 2026' -notin $info.generators.name) {
 }
 
 # Generate locally: CMake writes machine-specific paths into .vcxproj files.
-# No developer-shell setup, downloads or changes to the Suites solution are needed.
+# No developer-shell setup is needed. The first run downloads SDL3 (see CMakeLists.txt).
 Push-Location -LiteralPath $root
 try {
     . (Join-Path $root 'tools/cmake-cache.ps1')

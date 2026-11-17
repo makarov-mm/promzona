@@ -18,10 +18,12 @@ namespace Promzona
 
         auto octave = [&](const float u, const float v, const int period)
         {
-            const float x = u * period;
-            const float y = v * period;
-            const int i = static_cast<int>(x), j = static_cast<int>(y);
-            const float dx = x - i, dy = y - j;
+            const float x = period * u;
+            const float y = period * v;
+            const int i = static_cast<int>(x);
+            const int j = static_cast<int>(y);
+            const float dx = x - i;
+            const float dy = y - j;
             const float sx = dx * dx * (3 - 2 * dx), sy = dy * dy * (3 - 2 * dy);
 
             auto at = [&](const int a, const int b)
@@ -38,8 +40,8 @@ namespace Promzona
         {
             for (int x = 0; x < size; ++x)
             {
-                const float u = (.5f + x) / size;
-                const float v = (.5f + y) / size;
+                const float u = (x + .5f) / size;
+                const float v = (y + .5f) / size;
                 float density = 0, amplitude = .53f;
 
                 for (const int period : {8, 16, 32, 64})
@@ -48,7 +50,7 @@ namespace Promzona
                     amplitude *= .48f;
                 }
 
-                pixels[static_cast<size_t>(y) * size + x] = static_cast<std::uint8_t>(std::clamp(density, 0.f, 1.f) * 255.f + .5f);
+                pixels[static_cast<size_t>(y) * size + x] = static_cast<std::uint8_t>(255.f * std::clamp(density, 0.f, 1.f) + .5f);
             }
         }
 

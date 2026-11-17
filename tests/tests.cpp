@@ -71,7 +71,7 @@ int main(int argc, char **argv)
         for (int i = 0; i < 20; i++)
             check(inv.consume(WeaponId::bazooka), "consume rocket");
         check(inv.active()->id == WeaponId::automatic, "depletion falls back to automatic");
-        check(inv.owns(WeaponId::bazooka) && inv.hasWeapons(), "empty weapon remains owned");
+        check(inv.owns(WeaponId::bazooka) && inv.has_weapons(), "empty weapon remains owned");
         Inventory full;
         full.give(WeaponId::pistol, 9999);
         check(!full.give(WeaponId::pistol), "reject pickup at ammo cap");
@@ -85,7 +85,7 @@ int main(int argc, char **argv)
         auto middle = path.sample(path.length() * .5);
         near(middle.first.x, 5, 1e-10, "Bezier midpoint x");
         near(middle.first.z, 10, 1e-10, "Bezier midpoint z");
-        near(path.closestDistance(middle.first), path.length() * .5, 1e-10, "path inverse query");
+        near(path.closest_distance(middle.first), path.length() * .5, 1e-10, "path inverse query");
         auto c = vehicle();
         for (int i = 0; i < 600; i++)
             step_vehicle(c, {1, 0, false, false}, 1. / 120);
@@ -96,12 +96,12 @@ int main(int argc, char **argv)
         check(c.body.v.length() < initial * .1, "handbrake stops within 3 seconds");
         c.destroy();
         c.body.impulse({5000, 0});
-        stepWreck(c, 1. / 120);
+        step_wreck(c, 1. / 120);
         check(c.body.v.x > 4, "wreck retains impulse and finite mass");
         c.lift = 10;
         c.verticalVelocity = -2;
         c.body.v = {5, 4};
-        stepWreck(c, .01);
+        step_wreck(c, .01);
         check(c.body.v.length() > 6.3, "airborne wreck does not acquire ground friction");
         ContactWorld solver;
         Body a, b;
@@ -127,7 +127,7 @@ int main(int argc, char **argv)
         a.v = b.v = {};
         solver.clear();
         solver.step(bodies, .01);
-        check(solver.contactCount == 0, "separate road decks do not collide");
+        check(solver.contact_count == 0, "separate road decks do not collide");
         a.height = b.height = 0;
         a.circle = b.circle = true;
         a.radius = b.radius = .3;
@@ -205,7 +205,7 @@ int main(int argc, char **argv)
                   loaded.people[witness].burnPlayerCaused,
               "save damage cooldown and ongoing fire state");
         check(loaded.rockets.size() == 1 && loaded.rockets[0].slope == -.1 && loaded.rockets[0].travel == 2 &&
-                  loaded.rockets[0].ownerCar == 0,
+                  loaded.rockets[0].owner_car == 0,
               "save live rocket trajectory and owner");
         check(!loaded.cars[8].route, "save absent route stays absent");
         check(loaded.random.state == world.random.state && loaded.rain == .6 && loaded.rainTarget == .9,
@@ -241,15 +241,15 @@ int main(int argc, char **argv)
         auto nearAudio = spatial_audio({0, 3}, {}, 0, 1);
         check(farAudio.left < nearAudio.left * .1, "distance attenuates audio");
         AudioMixer radio;
-        radio.addClip("radio0", {.5f, .2f});
-        radio.addClip("radio1", {-.4f});
-        radio.addClip("click", {.5f});
+        radio.add_clip("radio0", {.5f, .2f});
+        radio.add_clip("radio1", {-.4f});
+        radio.add_clip("click", {.5f});
         radio.play({"click", {}, 1., true});
         radio.pause(false, true);
         std::array<float, 8> song{};
         radio.mix(song);
         check(song[0] > song[2] && song[2] > 0 && song[4] < 0 && song[6] == song[0] && song[0] == song[1] &&
-                  radio.voiceCount() == 1,
+                  radio.voice_count() == 1,
               "radio crosses a track boundary in the menu");
         radio.pause(true);
         radio.mix(song);
@@ -258,20 +258,20 @@ int main(int argc, char **argv)
         radio.pause(false, true);
         radio.mix(one);
         check(one[0] > 0 && one[0] < .04, "unfocused mixer preserved the radio cursor");
-        radio.nextTrack(); // currently queued on track 1, switch back to the start of track 0
+        radio.next_track(); // currently queued on track 1, switch back to the start of track 0
         radio.mix(one);
         check(one[0] > .04, "manual advance restarts the selected track");
-        radio.setLevels({65, 0});
+        radio.set_levels({65, 0});
         radio.pause(false);
         radio.mix(song);
-        check(song[0] > 0 && song[2] == 0 && radio.voiceCount() == 0, "radio mute leaves effects audible");
+        check(song[0] > 0 && song[2] == 0 && radio.voice_count() == 0, "radio mute leaves effects audible");
         AudioMixer oneTrack;
-        oneTrack.addClip("radio1", {.5f});
+        oneTrack.add_clip("radio1", {.5f});
         oneTrack.pause(false);
         oneTrack.mix(song);
         check(std::ranges::all_of(song, [](float s) { return s > 0; }),
               "one available track loops without silence");
-        oneTrack.setLevels({0, 50});
+        oneTrack.set_levels({0, 50});
         oneTrack.mix(song);
         check(song[0] == 0, "master mute includes music");
 
@@ -300,45 +300,45 @@ int main(int argc, char **argv)
         unit.responding = true;
         unit.body.p.x = 80;
         AudioMixer traffic;
-        traffic.addClip("siren", {.5f});
+        traffic.add_clip("siren", {.5f});
         traffic.pause(false);
         traffic.update(street, 0);
         traffic.mix(one);
-        check(traffic.voiceCount() == 1 && one[0] > one[1],
+        check(traffic.voice_count() == 1 && one[0] > one[1],
               "siren beyond ten motors follows approaching car");
         traffic.update(street, pi);
         traffic.mix(one);
         check(one[1] > one[0], "turning the camera reverses siren pan");
         unit.body.p.x = 105;
         traffic.update(street, 0);
-        check(traffic.voiceCount() == 0, "out-of-range siren stops");
+        check(traffic.voice_count() == 0, "out-of-range siren stops");
         unit.body.p.x = 20;
         unit.destroyed = true;
         traffic.update(street, 0);
-        check(traffic.voiceCount() == 0, "destroyed patrol has no siren");
+        check(traffic.voice_count() == 0, "destroyed patrol has no siren");
 
         AudioMixer mixer;
-        mixer.addClip("test", std::vector<float>(100, .5f));
+        mixer.add_clip("test", std::vector<float>(100, .5f));
         for (int i = 0; i < 100; i++)
             mixer.play({"test", {}, 1, true});
-        check(mixer.voiceCount() == 32, "voice count remains bounded");
+        check(mixer.voice_count() == 32, "voice count remains bounded");
         std::array<float, 400> mixed{};
         mixer.mix(mixed);
-        check(mixer.voiceCount() == 32 && mixed[0] == 0, "paused mixer preserves voice cursor");
+        check(mixer.voice_count() == 32 && mixed[0] == 0, "paused mixer preserves voice cursor");
         mixer.pause(false);
         mixer.mix(mixed);
-        check(mixer.voiceCount() == 0 && mixed[0] > 0, "one-shots mix together and are reclaimed");
+        check(mixer.voice_count() == 0 && mixed[0] > 0, "one-shots mix together and are reclaimed");
         check(std::ranges::all_of(mixed, [](float s) { return std::isfinite(s) && std::abs(s) <= 1; }),
               "mixer limits peaks without numeric overflow");
-        mixer.addClip("engine", std::vector<float>(100, .1f));
-        mixer.addClip("rain", std::vector<float>(100, .1f));
+        mixer.add_clip("engine", std::vector<float>(100, .1f));
+        mixer.add_clip("rain", std::vector<float>(100, .1f));
         mixer.update(world, 0);
-        check(mixer.voiceCount() > 0 && mixer.voiceCount() <= 11, "engine and weather loops are bounded");
+        check(mixer.voice_count() > 0 && mixer.voice_count() <= 11, "engine and weather loops are bounded");
         world.rain = 0;
         for (auto &car : world.cars)
             car.destroyed = true;
         mixer.update(world, 0);
-        check(mixer.voiceCount() == 0, "removed engines and stopped rain release loops");
+        check(mixer.voice_count() == 0, "removed engines and stopped rain release loops");
         {
             std::ofstream f(save);
             f << "{\"format\":\"unknown\"}";

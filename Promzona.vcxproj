@@ -106,6 +106,7 @@
     <ClInclude Include="include/promzona\core.hpp" />
     <ClInclude Include="include/promzona\detail_stream.hpp" />
     <ClInclude Include="include/promzona\sector_stream.hpp" />
+    <ClInclude Include="include/promzona\stop_thread.hpp" />
     <ClInclude Include="include/promzona\fleet.hpp" />
     <ClInclude Include="include/promzona\gl.hpp" />
     <ClInclude Include="include/promzona\hud_damage.hpp" />

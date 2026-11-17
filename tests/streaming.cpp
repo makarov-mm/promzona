@@ -86,17 +86,17 @@ void worker()
     std::vector<size_t> ids(cells.size());
     std::iota(ids.begin(), ids.end(), 0uz);
     stream.request(ids);
-    until([&] { return stream.stats().ready == DetailStream::maxReady; });
+    until([&] { return stream.stats().ready == DetailStream::max_ready; });
     auto stats = stream.stats();
-    check(stats.queued <= DetailStream::maxQueued &&
-              stats.readyBytes <= DetailStream::maxReady * DetailStream::maxPacketBytes,
+    check(stats.queued <= DetailStream::max_queued &&
+              stats.readyBytes <= DetailStream::max_ready * DetailStream::max_packet_bytes,
           "worker backpressure bounds queued geometry");
     auto packet = stream.poll();
     check(packet && packet->bytes > 0, "background job returns geometry");
     CityChunk reference;
     for (const auto &plan : cells[packet->id].buildings)
-        buildingDetails(reference, plan);
-    check(packet->bytes == chunkBytes(reference), "streamed payload matches resident geometry size");
+        building_details(reference, plan);
+    check(packet->bytes == chunk_bytes(reference), "streamed payload matches resident geometry size");
     for (size_t m = 0; m < reference.size(); ++m)
     {
         const auto &a = reference[m], &b = packet->geometry[m];
@@ -132,7 +132,7 @@ void worker()
         World next;
         next.generate(123u + i);
         DetailStream shortLived(next);
-        auto order = detail_order(shortLived.cells(), {}, detailPrefetchDistance);
+        auto order = detail_order(shortLived.cells(), {}, detail_prefetch_distance);
         shortLived.request(order);
     }
 }
@@ -234,7 +234,7 @@ void sectorWorker()
     const LawnTile incline{10, 20, 14, 24, 1, 3, 5, 9};
     check(incline.height(11, 21) == 2.5f && incline.height(13, 23) == 6.5f && incline.height(12, 22) == 4,
           "lawn roots agree across the terrain diagonal");
-    check(chunkBytes(reference) > 100000, "a sector of the centre has geometry");
+    check(chunk_bytes(reference) > 100000, "a sector of the centre has geometry");
     auto same = [&](const SectorStream::Packet &packet, const CityChunk &source)
     {
         if (packet.bytes != packet.vertices.size() + packet.indices.size())
@@ -247,19 +247,19 @@ void sectorWorker()
                 return false;
             for (size_t v = 0; v < m.vertices.size(); ++v)
             {
-                const size_t offset = (s.firstVertex + v) * packet.stride;
+                const size_t offset = (s.first_vertex + v) * packet.stride;
                 if (offset + packet.stride > packet.vertices.size() ||
                     std::memcmp(&m.vertices[v], packet.vertices.data() + offset, packet.stride) ||
                     (m.vertices[v].position - s.centre).length() > s.radius + .001f)
                     return false;
             }
             size_t width = s.narrow ? 2 : 4;
-            if (s.firstIndexByte % width || s.firstIndexByte + s.count * width > packet.indices.size())
+            if (s.first_index_byte % width || s.first_index_byte + s.count * width > packet.indices.size())
                 return false;
             for (size_t k = 0; k < s.count; ++k)
             {
                 std::uint32_t index{};
-                const auto *bytes = packet.indices.data() + s.firstIndexByte + k * width;
+                const auto *bytes = packet.indices.data() + s.first_index_byte + k * width;
                 if (s.narrow)
                 {
                     std::uint16_t value{};
@@ -294,7 +294,7 @@ void sectorWorker()
     stream.request(all);
     until([&] { return stream.stats().ready == SectorStream::maxReady; });
     auto stats = stream.stats();
-    check(stats.queued <= SectorStream::maxQueued && stats.readyBytes > 0,
+    check(stats.queued <= SectorStream::maxQueued && stats.ready_bytes > 0,
           "the worker waits for the renderer");
     auto first = stream.poll();
     check(first && first->id == all.front().id &&

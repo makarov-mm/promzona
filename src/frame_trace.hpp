@@ -43,7 +43,7 @@ namespace Promzona
         Phase phase = other;
         Clock::time_point last{};
 
-        void enter(Phase next)
+        void enter(const Phase next)
         {
             if (!active) return;
             const std::chrono::time_point<std::chrono::steady_clock> now = Clock::now();

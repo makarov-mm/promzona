@@ -172,8 +172,18 @@ void ContactWorld::step(std::span<Body *> bodies, double dt, Vec2 gravity)
     if (!(dt > 0 && dt <= .05))
         throw std::invalid_argument("Contact timestep must be in (0,.05]");
     contacts_.clear();
-    grid_.clear();
-    pairs_.clear();
+    // Bodies move little in a step: the cells of the last step are emptied and filled again,
+    // not built anew, which took thousands of allocations a step. A cell that nothing stood in
+    // last time is dropped.
+    for (auto cell = grid_.begin(); cell != grid_.end();)
+        if (cell->second.empty())
+            cell = grid_.erase(cell);
+        else
+        {
+            cell->second.clear();
+            ++cell;
+        }
+    candidates_.clear();
     candidate_pairs = 0;
     for (auto b : bodies)
     {
@@ -189,8 +199,6 @@ void ContactWorld::step(std::span<Body *> bodies, double dt, Vec2 gravity)
                 grid_[key].push_back(b);
             }
     }
-    // Sorted candidate IDs make the solver deterministic independently of hash iteration.
-    std::vector<std::pair<Body *, Body *>> candidates;
     for (auto &[key, cell] : grid_)
         for (size_t i = 0; i < cell.size(); i++)
             for (size_t j = i + 1; j < cell.size(); j++)
@@ -198,18 +206,19 @@ void ContactWorld::step(std::span<Body *> bodies, double dt, Vec2 gravity)
                 auto a = cell[i], b = cell[j];
                 if ((a->is_static() && b->is_static()) || (a->sleeping && b->sleeping))
                     continue;
-                if (pairs_.insert(pair(*a, *b)).second)
-                {
-                    if (a->id > b->id)
-                        std::swap(a, b);
-                    candidates.emplace_back(a, b);
-                }
+                if (a->id > b->id)
+                    std::swap(a, b);
+                candidates_.push_back({pair(*a, *b), a, b});
             }
-    std::ranges::sort(candidates,
-                      [](auto a, auto b) { return pair(*a.first, *a.second) < pair(*b.first, *b.second); });
-    candidate_pairs = candidates.size();
-    for (auto [a, b] : candidates)
-        collide(*a, *b);
+    // Sorted candidate IDs make the solver deterministic independently of hash iteration. Two
+    // bodies that share several cells are listed once for each: after the sort the repeats
+    // stand together.
+    std::ranges::sort(candidates_, {}, &Candidate::key);
+    const auto repeats = std::ranges::unique(candidates_, {}, &Candidate::key);
+    candidates_.erase(repeats.begin(), repeats.end());
+    candidate_pairs = candidates_.size();
+    for (const Candidate &c : candidates_)
+        collide(*c.a, *c.b);
     contact_count = contacts_.size();
     for (auto &c : contacts_)
     {

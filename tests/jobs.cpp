@@ -466,9 +466,9 @@ void consoleAndHail(const std::filesystem::path &path)
     check(w.inventory.ammo(WeaponId::pistol) == 12, "weapon command sets requested ammunition");
     console.execute(w, L"help");
     console.scroll(6);
-    check(console.visibleLines(3).size() == 3, "help history scrolls");
+    check(console.visible_lines(3).size() == 3, "help history scrolls");
     console.execute(w, L"clear");
-    check(console.visibleLines(3).empty(), "clear resets visible output");
+    check(console.visible_lines(3).empty(), "clear resets visible output");
     auto count = w.people.size();
     w.updateHailers();
     int actor = w.hailers.front().actor;

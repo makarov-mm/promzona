@@ -8,16 +8,10 @@
 #include <stdexcept>
 #include <unordered_map>
 
+// The single compiled copy of the font rasteriser. Its functions keep external linkage: declared
+// static, every one the canvas does not call is a warning (C4505, -Wunused-function).
 #define STB_TRUETYPE_IMPLEMENTATION
-#define STBTT_STATIC
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-function"
-#endif
 #include "stb/stb_truetype.h"
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
 
 namespace Promzona
 {
@@ -190,6 +184,9 @@ void HudCanvas::fill(int x, int y, int w, int h, Color color)
     const Clip c = clip();
     const int left = std::max(c.left, x), top = std::max(c.top, y);
     const int right = std::min(c.right, x + w), bottom = std::min(c.bottom, y + h);
+    // Nothing to paint: the box is empty or lies beside the clip (GDI ignored such boxes too).
+    if (left >= right)
+        return;
     const std::uint32_t value = pixel(color);
     for (int row = top; row < bottom; ++row)
         std::fill(pixels_.begin() + ptrdiff_t(row) * width_ + left, pixels_.begin() + ptrdiff_t(row) * width_ + right,
@@ -233,7 +230,7 @@ void HudCanvas::text_box(const Font &font, int x, int y, int w, int h, std::wstr
 {
     std::wstring shown(s);
     int textWidth = font.width(shown);
-    if (ellipsis && textWidth > w)
+    if (ellipsis && textWidth > w && !shown.empty())
     {
         // The longest start of the text that leaves room for the dots, as GDI's end ellipsis.
         size_t keep = shown.size();

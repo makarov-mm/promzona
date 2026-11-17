@@ -246,7 +246,7 @@ void AudioMixer::pause(bool paused, bool world_paused)
 {
     std::lock_guard lock(mutex_);
     playing_ = !paused;
-    worldPaused_ = world_paused;
+    world_paused_ = world_paused;
 }
 void AudioMixer::clear()
 {
@@ -266,7 +266,7 @@ void AudioMixer::mix(std::span<float> stereo)
     std::ranges::fill(stereo, 0.f);
     if (!playing_)
         return;
-    if (!worldPaused_)
+    if (!world_paused_)
     {
         for (auto &v : voices_)
             for (size_t k = 0; k < stereo.size(); k += 2)

@@ -17,7 +17,7 @@ namespace Promzona
     {
         Vec3 origin;
         float half_width{}, half_depth{}, height{};
-        bool windowsOnZ{};
+        bool windows_on_z{};
         BuildingKind kind{BuildingKind::apartment};
         int front{1};
         std::uint32_t seed{};

@@ -233,14 +233,30 @@ namespace Promzona
 
         for (const RoadLevel &s : roadLevels)
         {
-            if (s.leftNode == n)
-                out.push_back(s.rightNode);
+            if (s.left_node == n)
+                out.push_back(s.right_node);
 
-            if (s.rightNode == n)
-                out.push_back(s.leftNode);
+            if (s.right_node == n)
+                out.push_back(s.left_node);
         }
 
         return out;
+    }
+
+    int World::degree(int n) const
+    {
+        int count = layout.degree(n);
+
+        for (const RoadLevel &s : roadLevels)
+        {
+            if (s.left_node == n)
+                ++count;
+
+            if (s.right_node == n)
+                ++count;
+        }
+
+        return count;
     }
 
     int World::choose_next(int n, int previous)
@@ -265,7 +281,7 @@ namespace Promzona
             if (auto s = levelEdge(car.routeFrom, car.routeTo))
             {
                 car.laneIndex = 0;
-                car.route = s->route(car.routeFrom == s->leftNode);
+                car.route = s->route(car.routeFrom == s->left_node);
                 car.routePhase = 2;
                 car.routeLevel = s->id;
             }
@@ -434,7 +450,7 @@ namespace Promzona
         layout.generate(
             std::bit_cast<std::int32_t>(seed), nodes, true, [&](float p) { report(.02f + p * .8f); },
             layoutRevision);
-        roadLevels = generateRoadLevels(layout, seed);
+        roadLevels = generate_road_levels(layout, seed);
         buildings = layout.buildings;
         indexRoofs();
         report(.4f);
@@ -735,6 +751,8 @@ namespace Promzona
         if (time >= nextPlatformScan)
             updatePlatforms();
         std::vector<Vec2> previousCars, previousPeople;
+        previousCars.reserve(cars.size());
+        previousPeople.reserve(people.size());
         for (auto &c : cars)
             previousCars.push_back(c.body.p);
         for (auto &p : people)
@@ -890,7 +908,7 @@ namespace Promzona
             {
                 if (!car.route)
                     new_route(car);
-                car.routeDistance = car.route->closestDistance(b.p);
+                car.routeDistance = car.route->closest_distance(b.p);
                 if (time >= car.sense_at)
                     senseTraffic(car, true);
                 planExit(car);
@@ -903,7 +921,7 @@ namespace Promzona
                 if (reached && clear)
                 {
                     new_route(car);
-                    car.routeDistance = car.route->closestDistance(b.p);
+                    car.routeDistance = car.route->closest_distance(b.p);
                     end = car.route->sample(car.route->length());
                 }
                 double lookAhead = 2.8 + std::abs(dot(b.v, forward(car.heading()))) * .35;
@@ -1181,6 +1199,8 @@ namespace Promzona
         for (const auto &p : people)
             if (p.riding < 0 && !p.dead && p.knockedUntil <= time && (p.body.p - focus).length2() < 92 * 92)
                 afoot.push_back(&p);
+        // How far a walker's velocity closes on the wanted one in this step: one value for all.
+        const double paceGain = 1 - std::exp(-dt * 4);
         for (auto &p : people)
         {
             if (p.riding >= 0)
@@ -1425,7 +1445,7 @@ namespace Promzona
             if (speed > .01)
                 p.heading = std::atan2(dir.x, dir.z);
             auto desired = dir * speed;
-            p.body.v += (desired - p.body.v) * (1 - std::exp(-dt * 4));
+            p.body.v += (desired - p.body.v) * paceGain;
             p.body.wake();
             if (local)
                 bodies.push_back(&p.body);
@@ -1742,8 +1762,8 @@ namespace Promzona
             const Weapon *it = consoleWeapon(args[1]);
             if (!it)
                 throw std::invalid_argument("Unknown weapon: pistol, automatic, bazooka, flamethrower");
-            int ammo = args.size() == 3 ? consoleNumber(args[2], 1, Inventory::ammoLimit, "Ammo: 1..9999")
-                                        : it->pickupAmmo;
+            int ammo = args.size() == 3 ? consoleNumber(args[2], 1, Inventory::ammo_limit, "Ammo: 1..9999")
+                                        : it->pickup_ammo;
             if (!inventory.give(it->id, ammo))
                 throw std::invalid_argument("Ammunition already full");
         }

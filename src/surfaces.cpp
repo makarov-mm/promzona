@@ -19,14 +19,16 @@ const RoadLevel *World::levelAt(Vec2 p, double margin) const
 const RoadLevel *World::levelEdge(int from, int to) const
 {
     for (const auto &s : roadLevels)
-        if ((s.leftNode == from && s.rightNode == to) || (s.rightNode == from && s.leftNode == to))
+        if ((s.left_node == from && s.right_node == to) || (s.right_node == from && s.left_node == to))
             return &s;
     return nullptr;
 }
 double World::surface(Vec2 p, int level) const
 {
-    if (auto s = levelById(level); s && s->contains(p, .15))
-        return s->floor(terrain, p);
+    // Level 0 is the ground: the ids of the road levels start at 1.
+    if (level)
+        if (auto s = levelById(level); s && s->contains(p, .15))
+            return s->floor(terrain, p);
     return terrain.height(p);
 }
 bool World::openCut(Vec2 p, double margin) const
@@ -64,7 +66,7 @@ bool World::scenerySolid(Vec2 p, double y, double radius) const
         return y < terrain.bed_height(p.x, p.z) + radius;
     }
     double floor = s->floor(terrain, p);
-    bool wall = std::abs(p.z - s->centreZ(p.x)) > RoadLevel::halfWidth - .14 - radius &&
+    bool wall = std::abs(p.z - s->centre_z(p.x)) > RoadLevel::half_width - .14 - radius &&
                 std::abs(p.x - s->x) < RoadLevel::length - 3;
     double top = s->tunnel ? (s->roof(p.x) ? floor + RoadLevel::clearance : std::max(ground + .6, floor + .8))
                            : floor + .85;
@@ -217,8 +219,8 @@ void World::appendLevelContacts(std::uint32_t &id)
             double x = s.x - RoadLevel::length + k, next = x + 1;
             for (int side : {-1, 1})
             {
-                Vec2 a{x, s.centreZ(x) + side * RoadLevel::halfWidth},
-                    b{next, s.centreZ(next) + side * RoadLevel::halfWidth};
+                Vec2 a{x, s.centre_z(x) + side * RoadLevel::half_width},
+                    b{next, s.centre_z(next) + side * RoadLevel::half_width};
                 auto p = (a + b) * .5;
                 double floor = s.floor(terrain, p);
                 double top = s.tunnel ? (s.roof(p.x) ? floor + RoadLevel::clearance
@@ -233,7 +235,7 @@ void World::appendLevelContacts(std::uint32_t &id)
             {
                 for (int side : {-1, 1})
                 {
-                    Vec2 p{x, s.centreZ(x) + side * 7.1};
+                    Vec2 p{x, s.centre_z(x) + side * 7.1};
                     box(p, terrain.height(p), s.floor(terrain, p) - .55, {.7, .7});
                 }
                 // The cap beam is drawn 0.55 to 1.25 m under the deck. A body's height is its
@@ -241,7 +243,7 @@ void World::appendLevelContacts(std::uint32_t &id)
                 // centres the vertical extent on it: a MAZ or an ambulance on the deck reached
                 // the beam under its own wheels and stood there, on the level deck and, with
                 // the beam ahead higher than the wheels, on the ramps. The collider sits lower.
-                Vec2 p{x, s.centreZ(x)};
+                Vec2 p{x, s.centre_z(x)};
                 box(p, s.floor(terrain, p) - 3.1, s.floor(terrain, p) - 2.4, {.8, 7.8});
             }
     }

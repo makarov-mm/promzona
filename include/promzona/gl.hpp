@@ -4,13 +4,15 @@
 #define GL_SILENCE_DEPRECATION
 #include <SDL3/SDL_opengl.h>
 #include <SDL3/SDL_video.h>
-#include <cstddef>
+#include <cstddef> // std::ptrdiff_t: the headers around it do not bring it in with libc++ (macOS)
 #include <cstdint>
 #include <stdexcept>
 
 namespace Promzona::gl
 {
 // clang-format off
+// The names are the OpenGL entry points without their gl prefix: load() finds each one by its
+// name, so they keep the spelling of OpenGL and are not renamed with the rest of the code.
 #define PZ_GL_FUNCTIONS(X) \
     X(GetStringi, const GLubyte *, GLenum, GLuint) \
     X(CreateShader, GLuint, GLenum) \

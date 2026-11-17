@@ -50,9 +50,9 @@ Hitting a pedestrian knocks them down, a fast hit is fatal; this raises the want
 Bodies, wrecked and abandoned cars disappear once you are more than 245 m away; the city is replenished elsewhere.
 A car sinks in deep water. Water puts out fire. Potholes toss the car up.
 
-The population of a new game (low, medium, high, full) is chosen in settings and applies to the next new game.
-Full is the population of the C# version: 1485 cars and 5265 residents; it is the default. High is 1080 and 3240.
-Launching with --density low|medium|high|full changes it for one session. A game already started keeps its density.
+The population of a new game (low, medium, high, full, maximum) is chosen in settings and applies to the next new game.
+Maximum is the default: 4000 cars and 14000 residents. Full is the population of the C# version: 1485 cars and 5265 residents. High is 1080 and 3240.
+Launching with --density low|medium|high|full|max changes it for one session. A game already started keeps its density.
 Pedestrians wait at traffic lights and walk around each other. A car standing without throttle is held by the brake.
 
 The interface language (русский, English, українська) is chosen in settings.

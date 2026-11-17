@@ -25,7 +25,7 @@ namespace Promzona
         static Path turnaround(Vec2 centre, Vec2 direction, double lane = 1.9);
         double length() const { return arc_.back(); }
         std::pair<Vec2, double> sample(double distance) const;
-        double closestDistance(Vec2 p) const;
+        double closest_distance(Vec2 p) const;
         const auto &points() const { return points_; }
     };
 
@@ -43,10 +43,10 @@ namespace Promzona
         WeaponId id;
         int power;
         std::string_view name;
-        int pickupAmmo;
-        double interval, range, carDamage, personDamage;
-        int npcBurst;
-        double npcInterval, npcRest, npcCarDamage;
+        int pickup_ammo;
+        double interval, range, car_damage, person_damage;
+        int npc_burst;
+        double npc_interval, npc_rest, npc_car_damage;
         std::string_view sound;
     };
 
@@ -60,15 +60,15 @@ namespace Promzona
         std::optional<WeaponId> selected_;
 
     public:
-        static constexpr int ammoLimit = 9999;
+        static constexpr int ammo_limit = 9999;
         int ammo(WeaponId id) const;
 
-        bool owns(WeaponId id) const
+        bool owns(const WeaponId id) const
         {
             return weapon(id) && owned_[std::to_underlying(id)];
         }
 
-        bool hasWeapons() const
+        bool has_weapons() const
         {
             return std::ranges::any_of(owned_, [](const bool x) { return x; });
         }

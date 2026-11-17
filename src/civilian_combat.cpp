@@ -77,14 +77,14 @@ void World::civilianCombat(Person &p, double dt)
         return;
     }
     if (p.burstLeft == 0)
-        p.burstLeft = gun->npcBurst;
+        p.burstLeft = gun->npc_burst;
     --p.burstLeft;
-    p.shotAt = time + (p.burstLeft > 0 ? gun->npcInterval : gun->npcRest + (p.body.id % 5) * .04);
+    p.shotAt = time + (p.burstLeft > 0 ? gun->npc_interval : gun->npc_rest + (p.body.id % 5) * .04);
     sounds.push_back({std::string(gun->sound), p.body.p, .52});
     if (hit.kind == HitKind::car)
-        damageCar(cars[hit.index], gun->npcCarDamage);
+        damageCar(cars[hit.index], gun->npc_car_damage);
     else
-        wound_player(gun->personDamage * .45);
+        wound_player(gun->person_damage * .45);
     bulletSparks(p.body.p, dir, muzzle, slope, hit);
     for (double at = 1; at < hit.distance && particles.size() < 5000; at += 1.4)
         particles.push_back(

@@ -1,7 +1,6 @@
 #pragma once
 #include "core.hpp"
 #include <unordered_map>
-#include <unordered_set>
 
 namespace Promzona
 {
@@ -29,10 +28,17 @@ namespace Promzona
             Vec2 normal{};
         };
 
+        struct Candidate
+        {
+            std::uint64_t key{};
+            Body *a{}, *b{};
+        };
+
         std::vector<Contact> contacts_;
         std::unordered_map<std::uint64_t, Warm> warm_;
+        // The cells and the candidate list keep their memory from one step to the next.
         std::unordered_map<std::uint64_t, std::vector<Body *>> grid_;
-        std::unordered_set<std::uint64_t> pairs_;
+        std::vector<Candidate> candidates_;
         void collide(Body &a, Body &b);
         static std::uint64_t pair(const Body &a, const Body &b);
 

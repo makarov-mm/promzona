@@ -71,22 +71,22 @@ int main()
     try
     {
         auto b = box({0, 10}, {2, 3});
-        near(rayPrism({}, {0, 1}, 1, 0, b, 30), 7, "box front face");
+        near(ray_prism({}, {0, 1}, 1, 0, b, 30), 7, "box front face");
         b.angle = pi * .5;
-        near(rayPrism({}, {0, 1}, 1, 0, b, 30), 8, "rotated box, not fixed car radius");
-        check(std::isinf(rayPrism({}, {0, 1}, 5, 0, b, 30)), "shot above vehicle misses");
-        near(rayPrism({}, {0, 1}, 5, -.4, b, 30), 8, "descending shot enters prism");
-        near(rayPrism({0, 10}, {0, 1}, 1, 0, b, 30), 0, "shot inside prism stops immediately");
-        check(std::isinf(rayPrism({3.1, 0}, {0, 1}, 1, 0, b, 30)), "parallel slab misses outside box");
+        near(ray_prism({}, {0, 1}, 1, 0, b, 30), 8, "rotated box, not fixed car radius");
+        check(std::isinf(ray_prism({}, {0, 1}, 5, 0, b, 30)), "shot above vehicle misses");
+        near(ray_prism({}, {0, 1}, 5, -.4, b, 30), 8, "descending shot enters prism");
+        near(ray_prism({0, 10}, {0, 1}, 1, 0, b, 30), 0, "shot inside prism stops immediately");
+        check(std::isinf(ray_prism({3.1, 0}, {0, 1}, 1, 0, b, 30)), "parallel slab misses outside box");
         auto p = person({0, 5});
-        near(rayPerson({}, {0, 1}, 1, 0, p.body, 10), 4.67, "cylinder entry");
-        check(std::isinf(rayPerson({}, {0, 1}, 4, 0, p.body, 10)), "people have finite vertical extent");
+        near(ray_person({}, {0, 1}, 1, 0, p.body, 10), 4.67, "cylinder entry");
+        check(std::isinf(ray_person({}, {0, 1}, 4, 0, p.body, 10)), "people have finite vertical extent");
         for (int i = 0; i <= 600; i++)
-            near(wantedFromPoints(wantedPoints(i * .01)), i * .01, "wanted nonlinear mapping roundtrip");
-        near(wantedPoints(6), 21.9, "all six increasing wanted costs");
-        near(wantedFromPoints(1.8), 1.5, "overflow crime carries into next tier");
-        near(wantedFromPoints(9999), 6, "wanted saturates");
-        check(policeRoster(1).size() == 2 && policeRoster(6).size() == 9 && policeRoster(6).back() == 12,
+            near(wanted_from_points(wanted_points(i * .01)), i * .01, "wanted nonlinear mapping roundtrip");
+        near(wanted_points(6), 21.9, "all six increasing wanted costs");
+        near(wanted_from_points(1.8), 1.5, "overflow crime carries into next tier");
+        near(wanted_from_points(9999), 6, "wanted saturates");
+        check(police_roster(1).size() == 2 && police_roster(6).size() == 9 && police_roster(6).back() == 12,
               "original police roster includes final air patrol kind");
         auto w = empty();
         {
@@ -150,6 +150,56 @@ int main()
         check(hit.kind == HitKind::scenery, "thin wall occludes first person");
         check(!w.blastVisible({}, 1.3, {0, 5}, 1.3), "explosion blocked by solid wall");
         check(w.blastVisible({}, 5, {0, 5}, 5), "above-wall blast ray clear");
+        // A ray is tested only against the boxes it can reach. Its answers have to be those
+        // of testing every box, whatever the direction, the length and the boxes are.
+        w = empty();
+        {
+            std::uint32_t state = 20261117;
+            auto uniform = [&](double low, double high)
+            {
+                state = state * 1664525u + 1013904223u;
+                return low + (high - low) * (state >> 8) * (1. / 16777216.);
+            };
+            for (int i = 0; i < 400; ++i)
+            {
+                // One draw after another: the order of evaluating arguments is the compiler's.
+                const Vec2 centre{uniform(-80, 80), uniform(-80, 80)}, half{uniform(.05, 9), uniform(.05, 9)};
+                const double height = uniform(0, 6), extent = uniform(.5, 8);
+                auto wall = box(centre, half, height, extent);
+                wall.angle = uniform(-pi, pi);
+                w.staticBodies.push_back(wall);
+            }
+            int different = 0, blocked = 0, struck = 0;
+            for (int i = 0; i < 4000; ++i)
+            {
+                // Level or rising, so that the ground of the empty world stays out of it.
+                const Vec2 from{uniform(-90, 90), uniform(-90, 90)};
+                const double range = i % 4 ? uniform(.02, 40) : uniform(40, 260), y = uniform(.5, 7),
+                             slope = uniform(0, .2);
+                // Every seventh direction is not of unit length: the range counts its lengths.
+                const Vec2 aim = forward(uniform(-pi, pi)), dir = aim * (i % 7 ? 1. : uniform(.2, 3));
+                double nearest = range;
+                for (const auto &wall : w.staticBodies)
+                    nearest = std::min(nearest, ray_prism(from, dir, y, slope, wall, range));
+                const auto shot = w.traceAttack(from, dir, y, slope, range);
+                different += shot.distance != nearest || (shot.kind == HitKind::scenery) != (nearest < range);
+                struck += nearest < range;
+                // The same sums as blastVisible does, so that the comparison is exact.
+                const Vec2 to = from + aim * range, delta = to - from;
+                const double distance = delta.length(), targetY = y + slope * range;
+                const Vec2 unit = delta / distance;
+                const double rise = (targetY - y) / distance;
+                bool clear = true;
+                for (const auto &wall : w.staticBodies)
+                    clear = clear && !(ray_prism(from, unit, y, rise, wall, distance) < distance - .01);
+                different += w.blastVisible(from, y, to, targetY) != clear;
+                blocked += !clear;
+            }
+            check(!different,
+                  "rays that pass over the boxes out of their reach answer as rays tested on every box");
+            check(blocked > 400 && blocked < 3600 && struck > 400 && struck < 3600,
+                  "the rays of the comparison both hit and miss");
+        }
         w = empty();
         w.inventory.give(WeaponId::bazooka);
         w.cars.push_back(car({0, 25}));

@@ -196,10 +196,10 @@ namespace Promzona
             int z = clamp(int(std::lround(p.body.p.z / spacing)) + nodes / 2, 0, nodes - 1);
             int goal = z * nodes + x;
             if (auto *level = levelById(p.body.roadLevel))
-                goal = (p.body.p - nodePoint(level->leftNode)).length2() <
-                               (p.body.p - nodePoint(level->rightNode)).length2()
-                           ? level->leftNode
-                           : level->rightNode;
+                goal = (p.body.p - nodePoint(level->left_node)).length2() <
+                               (p.body.p - nodePoint(level->right_node)).length2()
+                           ? level->left_node
+                           : level->right_node;
             Rescue route;
             route.destination = goal;
             route_ambulance(route);

@@ -92,7 +92,7 @@ void junction()
     require(std::abs(car.body.p.x - centre.x) - car.body.halfH > 10.3, "a waiting car stands on the zebra");
     require(w.intersectionClear(car), "an empty junction is closed");
     // Don't block the box: with the way out taken the car stays at the line.
-    car.plannedTo = east;
+    car.planned_to = east;
     require(w.intersectionClear(car), "a free way out keeps the car back");
     auto &queued = place(w, 2, 0, node, east, 0, 0);
     queued.routeDistance = 1.5;
@@ -102,7 +102,7 @@ void junction()
     queued.body.v = forward(queued.heading()) * 5;
     require(w.intersectionClear(car), "a car driving off ahead keeps the junction closed");
     queued.body.v = {};
-    car.plannedTo = north;
+    car.planned_to = north;
     require(w.intersectionClear(car), "a queue on another street keeps the car back");
     // One car crosses at a time, however steep the street is.
     queued.routePhase = 1;
@@ -142,16 +142,16 @@ void junction()
     w.indexTraffic();
     w.senseTraffic(left, false);
     w.senseTraffic(right, false);
-    require(left.trafficLimit > 5 && right.trafficLimit > 5, "trucks abreast hold each other");
+    require(left.traffic_limit > 5 && right.traffic_limit > 5, "trucks abreast hold each other");
     // A long vehicle waits further back, an ordinary car right behind a queue.
     right.destroy();
     right.body.p = {World::landEdge - 20, 220};
     auto &behind = place(w, 5, 0, west, node, 0, 9);
     w.indexTraffic();
     w.senseTraffic(behind, false);
-    require(behind.trafficLimit > 0 && behind.trafficLimit < 3,
+    require(behind.traffic_limit > 0 && behind.traffic_limit < 3,
             "a queue at the lights is kept at a distance");
-    require(behind.blockedSince < 0, "a queue at the lights counts as an obstacle");
+    require(behind.blocked_since < 0, "a queue at the lights counts as an obstacle");
 
     // Out of a turn the car still points across the lane. Whoever stands in front of the
     // bumper is in the way, although the line the car steers for passes them by.
@@ -176,7 +176,7 @@ void junction()
         walker->body.v = {};
         w.indexTraffic();
         w.senseTraffic(turned, true);
-        return turned.trafficLimit;
+        return turned.traffic_limit;
     };
     const Vec2 before = turned.body.p + nose * (turned.body.halfH + 1.2);
     require(std::abs(cross(before - start, forward(heading))) > turned.body.halfW + walker->body.radius + .5,
@@ -212,14 +212,14 @@ void junction()
             "the oncoming truck does not wait where it should");
     w.indexTraffic();
     w.senseTraffic(out, true);
-    require(out.trafficLimit > 3, "a truck out of a turn waits for the truck in the oncoming lane");
+    require(out.traffic_limit > 3, "a truck out of a turn waits for the truck in the oncoming lane");
     // What its bumper will meet all the same stops it: a car across the lane right in front.
     auto &across = place(w, 9, 0, node, south, 0, 0);
     across.driverless = true;
     point(across, Vec2{2.46, -9.19} + Vec2{-.296, -.955} * (out.body.halfH + 1.6), {1, 0});
     w.indexTraffic();
     w.senseTraffic(out, true);
-    require(out.trafficLimit < .5, "a truck out of a turn runs into the car in front of its bumper");
+    require(out.traffic_limit < .5, "a truck out of a turn runs into the car in front of its bumper");
     for (size_t slot : {7uz, 8uz, 9uz})
     {
         w.cars[slot].destroy();
@@ -229,7 +229,7 @@ void junction()
     // A bus that comes round into the kerb lane points its bonnet at the pavement. Whoever
     // stands there is not in its way: the bumper swings round with the turn.
     auto &bus = place(w, 10, busModel, south, node, 1, 0);
-    bus.plannedTo = east;
+    bus.planned_to = east;
     bus.routeDistance = bus.route->length();
     w.new_route(bus);
     require(bus.routePhase == 1 && bus.routeTo == east && bus.route->length() > 24, "the bus does not turn");
@@ -243,7 +243,7 @@ void junction()
         walker->body.v = {};
         w.indexTraffic();
         w.senseTraffic(bus, true);
-        return bus.trafficLimit;
+        return bus.traffic_limit;
     };
     require(beside({11.65, 8.03}) > 3,
             "a bus in a turn waits for somebody on the pavement beyond its bonnet");
@@ -399,14 +399,14 @@ void overpass()
         for (const auto &level : w.roadLevels)
             for (const auto &beam : w.staticBodies)
             {
-                if (level.tunnel || beam.halfH < 7 || std::abs(beam.p.z - level.centreZ(beam.p.x)) > .01 ||
+                if (level.tunnel || beam.halfH < 7 || std::abs(beam.p.z - level.centre_z(beam.p.x)) > .01 ||
                     std::abs(beam.p.x - level.x) > RoadLevel::length)
                     continue;
                 ++beams;
                 for (double x = beam.p.x - 5; x <= beam.p.x + 5; x += .25)
                     for (double side : {-2.8, 2.8})
                     {
-                        const Vec2 at{x, level.centreZ(x) + side};
+                        const Vec2 at{x, level.centre_z(x) + side};
                         require(level.floor(w.terrain, at) + .8 - beam.height >
                                     (tall.body.verticalExtent + beam.verticalExtent) * .5,
                                 "a beam under the deck reaches a truck on it");
@@ -417,7 +417,7 @@ void overpass()
     spectate(w, {bridge->x + 30, bridge->z + 40});
     for (unsigned model : {17u, ambulanceModel})
     {
-        auto &c = place(w, model == 17 ? 1 : 2, model, bridge->leftNode, bridge->rightNode, 0, 0);
+        auto &c = place(w, model == 17 ? 1 : 2, model, bridge->left_node, bridge->right_node, 0, 0);
         require(c.routePhase == 2, "no route over the overpass");
         c.routeDistance = 60;
         c.body.p = c.route->sample(60).first;
@@ -463,7 +463,7 @@ void handover()
     spectate(w, centre + Vec2{116, 1.9});
     clearAround(w, centre);
     auto &truck = place(w, 1, 17, node + World::nodes, node, 0, 3);
-    truck.plannedTo = node + 1;
+    truck.planned_to = node + 1;
     bool turned = false;
     for (int k = 0; k < 60 * 40 && !(turned && truck.routePhase == 0); ++k)
     {
@@ -497,7 +497,7 @@ void backsUp()
         c.body.angle = -std::atan2(facing.x, facing.z);
         c.body.v = {};
         c.body.height = w.surface(c.body.p, 0) + .8;
-        c.routeDistance = c.route->closestDistance(c.body.p);
+        c.routeDistance = c.route->closest_distance(c.body.p);
     };
     auto &truck = place(w, 1, 17, node, node + 1, 0, 13);
     pose(truck, {10.05, .57}, {.52, -.85});
@@ -522,11 +522,11 @@ void levelBend()
     w.generate(20261105u);
     const auto &level = w.roadLevels.at(2);
     spectate(w, World::nodePoint(World::nodes * World::nodes / 2));
-    clearAround(w, World::nodePoint(level.leftNode));
+    clearAround(w, World::nodePoint(level.left_node));
     auto put = [&](size_t slot, unsigned model, bool east, double distance) -> Car &
     {
-        auto &c = place(w, slot, model, east ? level.leftNode : level.rightNode,
-                        east ? level.rightNode : level.leftNode, 0, 0);
+        auto &c = place(w, slot, model, east ? level.left_node : level.right_node,
+                        east ? level.right_node : level.left_node, 0, 0);
         require(c.routePhase == 2, "no route over the level road");
         c.routeDistance = distance;
         const auto [at, heading] = c.route->sample(distance);
@@ -548,19 +548,19 @@ void levelBend()
             "the queue of the level road does not stand on the bend");
     w.indexTraffic();
     w.senseTraffic(van, false);
-    require(van.trafficLimit > 5, "a van waits for the truck queued in the oncoming lane of a level road");
+    require(van.traffic_limit > 5, "a van waits for the truck queued in the oncoming lane of a level road");
     // The same truck across both lanes is in the way.
     truck.body.angle += .9;
     w.indexTraffic();
     w.senseTraffic(van, false);
-    require(van.trafficLimit < 3, "a van drives into the truck that stands across a level road");
+    require(van.traffic_limit < 3, "a van drives into the truck that stands across a level road");
     // So is whoever stands in the lane of the van itself.
     truck.destroy();
     truck.body.p = {World::landEdge - 20, 260};
     put(3, 16, true, 2.8 + 9);
     w.indexTraffic();
     w.senseTraffic(van, false);
-    require(van.trafficLimit < 3, "a van does not see the truck ahead of it on a level road");
+    require(van.traffic_limit < 3, "a van does not see the truck ahead of it on a level road");
 }
 
 // Twelve minutes of an untouched city: nobody is left standing, and nothing had to be cleared.

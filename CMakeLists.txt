@@ -30,7 +30,7 @@ target_sources(promzona_core PRIVATE
   include/promzona/city_mesh.hpp include/promzona/combat.hpp
   include/promzona/core.hpp include/promzona/layout.hpp include/promzona/minimap.hpp include/promzona/control_hints.hpp include/promzona/hud_damage.hpp include/promzona/road_levels.hpp
   include/promzona/math.hpp include/promzona/physics.hpp include/promzona/world.hpp include/promzona/fleet.hpp include/promzona/jobs.hpp include/promzona/game_console.hpp include/promzona/front_end.hpp include/promzona/transit.hpp
-  include/promzona/localization.hpp include/promzona/names.hpp include/promzona/text.hpp src/localization_phrases.inc)
+  include/promzona/localization.hpp include/promzona/names.hpp include/promzona/text.hpp include/promzona/stop_thread.hpp src/localization_phrases.inc)
 set_property(TARGET promzona_core PROPERTY FOLDER Libraries)
 target_include_directories(promzona_core PUBLIC include PRIVATE third_party)
 option(BUILD_TESTING "Build PROMZONA native tests" ON)
@@ -189,8 +189,9 @@ if(PROMZONA_BUILD_GAME)
   target_include_directories(Promzona PRIVATE third_party)
   target_link_libraries(Promzona PRIVATE promzona_core promzona_assets SDL3::SDL3 OpenGL::GL)
   if(MINGW)
-    # No dependency on the MinGW runtime DLLs.
-    target_link_options(Promzona PRIVATE -static)
+    # No dependency on the MinGW runtime DLLs. With UNICODE defined SDL_main.h provides wWinMain,
+    # which the MinGW start-up code calls only with -municode.
+    target_link_options(Promzona PRIVATE -static -municode)
   endif()
   target_compile_definitions(Promzona PRIVATE PROMZONA_SOURCE_CONTENT="${CMAKE_SOURCE_DIR}/Content")
   set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT Promzona)

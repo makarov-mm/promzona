@@ -414,7 +414,7 @@ struct Renderer::Impl
         Uniform3f(skyUniforms.sun, sun.x, sun.y, sun.z);
         Uniform3f(skyUniforms.fog, air.horizon.x, air.horizon.y, air.horizon.z);
         Uniform3f(skyUniforms.zenith, air.zenith.x, air.zenith.y, air.zenith.z);
-        Uniform4f(skyUniforms.air, air.density, air.heightScale, air.golden, 0);
+        Uniform4f(skyUniforms.air, air.density, air.height_scale, air.golden, 0);
         Uniform1f(skyUniforms.day, air.daylight);
         Uniform1f(skyUniforms.rain, air.rain);
         Uniform1f(skyUniforms.time, time);
@@ -1795,8 +1795,8 @@ struct Renderer::Impl
                     continue;
                 auto batch = surfaceMaterial(i, false);
                 batch.sectorVao = storage.vao;
-                batch.baseVertex = GLint(s.firstVertex);
-                batch.indexOffset = s.firstIndexByte;
+                batch.baseVertex = GLint(s.first_vertex);
+                batch.indexOffset = s.first_index_byte;
                 batch.mesh.count = GLsizei(s.count);
                 batch.mesh.indexType = s.narrow ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT;
                 batch.centre = s.centre;
@@ -1844,7 +1844,7 @@ struct Renderer::Impl
                 releaseSector(id);
             // A jump can make an already-partially-uploaded sector the new floor.
             // It is reserved in the residency mask and therefore absent from plan.load.
-            if (pendingSector && all[pendingSector->id].distance(eye) < sectorUrgent)
+            if (pendingSector && all[pendingSector->id].distance(eye) < sector_urgent)
             {
                 uploadSector(*pendingSector, pendingSectorBytes, true);
                 pendingSector.reset();
@@ -1854,7 +1854,7 @@ struct Renderer::Impl
             sectorOrders = std::move(plan.load);
             // A sector at the eye cannot wait for the worker: after a jump the ground
             // under the camera is built at once.
-            while (!sectorOrders.empty() && sectorOrders.front().distance < sectorUrgent)
+            while (!sectorOrders.empty() && sectorOrders.front().distance < sector_urgent)
             {
                 installSector(sectorOrders.front().id);
                 ++sectorUploads;
@@ -2340,7 +2340,7 @@ struct Renderer::Impl
 };
 Renderer::Renderer(const std::filesystem::path &content) : impl_(std::make_unique<Impl>(content)) {}
 Renderer::~Renderer() = default;
-void Renderer::sceneMode(SceneMode mode)
+void Renderer::scene_mode(SceneMode mode)
 {
     if (mode == SceneMode::original)
         impl_->post.releaseTargets();
@@ -2357,23 +2357,23 @@ void Renderer::graphics(const GraphicsPreferences &settings)
 {
     impl_->graphics = settings;
 }
-void Renderer::profileGpu()
+void Renderer::profile_gpu()
 {
     impl_->timer.enable();
 }
-std::string Renderer::gpuReport() const
+std::string Renderer::gpu_report() const
 {
     return impl_->timer.report();
 }
-std::string Renderer::graphicsInfo() const
+std::string Renderer::graphics_info() const
 {
     return std::string(reinterpret_cast<const char *>(glGetString(GL_RENDERER))) + " / " +
            reinterpret_cast<const char *>(glGetString(GL_VERSION));
 }
-std::string Renderer::sceneryStats() const
+std::string Renderer::scenery_stats() const
 {
     auto &r = *impl_;
-    auto stream = streamingStats();
+    auto stream = streaming_stats();
     return "Scenery batches=" + std::to_string(r.submittedBatches) + "/" + std::to_string(r.sectorBatches) +
            " near=" + std::to_string(r.submittedDetails) +
            " submitted_triangles=" + std::to_string(r.submittedTriangles) +
@@ -2389,17 +2389,17 @@ std::string Renderer::sceneryStats() const
            " detail_uploads=" + std::to_string(stream.uploads) +
            " evictions=" + std::to_string(stream.evictions) +
            " peak_detail_MiB=" + std::to_string(stream.peak_gpu_bytes / (1024 * 1024)) +
-           " max_detail_upload_ms=" + std::to_string(stream.maxUploadMs) +
-           " sectors=" + std::to_string(stream.residentSectors) + "/" + std::to_string(stream.totalSectors) +
-           " sector_uploads=" + std::to_string(stream.sectorUploads) +
-           " sector_evictions=" + std::to_string(stream.sectorEvictions) +
-           " peak_base_MiB=" + std::to_string((r.sceneryBytes + stream.peakSectorBytes) / (1024 * 1024)) +
+           " max_detail_upload_ms=" + std::to_string(stream.max_upload_ms) +
+           " sectors=" + std::to_string(stream.resident_sectors) + "/" + std::to_string(stream.total_sectors) +
+           " sector_uploads=" + std::to_string(stream.sector_uploads) +
+           " sector_evictions=" + std::to_string(stream.sector_evictions) +
+           " peak_base_MiB=" + std::to_string((r.sceneryBytes + stream.peak_sector_bytes) / (1024 * 1024)) +
            " max_sector_upload_ms=" + std::to_string(stream.maxSectorUploadMs) +
            " probe_faces=" + std::to_string(r.probe.captured()) +
            " probe_batches=" + std::to_string(r.probeBatches) +
            " probe_triangles=" + std::to_string(r.probeTriangles);
 }
-StreamingStats Renderer::streamingStats() const
+StreamingStats Renderer::streaming_stats() const
 {
     const auto &r = *impl_;
     if (!r.detailStream)
@@ -2417,14 +2417,14 @@ StreamingStats Renderer::streamingStats() const
     if (r.sectorStream)
     {
         const auto sectorWorker = r.sectorStream->stats();
-        stats.residentSectors = r.residentSectors;
-        stats.totalSectors = r.sectors.size();
-        stats.sectorBytes = r.sectorBytes + (r.pendingSector ? r.pendingSector->bytes : 0);
-        stats.peakSectorBytes = r.peakSectorBytes;
-        stats.sectorUploads = r.sectorUploads;
-        stats.sectorEvictions = r.sectorEvictions;
-        stats.sectorsQueued = sectorWorker.queued;
-        stats.sectorsReady = sectorWorker.ready;
+        stats.resident_sectors = r.residentSectors;
+        stats.total_sectors = r.sectors.size();
+        stats.sector_bytes = r.sectorBytes + (r.pendingSector ? r.pendingSector->bytes : 0);
+        stats.peak_sector_bytes = r.peakSectorBytes;
+        stats.sector_uploads = r.sectorUploads;
+        stats.sector_evictions = r.sectorEvictions;
+        stats.sectors_queued = sectorWorker.queued;
+        stats.sectors_ready = sectorWorker.ready;
         stats.maxSectorUploadMs = r.maxSectorUploadMs;
         const auto all = r.sectorStream->sectors();
         for (size_t id = 0; id < all.size(); ++id)
@@ -2440,7 +2440,7 @@ void Renderer::prepare(const World &world)
     impl_->farShadowCache = {};
     auto &r = *impl_;
     r.street.prepare(world);
-    r.effects.clearWeatherCache();
+    r.effects.clear_weather_cache();
     r.grassCell.reset();
     r.grassInstances.clear();
     r.probe.reset();
@@ -2695,12 +2695,12 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     for (const auto &level : world.roadLevels)
         if (level.tunnel && tunnels < 8)
         {
-            const double slope = (level.floorSamples[198] - level.floorSamples[90]) / 108;
+            const double slope = (level.floor_samples[198] - level.floor_samples[90]) / 108;
             const double lamps = level.x - RoadLevel::length + .5;
             tunnelVolume[tunnels * 3] = float(level.x);
             tunnelVolume[tunnels * 3 + 1] = float(level.z + 18);
             tunnelVolume[tunnels * 3 + 2] = float(RoadLevel::covered);
-            tunnelFloor[tunnels * 3] = float(level.floorSamples[144]);
+            tunnelFloor[tunnels * 3] = float(level.floor_samples[144]);
             tunnelFloor[tunnels * 3 + 1] = float(slope);
             tunnelFloor[tunnels * 3 + 2] = float(lamps - std::floor(lamps / 9) * 9);
             ++tunnels;
@@ -2740,7 +2740,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     const Vec3 sunRay{float(std::cos((world.clock.hour - 6) * pi / 12)), float(world.clock.sun_height()), .3f};
     Uniform3f(r.uniform("uFog"), fog.x, fog.y, fog.z);
     Uniform3f(r.uniform("uZenith"), air.zenith.x, air.zenith.y, air.zenith.z);
-    Uniform4f(r.uniform("uAir"), air.density, air.heightScale, air.golden, float(world.wetness));
+    Uniform4f(r.uniform("uAir"), air.density, air.height_scale, air.golden, float(world.wetness));
     Uniform3f(r.uniform("uSun"), sunRay.x, sunRay.y, sunRay.z);
     Uniform1f(r.uniform("uDay"), day);
     Uniform1f(r.uniform("uTime"), float(world.time));
@@ -3691,7 +3691,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         Uniform3f(r.effectUniforms.sun, sunRay.x, sunRay.y, sunRay.z);
         Uniform3f(r.effectUniforms.fog, fog.x, fog.y, fog.z);
         Uniform3f(r.effectUniforms.zenith, air.zenith.x, air.zenith.y, air.zenith.z);
-        Uniform4f(r.effectUniforms.air, air.density, air.heightScale, air.golden, float(world.wetness));
+        Uniform4f(r.effectUniforms.air, air.density, air.height_scale, air.golden, float(world.wetness));
         Uniform1f(r.effectUniforms.day, day);
         Uniform1f(r.effectUniforms.rain, rain);
         Uniform1i(r.effectUniforms.probeReady, r.probe.ready() && r.graphics.quality > 0 ? 1 : 0);

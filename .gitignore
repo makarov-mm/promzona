@@ -1,7 +1,5 @@
 /build/
 /artifacts/
-/tests/reference/bin/
-/tests/reference/obj/
 .vs/
 CMakeUserPresets.json
 __pycache__/

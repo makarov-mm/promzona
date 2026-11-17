@@ -21,13 +21,13 @@ namespace Promzona
 
             if (!resident[id])
             {
-                if (distance <= range + sectorReach)
+                if (distance <= range + sector_reach)
                     plan.load.push_back({
                         .id = id,
                         .distance = distance
                     });
             }
-            else if (distance > range + sectorReach + sectorKeep)
+            else if (distance > range + sector_reach + sector_keep)
             {
                 plan.evict.push_back(id);
             }
@@ -82,8 +82,8 @@ namespace Promzona
             surface.narrow = mesh.vertices.size() <= 65536;
             const size_t width = surface.narrow ? 2 : 4;
             index_bytes = (index_bytes + width - 1) & ~(width - 1);
-            surface.firstVertex = vertex_bytes / stride;
-            surface.firstIndexByte = index_bytes;
+            surface.first_vertex = vertex_bytes / stride;
+            surface.first_index_byte = index_bytes;
             surface.count = mesh.indices.size();
             vertex_bytes += mesh.vertices.size() * stride;
             index_bytes += surface.count * width;
@@ -98,7 +98,7 @@ namespace Promzona
             if (!s.count)
                 continue;
 
-            unsigned char *dst = packet.vertices.data() + s.firstVertex * stride;
+            unsigned char *dst = packet.vertices.data() + s.first_vertex * stride;
             Vec3 lo = mesh.vertices.front().position, hi = lo;
 
             for (const auto &v : mesh.vertices)
@@ -112,7 +112,7 @@ namespace Promzona
 
             s.centre = (lo + hi) * .5f;
             s.radius = (hi - lo).length() * .5f;
-            auto *indices = packet.indices.data() + s.firstIndexByte;
+            auto *indices = packet.indices.data() + s.first_index_byte;
 
             if (s.narrow)
             {
@@ -205,7 +205,7 @@ namespace Promzona
         return {
             .queued = jobs_.size(), 
             .ready = ready_.size(), 
-            .readyBytes = readyBytes_, 
+            .ready_bytes = readyBytes_, 
             .built = built_,
             .discarded = discarded_, 
             .busy = active_.has_value()

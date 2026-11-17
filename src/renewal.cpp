@@ -158,7 +158,7 @@ bool World::renewCar(int slot)
         if (car.kind == 5 && layout.wide())
             car.laneIndex = 1;
         car.routeFrom = random.index(nodes * nodes);
-        if (neighbours(car.routeFrom).empty())
+        if (!degree(car.routeFrom))
             continue;
         car.routeTo = choose_next(car.routeFrom, -1);
         car.routePhase = 1;

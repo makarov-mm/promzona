@@ -20,6 +20,32 @@ bool slab(double origin, double direction, double extent, double &near, double &
     far = std::min(far, hi);
     return near <= far;
 }
+// Which of the city's colliders a ray can reach. The ray tests turn the ray into the frame of
+// every box they are given, and of the tens of thousands of boxes nearly all lie nowhere near
+// it. A box is passed over when its centre is further from the tested stretch of the ray than
+// its two half extents together, which is never less than its half diagonal, and a centimetre
+// more, far above the rounding of the tests. Such a box cannot be hit: the answers stay the same.
+class RayReach
+{
+    Vec2 origin_, direction_;
+    double squared_, scale_;
+
+  public:
+    RayReach(Vec2 origin, Vec2 direction)
+        : origin_(origin), direction_(direction), squared_(direction.length2()), scale_(std::sqrt(squared_))
+    {
+    }
+    // `limit` is counted in lengths of the direction, as the ray tests count it. Written so
+    // that a value that is not a number never passes a box over.
+    bool misses(const Body &b, double limit) const
+    {
+        const double reach = std::abs(b.halfW) + std::abs(b.halfH) + .01;
+        const Vec2 rel = b.p - origin_;
+        const double along = dot(rel, direction_);
+        return along < -reach * scale_ || along > limit * squared_ + reach * scale_ ||
+               rel.length2() * squared_ - along * along > reach * reach * squared_;
+    }
+};
 } // namespace
 
 // Port of CityTraffic's slab ray tests; test all three axes, including entering a roof.
@@ -111,15 +137,18 @@ AttackHit World::traceAttack(Vec2 from, Vec2 dir, double y, double slope, double
             hit = {HitKind::scenery, -1, at};
             break;
         }
+    const RayReach reach(from, dir);
     for (auto &b : staticBodies)
     {
+        if (reach.misses(b, hit.distance))
+            continue;
         double at = ray_prism(from, dir, y, slope, b, hit.distance);
         if (at < hit.distance)
             hit = {HitKind::scenery, -1, at};
     }
     for (size_t i = 0; i < cars.size(); i++)
     {
-        if (int(i) == ignoreCar || cars[i].falling)
+        if (int(i) == ignoreCar || cars[i].falling || reach.misses(cars[i].body, hit.distance))
             continue;
         double at = ray_prism(from, dir, y, slope, cars[i].body, hit.distance);
         if (at < hit.distance)
@@ -149,8 +178,9 @@ bool World::blastVisible(Vec2 from, double y, Vec2 to, double targetY) const
         return true;
     auto dir = delta / distance;
     double slope = (targetY - y) / distance;
+    const RayReach reach(from, dir);
     for (auto &b : staticBodies)
-        if (ray_prism(from, dir, y, slope, b, distance) < distance - .01)
+        if (!reach.misses(b, distance) && ray_prism(from, dir, y, slope, b, distance) < distance - .01)
             return false;
     for (double at = .4; at < distance; at += .4)
         if (scenerySolid(from + dir * at, y + slope * at, .02))
@@ -434,14 +464,14 @@ void World::shoot(double heading, double pitch)
     if (hit.kind == HitKind::car)
     {
         auto &c = cars[hit.index];
-        damageCar(c, w ? w->carDamage : 0, true);
+        damageCar(c, w ? w->car_damage : 0, true);
         if (c.health <= 0)
             destroyCar(c);
     }
     if (hit.kind == HitKind::person)
     {
         auto &p = people[hit.index];
-        p.health -= w ? w->personDamage : .26;
+        p.health -= w ? w->person_damage : .26;
         if (p.sidearm != WeaponId::none)
             p.alertUntil = time + 8;
         p.fear = 2;

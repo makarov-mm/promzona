@@ -3,17 +3,13 @@
 
 namespace Promzona
 {
-double RoadLevel::centreZ(double px) const
+double RoadLevel::centre_z(double px) const
 {
     // Piecewise linear at metre intervals: renderer, paths and support share the same curve.
     double u = clamp(px - x + length, 0., 288.);
     int k = std::min(287, int(u));
-    auto at = [&](int n) { return z + 18 * smooth((length - std::abs(n - length) - 11) / 25); };
+    auto at = [&](int n) { return z + bend * smooth((length - std::abs(n - length) - 11) / 25); };
     return at(k) + (at(k + 1) - at(k)) * (u - k);
-}
-bool RoadLevel::contains(Vec2 p, double margin) const
-{
-    return std::abs(p.x - x) <= length + margin && std::abs(p.z - centreZ(p.x)) <= halfWidth + margin;
 }
 bool RoadLevel::roof(double px) const
 {
@@ -36,23 +32,23 @@ void RoadLevel::bake(const Terrain &t)
         {
             double px = x - length + k;
             // Reserve two metres above the tunnel roof for the district/foundations.
-            for (double side : {-halfWidth, 0., halfWidth})
-                depth = std::max(depth, left + k * slope - t.height(px, centreZ(px) + side) + clearance + 2);
+            for (double side : {-half_width, 0., half_width})
+                depth = std::max(depth, left + k * slope - t.height(px, centre_z(px) + side) + clearance + 2);
         }
     for (int k = 0; k <= 288; ++k)
     {
         double px = x - length + k, ramp = smooth((length - std::abs(px - x) - 12) / 78);
-        floorSamples[k] = tunnel ? t.height(px, centreZ(px)) * (1 - ramp) + (left + k * slope - depth) * ramp
-                                 : t.height(px, centreZ(px)) + 8 * ramp;
+        floor_samples[k] = tunnel ? t.height(px, centre_z(px)) * (1 - ramp) + (left + k * slope - depth) * ramp
+                                 : t.height(px, centre_z(px)) + 8 * ramp;
     }
 }
 double RoadLevel::floor(const Terrain &t, Vec2 p) const
 {
     double u = clamp(p.x - x + length, 0., 288.);
     int k = std::min(287, int(u));
-    double y = floorSamples[k] + (floorSamples[k + 1] - floorSamples[k]) * (u - k);
+    double y = floor_samples[k] + (floor_samples[k + 1] - floor_samples[k]) * (u - k);
     double crossfall = smooth((std::abs(p.x - x) - (length - 30)) / 18);
-    return y + crossfall * (t.height(p) - t.height(p.x, centreZ(p.x)));
+    return y + crossfall * (t.height(p) - t.height(p.x, centre_z(p.x)));
 }
 Path RoadLevel::route(bool east) const
 {
@@ -64,9 +60,9 @@ Path RoadLevel::route(bool east) const
     auto point = [&](double n)
     {
         double px = x + (east ? -length + n : length - n);
-        const double slope = centreZ(px + .5) - centreZ(px - .5);
+        const double slope = centre_z(px + .5) - centre_z(px - .5);
         const double side = (east ? CityLayout::lane : -CityLayout::lane) / std::sqrt(1 + slope * slope);
-        points.push_back({px - slope * side, centreZ(px) + side});
+        points.push_back({px - slope * side, centre_z(px) + side});
     };
     const double last = 2 * length - stopLine;
     for (int n = 9; n < last; ++n)
@@ -74,7 +70,7 @@ Path RoadLevel::route(bool east) const
     point(last);
     return Path(std::move(points));
 }
-std::vector<RoadLevel> planRoadLevels(const CityLayout &l, std::uint32_t seed)
+std::vector<RoadLevel> plan_road_levels(const CityLayout &l, std::uint32_t seed)
 {
     std::vector<RoadLevel> levels;
     if (l.nodes() != 49)
@@ -89,8 +85,8 @@ std::vector<RoadLevel> planRoadLevels(const CityLayout &l, std::uint32_t seed)
         s.tunnel = levels.size() % 2 == 1;
         s.x = l.coordinate(col);
         s.z = l.coordinate(row);
-        s.leftNode = col - 4 + row * l.nodes();
-        s.rightNode = col + 4 + row * l.nodes();
+        s.left_node = col - 4 + row * l.nodes();
+        s.right_node = col + 4 + row * l.nodes();
         levels.push_back(s);
     };
     if (l.variety())
@@ -115,12 +111,12 @@ std::vector<RoadLevel> planRoadLevels(const CityLayout &l, std::uint32_t seed)
     return levels;
 }
 
-std::vector<RoadLevel> generateRoadLevels(CityLayout &l, std::uint32_t seed)
+std::vector<RoadLevel> generate_road_levels(CityLayout &l, std::uint32_t seed)
 {
-    auto levels = planRoadLevels(l, seed);
+    auto levels = plan_road_levels(l, seed);
     for (const auto &s : levels)
     {
-        int row = s.leftNode / l.nodes(), col = s.leftNode % l.nodes() + 4;
+        int row = s.left_node / l.nodes(), col = s.left_node % l.nodes() + 4;
         // An entrance is a branch of the road graph, never an unmarked barrier across traffic.
         // Remove streets which would enter the side of an open cutting/merge ramp.
         for (int i = col - 4; i < col + 4; ++i)

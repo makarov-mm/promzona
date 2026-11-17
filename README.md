@@ -30,7 +30,7 @@ The build script finds MSVC, compiles the game, runs CTest, and verifies the nat
 You'll need CMake 3.25 or newer and a C++23 compiler: GCC 14 or newer, Clang 18 or newer, or Xcode 16 or newer on macOS. Ninja is used when installed. On Linux, SDL3 needs the X11 or Wayland and audio development packages, for example on Ubuntu:
 
 ```bash
-sudo apt install build-essential cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxkbcommon-dev libwayland-dev libegl-dev libgl-dev libasound2-dev libpulse-dev
+sudo apt install build-essential cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev libegl-dev libgl-dev libasound2-dev libpulse-dev
 ```
 
 To build, test, and launch the game:
@@ -47,7 +47,7 @@ The `release` and `debug` CMake presets do the same without the script (`cmake -
 
 - **The city.** New games get the varied city (layout revision 5): a patchwork of districts with a dense centre of towers, old brick courtyards, estates of nine- to sixteen-storey slabs and point towers, garden suburbs and garage belts. Streets thin out away from the centre, fourteen overpasses and tunnels carry traffic between levels, and roofs carry lift rooms, vents and aerials. Saves keep the city they were made in.
 
-- **Districts.** A city seed determines the street grid, housing estates, courtyards, parks, garages, and factories. A freight line runs through the northern industrial district. On the coast, canals open into the sea. Five overpasses and four tunnels carry traffic between levels.
+- **Districts.** A city seed determines the street grid, housing estates, courtyards, parks, garages, and factories. A freight line runs through the northern industrial district. On the coast, canals open into the sea.
 - **Traffic and public transport.** Drivers leave space beyond junctions and yield at pedestrian crossings. Buses pull in at stops. Trams and trolleybuses carry passengers on four routes. You can ride as a passenger or take the controls. A trolleybus loses power if you drive more than three metres from its route's overhead wires.
 - **Work.** Pick up a parcel at a kiosk or open the job journal for vehicle deliveries, taxi fares, patient transport, and other assignments. On a passenger job, stop beside the person, press **E** to pick them up, and drive to the marked destination. A reconnaissance job takes you above the streets to inspect three rooftops by drone.
 - **Garages and supplies.** Stop outside a garage and press **E** for repairs. During a pursuit, an extra $30 pays for a respray. Press **G** to buy a garage for $400, then use **G** on its forecourt to store a personal car or van. You can keep up to three vehicles. Food is available at kiosks and vending machines. At a market stall, press **E** on foot and use **1–4** to buy supplies.
@@ -106,7 +106,8 @@ Choose a population level in **Settings** when starting a city. A saved city kee
 | Low | 260 | 720 |
 | Medium | 540 | 1,800 |
 | High | 1,080 | 3,240 |
-| Full (default) | 1,485 | 5,265 |
+| Full | 1,485 | 5,265 |
+| Maximum (default) | 4,000 | 14,000 |
 
 The **Maximum** population (the default for new games) has 4,000 vehicles and 14,000 people; seen from a helicopter, passers-by and traffic stay visible across the city. Lower settings reduce the load on slower machines.
 

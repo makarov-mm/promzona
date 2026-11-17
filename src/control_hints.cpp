@@ -65,7 +65,7 @@ namespace Promzona
             hints.push_back({L"K", L"Дрон"});
         }
         // Weapons are switched on foot and in ordinary vehicles; mounted guns are fixed.
-        if (world.playerScooter < 0 && world.inventory.hasWeapons() &&
+        if (world.playerScooter < 0 && world.inventory.has_weapons() &&
             (world.controlledCar < 0 || !world.cars[world.controlledCar].mounted_gun()))
             hints.push_back({L"[ ]", L"Оружие"});
         const auto &job = world.job;

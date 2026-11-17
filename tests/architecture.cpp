@@ -25,8 +25,8 @@ void geometry(const CityChunk &mesh, const BuildingPlan &p)
         {
             check(std::isfinite(v.position.x + v.position.y + v.position.z), "finite geometry");
             check(v.position.y >= p.origin.y - .001f, "architecture above its foundation");
-            check(std::abs(v.position.x - p.origin.x) <= p.halfWidth + 1.4f &&
-                      std::abs(v.position.z - p.origin.z) <= p.halfDepth + 1.4f,
+            check(std::abs(v.position.x - p.origin.x) <= p.half_width + 1.4f &&
+                      std::abs(v.position.z - p.origin.z) <= p.half_depth + 1.4f,
                   "details stay inside reserved overhang");
             check(std::abs(v.normal.length() - 1) < .001f, "unit surface normal");
         }
@@ -43,20 +43,20 @@ void plans()
     for (auto half : {Vec2{7, 4}, Vec2{4, 7}, Vec2{4, 4}})
     {
         Building building{{23, -57}, half, 19, 2};
-        auto p = planBuilding(building, 13.5);
-        auto repeat = planBuilding(building, 13.5);
+        auto p = plan_building(building, 13.5);
+        auto repeat = plan_building(building, 13.5);
         check(!p.windows.empty(), "inhabited building has windows");
         check(p.windows.size() == repeat.windows.size(), "plan deterministic");
         CityChunk core, detail;
-        buildingCore(core, p, building.style);
-        buildingDetails(detail, p);
+        building_core(core, p, building.style);
+        building_details(detail, p);
         geometry(core, p);
         geometry(detail, p);
         for (int slot = Sign; slot < Sign + 3; ++slot)
             for (const auto &vertex : detail[slot].vertices)
             {
                 float horizontal =
-                    p.windowsOnZ ? vertex.position.x - p.origin.x : vertex.position.z - p.origin.z;
+                    p.windows_on_z ? vertex.position.x - p.origin.x : vertex.position.z - p.origin.z;
                 check(std::abs(horizontal) > .65f, "sign does not cover entrance");
                 check(vertex.position.y < p.origin.y + 2.3f, "sign does not cover windows");
             }
@@ -78,7 +78,8 @@ void plans()
                   "window winding faces outward on both walls");
             check(w.centre.y - p.origin.y > 2.8f && w.centre.y < p.origin.y + p.height - 1,
                   "windows clear entrance and roof");
-            check((p.windowsOnZ && std::abs(w.normal.z) == 1) || (!p.windowsOnZ && std::abs(w.normal.x) == 1),
+            check((p.windows_on_z && std::abs(w.normal.z) == 1) ||
+                      (!p.windows_on_z && std::abs(w.normal.x) == 1),
                   "short end walls stay blank");
             check(w.curtain >= 0 && w.curtain < 10, "valid curtain style");
             if (w.balcony >= 0)
@@ -96,8 +97,8 @@ void plans()
             check(std::abs(std::abs(d.uv[1] - a.uv[1]) * 3.2f - (d.position - a.position).length()) < .001f,
                   "front opening preserves vertical texture scale");
         }
-        const Vec3 normal = p.windowsOnZ ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
-        const float depth = p.windowsOnZ ? p.halfDepth : p.halfWidth;
+        const Vec3 normal = p.windows_on_z ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
+        const float depth = p.windows_on_z ? p.half_depth : p.half_width;
         check(!core[Door].vertices.empty(), "entrance stays closed when near trim unloads");
         for (const auto &v : core[Door].vertices)
             check(dot(v.position - p.origin, normal) < depth - .30f, "door is behind the wall plane");
@@ -107,10 +108,10 @@ void plans()
     size_t windows = 0, triangles = 0;
     for (const auto &b : world.buildings)
     {
-        auto p = planBuilding(b, world.terrain.height(b.p));
+        auto p = plan_building(b, world.terrain.height(b.p));
         CityChunk core, detail;
-        buildingCore(core, p, b.style);
-        buildingDetails(detail, p);
+        building_core(core, p, b.style);
+        building_details(detail, p);
         geometry(core, p);
         geometry(detail, p);
         windows += p.windows.size();

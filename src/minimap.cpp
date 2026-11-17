@@ -106,7 +106,7 @@ namespace Promzona
         for (const auto &level : world.roadLevels)
             for (int k = 0; k <= 2 * RoadLevel::length; ++k)
             {
-                double x = level.x - RoadLevel::length + k, z = level.centreZ(x);
+                double x = level.x - RoadLevel::length + k, z = level.centre_z(x);
                 box({x, z - 2.8}, {x + 1, z + 2.8}, level.tunnel ? 0x778792 : 0xb1a887);
             }
 

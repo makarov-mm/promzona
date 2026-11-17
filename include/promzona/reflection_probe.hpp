@@ -47,7 +47,7 @@ namespace Promzona
 
         static Mat4 projection()
         {
-            return Mat4::perspective(pi / 2, 1, nearPlane, farPlane);
+            return Mat4::perspective(static_cast<float>(pi / 2), 1, nearPlane, farPlane);
         }
 
         // The face to render in this frame, or -1 while the finished cube is still good. A

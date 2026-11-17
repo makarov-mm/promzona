@@ -216,7 +216,7 @@ void World::standDown(Car &c)
     if (!pursued || c.destroyed || c.falling || c.driverless || c.kind == 12 || c.line >= 0 || !c.route ||
         int(&c - cars.data()) == controlledCar)
         return;
-    const auto [onRoute, heading] = c.route->sample(c.route->closestDistance(c.body.p));
+    const auto [onRoute, heading] = c.route->sample(c.route->closest_distance(c.body.p));
     if ((onRoute - c.body.p).length() > 1.5 || dot(forward(c.heading()), forward(heading)) < .9)
         rejoinRoad(c);
 }
@@ -372,7 +372,7 @@ bool World::spawnVehicle(unsigned model)
         return false;
     candidate.routePhase = 1;
     new_route(candidate);
-    candidate.routeDistance = candidate.route->closestDistance(candidate.body.p);
+    candidate.routeDistance = candidate.route->closest_distance(candidate.body.p);
     candidate.summoned = true;
     candidate.id = static_cast<unsigned>(slot);
     candidate.body.id = 0x60000000u + candidate.id;

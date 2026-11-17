@@ -21,10 +21,10 @@ namespace Promzona
     {
         // Facade details of the apartment blocks near the eye.
         size_t resident_cells{}, total_cells{}, gpu_bytes{}, peak_gpu_bytes{}, uploads{}, evictions{}, queued{}, ready{};
-        double maxUploadMs{};
+        double max_upload_ms{};
 
         // The standing city itself, by sector.
-        size_t residentSectors{}, totalSectors{}, sectorBytes{}, peakSectorBytes{}, sectorUploads{}, sectorEvictions{}, sectorsQueued{}, sectorsReady{};
+        size_t resident_sectors{}, total_sectors{}, sector_bytes{}, peak_sector_bytes{}, sector_uploads{}, sector_evictions{}, sectors_queued{}, sectors_ready{};
 
         double maxSectorUploadMs{};
 
@@ -40,17 +40,17 @@ namespace Promzona
     public:
         explicit Renderer(const std::filesystem::path &content);
         ~Renderer();
-        void sceneMode(SceneMode mode);
+        void scene_mode(SceneMode mode);
         void graphics(const GraphicsPreferences &settings);
         void language(Language language);
-        void profileGpu();
-        std::string gpuReport() const;
+        void profile_gpu();
+        std::string gpu_report() const;
         void prepare(const World &world);
         void render(const World &world, const View &view, int width, int height);
         void overlay(const World *world, int width, int height, double fps, bool menu, const GameConsole *console, const std::wstring &message, const AudioLevels &levels, float progress = -1, bool jobsOpen = false, const FrontEnd *front = nullptr);
         void screenshot(const std::filesystem::path &file, int width, int height);
-        std::string graphicsInfo() const;
-        std::string sceneryStats() const;
-        StreamingStats streamingStats() const;
+        std::string graphics_info() const;
+        std::string scenery_stats() const;
+        StreamingStats streaming_stats() const;
     };
 }

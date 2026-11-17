@@ -579,7 +579,7 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
         // Port of the managed TrolleyPower: the motor runs off the wires over the route, and
         // three metres from them there is nothing to drive it. Brakes and steering work on,
         // and what speed there is carries the trolleybus further.
-        if ((line.track.sample(line.track.closestDistance(b.p)).first - b.p).length2() >= 9)
+        if ((line.track.sample(line.track.closest_distance(b.p)).first - b.p).length2() >= 9)
         {
             // The managed game leaves the driver to guess why the pedal does nothing.
             if (controls.throttle != 0 && !c.driverless && time >= wiresNoticeAt)
@@ -595,7 +595,7 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
     }
     if (local && c.kind == 10 && time >= c.check_traffic_at)
     {
-        const double projected = line.track.closestDistance(b.p);
+        const double projected = line.track.closest_distance(b.p);
         if (std::abs(std::remainder(projected - c.along, line.track.length())) > 12.)
             c.next_stop = line.next_stop_after(projected);
         c.along = projected;

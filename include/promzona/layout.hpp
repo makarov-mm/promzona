@@ -142,7 +142,6 @@ namespace Promzona
         double riverDistance(double x) const;
         bool sandyGround(Vec2 p, double streetDistance) const;
         bool bridge(Vec2 p) const;
-        double deckHeight(double x) const;
         bool urbanSite(Vec2 p, double radius = 0) const;
         static bool clinic(int i, int j);
         static bool station(int i, int j) { return i == 21 && j == 13; }

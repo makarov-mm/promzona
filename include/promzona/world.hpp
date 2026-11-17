@@ -801,6 +801,8 @@ namespace Promzona
             return {(n % nodes - (nodes - 1) * .5) * spacing, (n / nodes - (nodes - 1) * .5) * spacing};
         }
         std::vector<int> neighbours(int n) const;
+        // The number of neighbours, counted without building their list.
+        int degree(int n) const;
         int choose_next(int n, int previous);
         void new_route(Car &car);
         bool intersectionClear(const Car &car) const;

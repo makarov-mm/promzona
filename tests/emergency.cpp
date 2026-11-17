@@ -126,7 +126,7 @@ int main()
             c.body.v = {};
             c.body.roadLevel = 0;
             c.body.height = city.surface(stop, 0) + .8;
-            c.plannedTo = -1;
+            c.planned_to = -1;
             city.indexTraffic();
             // Coming from the west the car travels along +x: direction 1 of the lights.
             while (CityLayout::green(node % World::nodes, node / World::nodes, 1, city.time))

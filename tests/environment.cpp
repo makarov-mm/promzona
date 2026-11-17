@@ -100,9 +100,9 @@ void streetLighting()
     check(!view.sphere({5, 0, 0}, .1f) && casters.sphere({5, 0, 0}, .1f),
           "off-screen casters toward the sun remain visible");
     check(!casters.sphere({-4, 0, 0}, .1f), "caster beyond the viewing volume casts away from it");
-    const auto clouds = cloudMap(64);
+    const auto clouds = cloud_map(64);
     const auto [low, high] = std::ranges::minmax(clouds);
-    check(clouds == cloudMap(64) && low < 100 && high > 160,
+    check(clouds == cloud_map(64) && low < 100 && high > 160,
           "cloud deck has repeatable clear and overcast patches");
 }
 void shadows()
@@ -164,7 +164,7 @@ void geometry()
             for (bool far : {false, true})
             {
                 TreeMesh m;
-                appendTree(m, tree, far);
+                append_tree(m, tree, far);
                 size_t triangles{};
                 for (const auto &part : m)
                 {
@@ -204,11 +204,11 @@ void skyAndProbe()
     auto same = [](Vec3 a, Vec3 b) { return (a - b).length() < 1e-5f; };
     const auto noon = Atmosphere::create(0, 1, 1, 0);
     check(same(noon.horizon, {.64f, .73f, .80f}) && same(noon.zenith, {.19f, .39f, .65f}) &&
-              noon.golden == 0 && std::abs(noon.density - .00052f) < 1e-8f && noon.heightScale == 140,
+              noon.golden == 0 && std::abs(noon.density - .00052f) < 1e-8f && noon.height_scale == 140,
           "clear noon: pale horizon, blue zenith, thin haze");
     const auto downpour = Atmosphere::create(1, 1, 1, 1);
     check(same(downpour.horizon, {.39f, .44f, .49f}) && same(downpour.zenith, {.24f, .28f, .33f}) &&
-              std::abs(downpour.density - .00332f) < 1e-7f && downpour.heightScale == 240,
+              std::abs(downpour.density - .00332f) < 1e-7f && downpour.height_scale == 240,
           "rain at noon: grey sky, thick and tall haze");
     const auto night = Atmosphere::create(0, 0, -1, 0), dampNight = Atmosphere::create(0, 0, -1, 1);
     check(same(night.horizon, {.025f, .036f, .058f}) && same(night.zenith, {.006f, .012f, .027f}) &&
@@ -395,13 +395,13 @@ void precipitationAndTracks()
         }
     for (const auto &level : w.roadLevels)
     {
-        Vec2 centre{level.x, level.centreZ(level.x)};
+        Vec2 centre{level.x, level.centre_z(level.x)};
         check(w.precipitationSurface(centre) >=
                   level.floor(w.terrain, centre) + (level.tunnel ? level.clearance : 0) - .001,
               "the upper surface shelters traffic");
         if (level.tunnel)
         {
-            Vec2 ramp{level.x - 85, level.centreZ(level.x - 85)};
+            Vec2 ramp{level.x - 85, level.centre_z(level.x - 85)};
             check(std::abs(w.precipitationSurface(ramp) - level.floor(w.terrain, ramp)) < .01,
                   "rain reaches open cut");
         }
@@ -507,7 +507,7 @@ void precipitationAndTracks()
         Car jolted = w.cars.front();
         jolted.destroyed = jolted.falling = false;
         jolted.body.roadLevel = 0;
-        jolted.lift = jolted.roll = jolted.pitch = jolted.pitchRate = jolted.verticalVelocity = 0;
+        jolted.lift = jolted.roll = jolted.pitch = jolted.pitch_rate = jolted.verticalVelocity = 0;
         jolted.impactCooldown = 0;
         jolted.body.angle = 0;
         jolted.body.p = hole.p + Vec2{hole.size * .5, 0};
@@ -520,7 +520,7 @@ void precipitationAndTracks()
         check(jolted.verticalVelocity == 0 && w.potholeJolts == 0, "a car beside the pothole is not kicked");
         jolted.body.p = hole.p + Vec2{hole.size * .5, 0};
         w.potholeJolt(jolted);
-        check(std::abs(jolted.verticalVelocity - .35) < 1e-9 && std::abs(jolted.pitchRate - .18) < 1e-9 &&
+        check(std::abs(jolted.verticalVelocity - .35) < 1e-9 && std::abs(jolted.pitch_rate - .18) < 1e-9 &&
                   jolted.impactCooldown == .5 && w.potholeJolts == 1,
               "a pothole kicks the car");
         w.potholeJolt(jolted);
@@ -608,7 +608,7 @@ void hudAndMap()
     auto upload = [&](size_t slot)
     {
         std::vector<Rect> result;
-        dirty.uploadRegions(slot, [&](int x, int y, int w, int h) { result.push_back({x, y, w, h}); });
+        dirty.upload_regions(slot, [&](int x, int y, int w, int h) { result.push_back({x, y, w, h}); });
         return result;
     };
     check(upload(0) == std::vector<Rect>{{0, 0, 100, 80}}, "first texture receives full menu");

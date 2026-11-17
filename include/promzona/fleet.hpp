@@ -45,14 +45,15 @@ namespace Promzona
     // One slot in sixteen is a bus and one a van of the gas service, as in the managed game.
     constexpr unsigned streetModel(int slot)
     {
-        constexpr unsigned streetFleet[]{0, 1, 2, 11, 12, 13, 14, 0, 2, 16, 1, 13, 15, 17, 12, 3, 0};
+        constexpr unsigned street_fleet[]{0, 1, 2, 11, 12, 13, 14, 0, 2, 16, 1, 13, 15, 17, 12, 3, 0};
+
         return slot % 37 == 16   ? ambulanceModel
                : slot % 16 == 9  ? busModel
                : slot % 16 == 13 ? gasVanModel
-                                 : streetFleet[slot % static_cast<int>(std::size(streetFleet))];
+                                 : street_fleet[slot % static_cast<int>(std::size(street_fleet))];
     }
 
-    inline void fit_vehicle(Car &car, unsigned model)
+    inline void fit_vehicle(Car &car, const unsigned model)
     {
         const auto &spec = fleet[model];
         car.model = model;

@@ -40,7 +40,7 @@ namespace Promzona
         return {points_[at - 1] + d * f, std::atan2(d.x, d.z)};
     }
 
-    double Path::closestDistance(Vec2 p) const
+    double Path::closest_distance(Vec2 p) const
     {
         double best = INFINITY, along = 0;
         for (size_t i = 1; i < points_.size(); i++)
@@ -118,14 +118,14 @@ namespace Promzona
         auto w = weapon(id);
         if (!w)
             return false;
-        int n = amount.value_or(w->pickupAmmo);
-        if (n <= 0 || n > ammoLimit || ammo(id) >= ammoLimit)
+        int n = amount.value_or(w->pickup_ammo);
+        if (n <= 0 || n > ammo_limit || ammo(id) >= ammo_limit)
             return false;
         auto old = active();
         if (selected_ && w->power > (old ? old->power : 0))
             selected_.reset();
         auto &a = ammo_[std::to_underlying(id)];
-        a = std::min(ammoLimit, a + n);
+        a = std::min(ammo_limit, a + n);
         owned_[std::to_underlying(id)] = true;
         return true;
     }
@@ -165,7 +165,7 @@ namespace Promzona
         if (values[0] != 0 || owned[0])
             throw std::invalid_argument("Ammo for fists");
         for (auto v : values)
-            if (v < 0 || v > ammoLimit)
+            if (v < 0 || v > ammo_limit)
                 throw std::invalid_argument("Invalid ammo");
         for (size_t i = 1; i < 5; i++)
             if (values[i] > 0 && !owned[i])

@@ -414,7 +414,7 @@ ManagedImport World::importManaged(const std::filesystem::path &file, Density po
             const auto id = weaponId(json(key));
             if (id == WeaponId::none || !rounds.is_number_integer())
                 continue;
-            const int count = clamp(rounds.get<int>(), 0, Inventory::ammoLimit);
+            const int count = clamp(rounds.get<int>(), 0, Inventory::ammo_limit);
             // Zero rounds still means the weapon is owned in the managed game.
             auto ammo = next.inventory.capture();
             auto owned = next.inventory.ownership();

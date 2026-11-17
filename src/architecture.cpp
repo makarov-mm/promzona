@@ -225,20 +225,20 @@ BuildingPlan plan_building(const Building &b, double ground)
     p.half_width = float(b.half.x);
     p.half_depth = float(b.half.z);
     p.height = float(b.height);
-    p.windowsOnZ = entranceNormal(b.half).z > 0;
+    p.windows_on_z = entranceNormal(b.half).z > 0;
     p.seed = hash(std::uint32_t(std::llround(b.p.x * 10)) ^ hash(std::uint32_t(std::llround(b.p.z * 10))) ^
                   std::uint32_t(b.style));
     p.kind = b.kind;
     p.front = b.front;
     if (p.kind != BuildingKind::apartment)
         return p;
-    float half = p.windowsOnZ ? p.half_width : p.half_depth;
+    float half = p.windows_on_z ? p.half_width : p.half_depth;
     int columns = std::max(1, int((2 * half - 1.2f) / bay));
     for (int side : {-1, 1})
     {
-        Vec3 normal = p.windowsOnZ ? Vec3{0, 0, float(side)} : Vec3{float(side), 0, 0};
+        Vec3 normal = p.windows_on_z ? Vec3{0, 0, float(side)} : Vec3{float(side), 0, 0};
         auto right = cross({0, 1, 0}, normal);
-        float depth = p.windowsOnZ ? p.half_depth : p.half_width;
+        float depth = p.windows_on_z ? p.half_depth : p.half_width;
         int floor = 0;
         for (float y = firstWindow; y + windowHalfHeight + .5f < p.height; y += storey, ++floor)
             for (int col = 0; col < columns; ++col)
@@ -267,10 +267,10 @@ void building_core(CityChunk &data, const BuildingPlan &p, int facade)
         districtBuilding(data, p, facade);
         return;
     }
-    const Vec3 front = p.windowsOnZ ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
+    const Vec3 front = p.windows_on_z ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
     const Vec3 side = cross({0, 1, 0}, front);
-    const float half = p.windowsOnZ ? p.half_width : p.half_depth;
-    const float depth = p.windowsOnZ ? p.half_depth : p.half_width;
+    const float half = p.windows_on_z ? p.half_width : p.half_depth;
+    const float depth = p.windows_on_z ? p.half_depth : p.half_width;
     auto shell = [&](MeshData &mesh, float height, float outset, float tile)
     {
         const float width = half + outset, length = depth + outset;
@@ -329,12 +329,12 @@ void building_core(CityChunk &data, const BuildingPlan &p, int facade)
         const float top = p.height + .24f;
         const bool alongX = p.half_width >= p.half_depth;
         const float length = alongX ? p.half_width : p.half_depth, breadth = alongX ? p.half_depth : p.half_width;
-        auto onRoof = [&](float along, float across, float y, Vec3 half)
+        auto onRoof = [&](float along, float across, float y)
         {
             const Vec3 offset = alongX ? Vec3{along, y, across} : Vec3{across, y, along};
             return p.origin + offset;
         };
-        auto spin = [&](Vec3 half) { return alongX ? half : Vec3{half.z, half.y, half.x}; };
+        auto spin = [&](Vec3 size) { return alongX ? size : Vec3{size.z, size.y, size.x}; };
         const auto r = hash(p.seed ^ 0x5bd1e995u);
         const int rooms = length > 7 ? 1 + int(r % 2) : 1;
         for (int k = 0; k < rooms; ++k)
@@ -342,30 +342,30 @@ void building_core(CityChunk &data, const BuildingPlan &p, int facade)
             const float along = rooms == 1 ? (float(int(r >> 4) % 5) - 2) * length * .12f
                                            : (k ? 1.f : -1.f) * length * .45f;
             const float tall = .9f + float((r >> (8 + k)) % 3) * .25f;
-            const Vec3 half = spin({std::min(2.1f, length * .3f), tall, std::min(1.5f, breadth * .45f)});
-            box(data[Foundation], onRoof(along, 0, top + tall, half), half);
-            box(data[Roof], onRoof(along, 0, top + 2 * tall + .06f, half), half + Vec3{.1f, -tall + .06f, .1f});
+            const Vec3 room = spin({std::min(2.1f, length * .3f), tall, std::min(1.5f, breadth * .45f)});
+            box(data[Foundation], onRoof(along, 0, top + tall), room);
+            box(data[Roof], onRoof(along, 0, top + 2 * tall + .06f), room + Vec3{.1f, -tall + .06f, .1f});
         }
         for (int k = 0; k < 1 + int((r >> 12) % 3); ++k)
         {
             const auto v = hash(r + std::uint32_t(k) * 7919u);
             const float along = (float(v % 1000) / 1000.f * 1.6f - .8f) * length,
                         across = (float((v >> 10) % 1000) / 1000.f * 1.4f - .7f) * breadth;
-            box(data[Metal], onRoof(along, across, top + .45f, {}), {.22f, .45f, .22f});
+            box(data[Metal], onRoof(along, across, top + .45f), {.22f, .45f, .22f});
         }
         if ((r >> 20) % 3 == 0)
         {
             const float along = length * .6f * ((r >> 22) % 2 ? 1.f : -1.f);
-            box(data[Metal], onRoof(along, 0, top + 2.6f, {}), {.05f, 2.6f, .05f});
-            box(data[Metal], onRoof(along, 0, top + 4.4f, {}), spin({1.1f, .03f, .03f}));
+            box(data[Metal], onRoof(along, 0, top + 2.6f), {.05f, 2.6f, .05f});
+            box(data[Metal], onRoof(along, 0, top + 4.4f), spin({1.1f, .03f, .03f}));
         }
         if (p.height > 36 && (r >> 24) % 4 == 0)
         {
-            const Vec3 half{1.1f, .8f, 1.1f};
-            box(data[Metal], onRoof(-length * .2f, breadth * .1f, top + 2.6f + half.y, {}), half);
+            const Vec3 tank{1.1f, .8f, 1.1f};
+            box(data[Metal], onRoof(-length * .2f, breadth * .1f, top + 2.6f + tank.y), tank);
             for (int a : {-1, 1})
                 for (int b : {-1, 1})
-                    box(data[Metal], onRoof(-length * .2f + a * 1.3f, breadth * .1f + b * 1.3f, top + 1.3f, {}),
+                    box(data[Metal], onRoof(-length * .2f + a * 1.3f, breadth * .1f + b * 1.3f, top + 1.3f),
                         {.08f, 1.3f, .08f});
         }
     }
@@ -379,19 +379,20 @@ void building_core(CityChunk &data, const BuildingPlan &p, int facade)
     face(data[Door], at(-w, 0, -recess), at(w, 0, -recess), at(w, h, -recess), at(-w, h, -recess));
     for (auto &v : std::span(data[Door].vertices).subspan(firstDoor))
         v.joints = {dot(v.position - p.origin, side), v.position.y - p.origin.y, -half, -2};
-    for (const auto &w : p.windows)
+    for (const auto &window : p.windows)
     {
-        panel(data[Windows], w.centre, w.right, w.normal, windowHalfWidth + .055f, windowHalfHeight + .055f,
-              {float(w.seed % 65521), float(w.curtain), float((w.seed >> 16) % 4), 0});
-        if (w.balcony < 0)
+        panel(data[Windows], window.centre, window.right, window.normal, windowHalfWidth + .055f,
+              windowHalfHeight + .055f,
+              {float(window.seed % 65521), float(window.curtain), float((window.seed >> 16) % 4), 0});
+        if (window.balcony < 0)
             continue;
-        const int material = Balcony + w.balcony;
-        auto at = [&](float x, float y, float z)
-        { return w.centre + w.right * x + Vec3{0, y, 0} + w.normal * z; };
-        panel(data[material], at(0, -.22f, 1), w.right, w.normal, .84f, .40f);
-        for (int side : {-1, 1})
-            face(data[material], at(side * .84f, -.62f, .05f), at(side * .84f, -.62f, 1),
-                 at(side * .84f, .18f, 1), at(side * .84f, .18f, .05f));
+        const int material = Balcony + window.balcony;
+        auto onBalcony = [&](float x, float y, float z)
+        { return window.centre + window.right * x + Vec3{0, y, 0} + window.normal * z; };
+        panel(data[material], onBalcony(0, -.22f, 1), window.right, window.normal, .84f, .40f);
+        for (int end : {-1, 1})
+            face(data[material], onBalcony(end * .84f, -.62f, .05f), onBalcony(end * .84f, -.62f, 1),
+                 onBalcony(end * .84f, .18f, 1), onBalcony(end * .84f, .18f, .05f));
     }
 }
 void building_details(CityChunk &data, const BuildingPlan &p)
@@ -408,10 +409,10 @@ void building_details(CityChunk &data, const BuildingPlan &p)
     }
     box(data[Roof], p.origin + Vec3{p.half_width * .32f, p.height + .65f, -p.half_depth * .3f},
         {.65f, .4f, .5f});
-    Vec3 n = p.windowsOnZ ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
+    Vec3 n = p.windows_on_z ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
     Vec3 r = cross({0, 1, 0}, n);
-    float depth = p.windowsOnZ ? p.half_depth : p.half_width;
-    float half = p.windowsOnZ ? p.half_width : p.half_depth;
+    float depth = p.windows_on_z ? p.half_depth : p.half_width;
+    float half = p.windows_on_z ? p.half_width : p.half_depth;
     auto entrance = p.origin + n * (depth + .09f);
     auto localBox = [&](int material, Vec3 c, Vec3 size) { box(data[material], c, extents(r, n, size)); };
     const Vec3 door = entrance - n * (.09f + recess);

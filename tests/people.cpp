@@ -116,7 +116,7 @@ void looks()
     require(night.outfit == Appearance::nightWorker && night.model == 1, "night shift look is wrong");
     require(beach.outfit == Appearance::beach && !beach.longTrousers && beach.model == 0,
             "beach look is wrong");
-    const auto hero = heroAppearance();
+    const auto hero = hero_appearance();
     require(hero.outfit == Appearance::hero && hero.longTrousers && hero.longSleeves && hero.flags() == 3 &&
                 hero.model == 0,
             "the player has no look of his own");
@@ -144,7 +144,7 @@ void looks()
     mixed.joints = {0, 10, 0, 0};
     mixed.weights = {.75f, .25f, 0, 0};
     skin.mesh.vertices = {body, arm, mixed};
-    markStandingPose(skin);
+    mark_standing_pose(skin);
     const auto &marked = skin.mesh.vertices;
     require(std::abs(marked[0].uv[1] - .6f) < 1e-6f && std::abs(marked[1].uv[1] - 1.4f) < 1e-6f &&
                 std::abs(marked[2].uv[1] - (.75f * 1.2f + .25f * .7f) * .5f) < 1e-6f,
@@ -153,7 +153,7 @@ void looks()
     bool refused = false;
     try
     {
-        markStandingPose(skin);
+        mark_standing_pose(skin);
     }
     catch (const std::exception &)
     {

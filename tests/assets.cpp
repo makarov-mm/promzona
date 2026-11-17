@@ -25,9 +25,9 @@ int main(int argc, char **argv)
                 {
                     auto mesh = Promzona::load_glb(entry.path());
                     ++meshes;
-                    if (!mesh.embeddedColor.empty())
+                    if (!mesh.embedded_color.empty())
                     {
-                        Promzona::decode_image(mesh.embeddedColor);
+                        Promzona::decode_image(mesh.embedded_color);
                         ++embedded;
                     }
                 }

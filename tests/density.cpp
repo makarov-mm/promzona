@@ -79,12 +79,12 @@ int main()
             "population sizes changed");
 
         // The setting: five values, a stable file form and a tolerant reader.
-        require(cycleDensity(Density::low, 1) == Density::medium &&
-                    cycleDensity(Density::high, 1) == Density::full &&
-                    cycleDensity(Density::full, 1) == Density::max &&
-                    cycleDensity(Density::max, 1) == Density::low &&
-                    cycleDensity(Density::low, -1) == Density::max &&
-                    cycleDensity(Density::full, -1) == Density::high,
+        require(cycle_density(Density::low, 1) == Density::medium &&
+                    cycle_density(Density::high, 1) == Density::full &&
+                    cycle_density(Density::full, 1) == Density::max &&
+                    cycle_density(Density::max, 1) == Density::low &&
+                    cycle_density(Density::low, -1) == Density::max &&
+                    cycle_density(Density::full, -1) == Density::high,
                 "density does not cycle");
         require(density_from_code("max", Density::low) == Density::max &&
                     density_from_code("full", Density::low) == Density::full &&
@@ -97,10 +97,10 @@ int main()
         std::filesystem::create_directories(folder);
         const auto setting = folder / "density.txt";
         std::filesystem::remove(setting);
-        require(loadDensity(setting, Density::high) == Density::high,
+        require(load_density(setting, Density::high) == Density::high,
                 "missing setting must use the fallback");
-        require(saveDensity(setting, Density::medium) &&
-                    loadDensity(setting, Density::high) == Density::medium,
+        require(save_density(setting, Density::medium) &&
+                    load_density(setting, Density::high) == Density::medium,
                 "density setting was not stored");
         FrontEnd menu;
         menu.page = MenuPage::settings;

@@ -368,7 +368,7 @@ namespace
             const auto &level = *std::ranges::find(world.roadLevels, true, &RoadLevel::tunnel);
             auto lane = [&](double x)
             {
-                const Vec2 point{x, level.centreZ(x) + CityLayout::lane};
+                const Vec2 point{x, level.centre_z(x) + CityLayout::lane};
                 const double ground =
                     level.contains(point) ? level.floor(world.terrain, point) : world.terrain.height(point);
                 return Vec3{float(x), float(ground + 1.62), float(point.z)};
@@ -589,7 +589,7 @@ int main(int argc, char *argv[])
             double riderStartDistance{};
             int reviewRider = -1;
             Renderer renderer(content);
-            renderer.sceneMode(displayMode);
+            renderer.scene_mode(displayMode);
             const auto graphicsFile = app.saveFile.parent_path() / "graphics.txt";
             auto graphics = smoke ? GraphicsPreferences{} : GraphicsPreferences::load(graphicsFile);
             if (qualityOverride)
@@ -642,7 +642,7 @@ int main(int argc, char *argv[])
                     << carried.people << ", slot " << target << std::endl;
             }
             if (profile)
-                renderer.profileGpu();
+                renderer.profile_gpu();
             AudioMixer audio(content / "Audio");
             const auto audioFile = app.saveFile.parent_path() / "audio-levels.txt";
             AudioLevels levels = smoke ? AudioLevels{} : AudioLevels::load(audioFile);
@@ -650,7 +650,7 @@ int main(int argc, char *argv[])
             AudioDevice audioOutput(audio);
             if (!audioOutput.error().empty())
                 log << audioOutput.error() << std::endl;
-            log << renderer.graphicsInfo() << std::endl;
+            log << renderer.graphics_info() << std::endl;
             std::unique_ptr<World> world;
             std::atomic<float> progress{};
             std::future<std::unique_ptr<World>> generation;
@@ -1088,7 +1088,7 @@ int main(int argc, char *argv[])
                             break;
                         case display:
                             displayMode = SceneMode((std::to_underlying(displayMode) + step + 3) % 3);
-                            renderer.sceneMode(displayMode);
+                            renderer.scene_mode(displayMode);
                             if ((!smoke || scenario == L"settings") &&
                                 !(std::ofstream(displayFile) << modeName()))
                                 app.message = L"Не удалось сохранить режим изображения.";
@@ -1488,7 +1488,7 @@ int main(int argc, char *argv[])
                                     *std::ranges::find(world->roadLevels, true, &RoadLevel::tunnel);
                                 exitLevel = level.id;
                                 auto &hero = world->cars.at(0);
-                                hero.body.p = {level.x, level.centreZ(level.x)};
+                                hero.body.p = {level.x, level.centre_z(level.x)};
                                 hero.body.angle = -pi / 2;
                                 hero.body.roadLevel = level.id;
                                 hero.body.height = world->surface(hero.body.p, level.id) + .8;
@@ -1534,7 +1534,7 @@ int main(int argc, char *argv[])
                                 {
                                     const auto &level =
                                         *std::ranges::find(world->roadLevels, true, &RoadLevel::tunnel);
-                                    car.body.p = {level.x + 100, level.centreZ(level.x + 100)};
+                                    car.body.p = {level.x + 100, level.centre_z(level.x + 100)};
                                     car.body.roadLevel = level.id;
                                 }
                                 car.body.height = world->surface(car.body.p, car.body.roadLevel) + .8;
@@ -1939,7 +1939,7 @@ int main(int argc, char *argv[])
                                                       : scenario == L"overpass" ? -36
                                                       : scenario == L"tunnel"   ? -24
                                                                                 : 0);
-                                c.body.p = {x, level.centreZ(x) + 1.9};
+                                c.body.p = {x, level.centre_z(x) + 1.9};
                                 c.body.angle = -pi * .5;
                                 c.body.v = {};
                                 c.body.roadLevel = scenario == L"underpass" ? 0 : level.id;
@@ -1994,10 +1994,10 @@ int main(int argc, char *argv[])
                                 auto forecourt = [&](const Building &b)
                                 {
                                     const auto plan = plan_building(b, world->terrain.height(b.p));
-                                    const Vec3 n = plan.windowsOnZ ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
+                                    const Vec3 n = plan.windows_on_z ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
                                     const Vec3 side = cross({0, 1, 0}, n);
                                     const Vec3 front =
-                                        plan.origin + n * (plan.windowsOnZ ? plan.half_depth : plan.half_width);
+                                        plan.origin + n * (plan.windows_on_z ? plan.half_depth : plan.half_width);
                                     for (float along = 3; along <= 19; along += 1.5f)
                                         for (float across : {0.f, 7.f})
                                         {
@@ -2020,9 +2020,9 @@ int main(int argc, char *argv[])
                                 if (!selected)
                                     throw std::runtime_error("No facade review building");
                                 auto plan = plan_building(*selected, world->terrain.height(selected->p));
-                                Vec3 n = plan.windowsOnZ ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
+                                Vec3 n = plan.windows_on_z ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
                                 auto r = cross({0, 1, 0}, n);
-                                float depth = plan.windowsOnZ ? plan.half_depth : plan.half_width;
+                                float depth = plan.windows_on_z ? plan.half_depth : plan.half_width;
                                 auto front = plan.origin + n * depth;
                                 View v;
                                 v.eye = front + n * 17 + r * 7 + Vec3{0, 6, 0};
@@ -2724,9 +2724,9 @@ int main(int argc, char *argv[])
                                 << selected->p.z << " (distance to district corner "
                                 << (selected->p - stops[phase]).length() << " m)" << std::endl;
                         auto plan = plan_building(*selected, world->terrain.height(selected->p));
-                        Vec3 normal = plan.windowsOnZ ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
+                        Vec3 normal = plan.windows_on_z ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
                         auto front =
-                            plan.origin + normal * (plan.windowsOnZ ? plan.half_depth : plan.half_width);
+                            plan.origin + normal * (plan.windows_on_z ? plan.half_depth : plan.half_width);
                         view.target = front + Vec3{0, 5, 0};
                         view.eye = front + normal * 23 + cross({0, 1, 0}, normal) * 12 + Vec3{0, 8, 0};
                         world->clock.set_hour(10);
@@ -2802,25 +2802,25 @@ int main(int argc, char *argv[])
                     }
                     if (smoke && scenario == L"streaming")
                     {
-                        auto stats = renderer.streamingStats();
+                        auto stats = renderer.streaming_stats();
                         if (stats.peak_gpu_bytes > 64 * 1024 * 1024 || stats.queued > 8 || stats.ready > 2 ||
-                            stats.sectorsQueued > SectorStream::maxQueued ||
-                            stats.sectorsReady > SectorStream::maxReady)
+                            stats.sectors_queued > SectorStream::maxQueued ||
+                            stats.sectors_ready > SectorStream::maxReady)
                             throw std::runtime_error("Streaming exceeded its memory/queue budget");
                         // A jump of the camera must never show a hole under it, and the
                         // standing city takes less memory than all of it would.
-                        if (stats.nearestMissingSector < sectorUrgent)
+                        if (stats.nearestMissingSector < sector_urgent)
                             throw std::runtime_error("Streaming left the ground at the camera unbuilt");
                         if (frames % 180 == 179)
                         {
                             if (stats.resident_cells == 0)
                                 throw std::runtime_error(
                                     "Streaming left a visited neighbourhood without details");
-                            if (stats.nearestMissingSector <= float(graphics.distance) + sectorReach ||
-                                stats.residentSectors >= stats.totalSectors)
+                            if (stats.nearestMissingSector <= float(graphics.distance) + sector_reach ||
+                                stats.resident_sectors >= stats.total_sectors)
                                 throw std::runtime_error(
                                     "Streaming did not bring the city within the draw distance into memory");
-                            log << "Stop " << frames / 180 << ": " << renderer.sceneryStats() << std::endl;
+                            log << "Stop " << frames / 180 << ": " << renderer.scenery_stats() << std::endl;
                             if (!frameProfile) // Readback and encoding are outside normal gameplay.
                                 renderer.screenshot(smokeOutput / std::format("stop-{}.bmp", frames / 180),
                                                     app.width, app.height);
@@ -2920,10 +2920,10 @@ int main(int argc, char *argv[])
                 {
                     if (scenario == L"streaming")
                     {
-                        auto stats = renderer.streamingStats();
+                        auto stats = renderer.streaming_stats();
                         if (stats.evictions < 10 || stats.uploads <= stats.resident_cells ||
-                            stats.resident_cells >= stats.total_cells || stats.sectorEvictions < 20 ||
-                            stats.sectorUploads < 20)
+                            stats.resident_cells >= stats.total_cells || stats.sector_evictions < 20 ||
+                            stats.sector_uploads < 20)
                             throw std::runtime_error(
                                 "Streaming route did not exercise eviction and reloading");
                     }
@@ -3174,7 +3174,7 @@ int main(int argc, char *argv[])
                         throw std::runtime_error("Smoke save/load mismatch");
                     if (!screenshot.empty())
                         renderer.screenshot(screenshot, app.width, app.height);
-                    log << renderer.sceneryStats() << std::endl;
+                    log << renderer.scenery_stats() << std::endl;
                     if (frameProfile && !frameTimes.empty())
                     {
                         if (scenario == L"streaming")
@@ -3199,7 +3199,7 @@ int main(int argc, char *argv[])
                             << " vsync_requested=" << !profile << std::endl;
                     }
                     if (profile)
-                        log << renderer.gpuReport() << " output=" << app.width << "x" << app.height
+                        log << renderer.gpu_report() << " output=" << app.width << "x" << app.height
                             << " mode=" << modeName() << std::endl;
                     log << "SMOKE PASS frames=" << frames << " cars=" << world->cars.size()
                         << " people=" << world->people.size() << " moved=" << distance

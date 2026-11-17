@@ -1,5 +1,7 @@
 #include "promzona/city_mesh.hpp"
 #include <chrono>
+#include <fstream>
+#include <iterator>
 #include <print>
 #include <stdexcept>
 #include <source_location>
@@ -22,7 +24,7 @@ void pathClear(const World &w, const Path &path, int level = 0)
         if (level)
         {
             auto road = w.levelById(level);
-            check(road && road->contains(p) && std::abs(p.z - road->centreZ(p.x)) < 4.3,
+            check(road && road->contains(p) && std::abs(p.z - road->centre_z(p.x)) < 4.3,
                   "route stays on raised/sunken carriageway");
         }
         else
@@ -30,7 +32,7 @@ void pathClear(const World &w, const Path &path, int level = 0)
             if (level)
             {
                 auto road = w.levelById(level);
-                check(road && road->contains(p) && std::abs(p.z - road->centreZ(p.x)) < 4.3,
+                check(road && road->contains(p) && std::abs(p.z - road->centre_z(p.x)) < 4.3,
                       "route stays on raised/sunken carriageway");
             }
             else
@@ -95,12 +97,20 @@ void distantQueueAndSave()
                          std::format("promzona-merge-{}.json",
                                      std::chrono::steady_clock::now().time_since_epoch().count());
             auto position = active.body.p;
-            double along = active.routeDistance, cooldown = active.nextLaneDecision;
+            double along = active.routeDistance, cooldown = active.next_lane_decision;
             w.save(saved);
+            {
+                // The keys of a save are its format: they do not follow the names of the members.
+                std::ifstream in(saved, std::ios::binary);
+                const std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+                for (const char *key : {"\"nextLaneDecision\"", "\"blockedSince\"", "\"nextStop\"",
+                                        "\"laneIndex\"", "\"routeDistance\""})
+                    check(text.contains(key), "a save keeps the keys of its format");
+            }
             w.load(saved);
             std::filesystem::remove(saved);
             const auto &copy = w.cars[1];
-            check(copy.laneIndex == 1 && copy.nextLaneDecision == cooldown && copy.routeDistance == along &&
+            check(copy.laneIndex == 1 && copy.next_lane_decision == cooldown && copy.routeDistance == along &&
                       (copy.route->sample(copy.routeDistance).first - position).length() < 1e-8,
                   "mid-merge save retains path, position and decision cooldown");
             merged = true;
@@ -171,7 +181,7 @@ void laneChecks(World &w)
     // route picker to take that link, then compare both ends of the transition.
     int transitions = 0;
     for (const auto &level : w.roadLevels)
-        for (int entry : {level.leftNode, level.rightNode})
+        for (int entry : {level.left_node, level.right_node})
         {
             int previous = w.layout.neighbours(entry).front();
             for (int attempt = 0; attempt < 100; ++attempt)
@@ -312,10 +322,10 @@ int main()
             if (ai.routeFrom != oldNode || ai.routePhase != oldPhase)
                 ++transitions;
             distance += (ai.body.p - before).length();
-            maxError = std::max(maxError,
-                                ai.routeLevel
-                                    ? std::abs(ai.body.p.z - w.levelById(ai.routeLevel)->centreZ(ai.body.p.x))
-                                    : w.layout.roadDistance(ai.body.p));
+            maxError = std::max(
+                maxError, ai.routeLevel
+                              ? std::abs(ai.body.p.z - w.levelById(ai.routeLevel)->centre_z(ai.body.p.x))
+                              : w.layout.roadDistance(ai.body.p));
             check(std::isfinite(ai.body.p.x) && std::isfinite(ai.body.p.z), "finite local traffic");
         }
         std::println("Local traffic: transitions={} distance={} maxRoadError={}", transitions, distance,

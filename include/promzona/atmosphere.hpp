@@ -8,7 +8,7 @@ namespace Promzona
     // weather. The colours are those of the finished picture, not of linear light.
     struct Atmosphere
     {
-        float density{.00052f}, heightScale{140};
+        float density{.00052f}, height_scale{140};
         Vec3 horizon {.x = .64f, .y = .73f, .z = .80f}, zenith {.x = .19f, .y = .39f, .z = .65f};
         float rain{}, daylight{1}, golden{};
 
@@ -43,7 +43,7 @@ namespace Promzona
             air.zenith = blend({.006f, .012f, .027f}, air.zenith, d);
             air.zenith = blend(air.zenith, {.14f, .21f, .40f}, .46f * twilight);
             air.density = .00052f + .0028f * r + .00018f * w * (1 - d) + .00024f * air.golden;
-            air.heightScale = 140 + 100 * r;
+            air.height_scale = 140 + 100 * r;
             air.rain = r;
             air.daylight = d;
             return air;
@@ -52,7 +52,7 @@ namespace Promzona
         // Share of the light that crosses `distance` metres of haze between two heights.
         double transmittance(const double distance, const double eye_height = 0, const double target_height = 0) const
         {
-            const double a = std::max(0., eye_height) / heightScale, b = std::max(0., target_height) / heightScale;
+            const double a = std::max(0., eye_height) / height_scale, b = std::max(0., target_height) / height_scale;
             const double layer = std::abs(b - a) < .001 ? std::exp(-(a + b) * .5) : (std::exp(-a) - std::exp(-b)) / (b - a);
             return std::exp(-std::min(80., std::max(0., distance) * density * layer));
         }

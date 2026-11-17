@@ -37,7 +37,7 @@ void checkRecovery(World &w)
     const auto &tunnel = *std::ranges::find(w.roadLevels, true, &RoadLevel::tunnel);
     auto &car = w.cars.front();
     w.controlledCar = 0;
-    Vec2 origin{tunnel.x + 100, tunnel.centreZ(tunnel.x + 100)};
+    Vec2 origin{tunnel.x + 100, tunnel.centre_z(tunnel.x + 100)};
     place(w, car, origin, tunnel.id);
     car.body.v = {2, 0};
     check(!w.recover(), "a moving vehicle cannot be evacuated");
@@ -64,7 +64,7 @@ void checkRecovery(World &w)
     loaded.load(file);
     std::filesystem::remove(file);
     auto &resumed = loaded.cars.front();
-    near(resumed.rightingTime, car.rightingTime, 1e-8, "load resumes same frame of lift");
+    near(resumed.righting_time, car.righting_time, 1e-8, "load resumes same frame of lift");
     for (int tick = 0; tick < 200; ++tick)
     {
         car.settle_attitude(1. / 120, true);
@@ -80,11 +80,11 @@ void checkRecovery(World &w)
 
     Car struck;
     struck.apply_impact_rotation({8, 0});
-    check(struck.rollRate > 0 && struck.pitchRate == 0, "side impact rolls chassis");
+    check(struck.roll_rate > 0 && struck.pitch_rate == 0, "side impact rolls chassis");
     struck.apply_impact_rotation({0, -8});
-    check(struck.pitchRate < 0, "rearward impulse pitches chassis");
+    check(struck.pitch_rate < 0, "rearward impulse pitches chassis");
     struck.roll = pi;
-    struck.rollRate = struck.pitchRate = 0;
+    struck.roll_rate = struck.pitch_rate = 0;
     for (int tick = 0; tick < 470; ++tick)
         struck.settle_attitude(1. / 120, true);
     check(!struck.recovering, "no instant automatic recovery");
@@ -97,7 +97,7 @@ void checkRecovery(World &w)
     check(!struck.recovering, "wreck cannot self-right");
 
     // Block all ordinary door positions; the emergency exit must still be in the tunnel.
-    const Vec2 centre{tunnel.x, tunnel.centreZ(tunnel.x)};
+    const Vec2 centre{tunnel.x, tunnel.centre_z(tunnel.x)};
     place(w, car, centre, tunnel.id);
     car.body.angle = -pi / 2;
     for (double side : {-1., 1.})
@@ -129,7 +129,7 @@ void checkRecovery(World &w)
     check(w.recover() && tram->line == line, "tram recovered to its own circuit");
     auto [rail, heading] = w.lines[line].pose(tram->along);
     near((rail - tram->body.p).length(), 0, 1e-7, "tram is directly on its track");
-    check((rail - stop).length() < 180 && tram->nextStop == w.lines[line].nextStopAfter(tram->along),
+    check((rail - stop).length() < 180 && tram->next_stop == w.lines[line].next_stop_after(tram->along),
           "tram stop sequence resumes at the recovery point");
 }
 void generated(World &w)
@@ -159,21 +159,25 @@ void generated(World &w)
             }
     }
     check(std::ranges::all_of(seen, [](bool b) { return b; }), "whole city road graph remains connected");
+    bool counted = true;
+    for (int n = 0; n < World::nodes * World::nodes; ++n)
+        counted = counted && w.degree(n) == int(w.neighbours(n).size());
+    check(counted, "the neighbour count agrees with the neighbour list at every node");
     for (auto &s : w.roadLevels)
     {
-        check(w.levelEdge(s.leftNode, s.rightNode) == &s && w.levelEdge(s.rightNode, s.leftNode) == &s,
+        check(w.levelEdge(s.left_node, s.right_node) == &s && w.levelEdge(s.right_node, s.left_node) == &s,
               "route graph contains both level directions");
         for (int k = 0; k <= 288; ++k)
         {
             double x = s.x - 144 + k;
-            Vec2 p{x, s.centreZ(x)};
+            Vec2 p{x, s.centre_z(x)};
             double floor = s.floor(w.terrain, p);
             check(floor > CityLayout::waterLevel + .5, "tunnel/deck above water datum");
             if (s.roof(x))
                 check(w.terrain.height(p) - floor >= RoadLevel::clearance + 1.99,
                       "district has solid ground above tunnel roof");
             if (k > 0)
-                check(std::abs(floor - s.floorSamples[k - 1]) < .65, "traversable longitudinal slope");
+                check(std::abs(floor - s.floor_samples[k - 1]) < .65, "traversable longitudinal slope");
         }
         for (auto &b : w.buildings)
             check(!s.reserved(b.p, b.half.length()),
@@ -194,7 +198,7 @@ void generated(World &w)
             {
                 auto before = c.body.p;
                 double x = start.x + direction * n * .1;
-                c.body.p = {x, s.centreZ(x) + direction * CityLayout::lane};
+                c.body.p = {x, s.centre_z(x) + direction * CityLayout::lane};
                 w.supportCar(c, before, .0125);
                 double floor =
                     s.contains(c.body.p) ? s.floor(w.terrain, c.body.p) : w.terrain.height(c.body.p);
@@ -212,8 +216,8 @@ void localDrive(World &w, const RoadLevel &s, bool east)
     c.id = 0;
     c.body.id = 2;
     c.body.mass(c.mass);
-    c.routeFrom = east ? s.leftNode : s.rightNode;
-    c.routeTo = east ? s.rightNode : s.leftNode;
+    c.routeFrom = east ? s.left_node : s.right_node;
+    c.routeTo = east ? s.right_node : s.left_node;
     c.routePhase = 1;
     w.new_route(c);
     auto first = c.route->sample(0);
@@ -238,7 +242,7 @@ void localDrive(World &w, const RoadLevel &s, bool east)
             finished = true;
             break;
         }
-        maxError = std::max(maxError, std::abs(c.body.p.z - s.centreZ(c.body.p.x)));
+        maxError = std::max(maxError, std::abs(c.body.p.z - s.centre_z(c.body.p.x)));
         check(c.body.roadLevel == s.id, "AI remains on its selected support level");
         near(c.body.height - .8, s.floor(w.terrain, c.body.p), .06, "physical AI follows deck profile");
     }
@@ -310,7 +314,7 @@ int main()
         w.pickups.clear();
         for (auto &s : w.roadLevels)
         {
-            Vec2 p{s.x, s.centreZ(s.x)};
+            Vec2 p{s.x, s.centre_z(s.x)};
             double ground = w.terrain.height(p), floor = s.floor(w.terrain, p);
             if (!s.tunnel)
             {
@@ -386,12 +390,12 @@ int main()
         }
         w.generate(20261105);
         const auto &t = w.roadLevels[1];
-        place(w, w.cars[0], {t.x, t.centreZ(t.x)}, t.id);
+        place(w, w.cars[0], {t.x, t.centre_z(t.x)}, t.id);
         w.controlledCar = 0;
         // Preserve a valid route while saving an actor on a different part of that road.
         auto &car = w.cars[0];
-        car.routeFrom = t.leftNode;
-        car.routeTo = t.rightNode;
+        car.routeFrom = t.left_node;
+        car.routeTo = t.right_node;
         car.routePhase = 1;
         w.new_route(car);
         auto file = std::filesystem::current_path() / "promzona-native-level-test.json";

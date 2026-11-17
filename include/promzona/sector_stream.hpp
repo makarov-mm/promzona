@@ -22,7 +22,7 @@ namespace Promzona
         double x{}, z{}; // the lower corner
 
         // Horizontal distance from the eye to the square; zero inside it.
-        float distance(Vec3 eye) const
+        float distance(const Vec3& eye) const
         {
             const double dx = std::max({x - eye.x, 0., eye.x - (x + size)}),
                          dz = std::max({z - eye.z, 0., eye.z - (z + size)});
@@ -34,7 +34,7 @@ namespace Promzona
     // slack keeps in memory everything a draw at that distance can show. It is kept for
     // `keep` metres more, so that a walk along the border does not rebuild it every step.
     // A sector this near the eye cannot wait for the worker and is built at once.
-    constexpr float sectorReach = 30, sectorKeep = 40, sectorUrgent = 60;
+    constexpr float sector_reach = 30, sector_keep = 40, sector_urgent = 60;
 
     struct SectorOrder
     {
@@ -60,13 +60,15 @@ namespace Promzona
         struct Packet
         {
             size_t id{}, bytes{};
+
             struct Surface
             {
-                size_t firstVertex{}, firstIndexByte{}, count{};
+                size_t first_vertex{}, first_index_byte{}, count{};
                 Vec3 centre{};
                 float radius{};
                 bool narrow{};
             };
+
             std::array<Surface, SurfaceCount> surfaces{};
             std::vector<unsigned char> vertices, indices;
             std::vector<LawnTile> lawn;
@@ -76,7 +78,7 @@ namespace Promzona
 
         struct Stats
         {
-            size_t queued{}, ready{}, readyBytes{}, built{}, discarded{};
+            size_t queued{}, ready{}, ready_bytes{}, built{}, discarded{};
             bool busy{};
         };
 

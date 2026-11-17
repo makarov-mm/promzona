@@ -2,6 +2,8 @@
 #include <print>
 #include <set>
 #include <chrono>
+#include <fstream>
+#include <iterator>
 #include <source_location>
 #include <format>
 #include <exception>
@@ -20,7 +22,7 @@ void dispatch(World &w, int level)
     for (int i = 0; i < 32; ++i)
         w.updateDispatch();
     std::array<int, 15> expected{}, present{};
-    for (int k : policeRoster(level))
+    for (int k : police_roster(level))
         ++expected[k];
     for (const auto &c : w.cars)
         if (c.responding)
@@ -243,7 +245,7 @@ void test()
     check(w.controlledCar == tank, "tank cannot be boarded");
     double bearing = armour.heading() + .52;
     w.shoot(bearing);
-    check(w.rockets.size() == 1 && w.rockets[0].ownerCar == tank &&
+    check(w.rockets.size() == 1 && w.rockets[0].owner_car == tank &&
               (w.rockets[0].direction - forward(bearing)).length() < 1e-9,
           "wrong shell heading or owner");
     w.shoot(bearing);
@@ -280,7 +282,7 @@ void test()
         throw;
     }
     std::filesystem::remove(path);
-    check(loaded.cars[tank].summoned && loaded.cars[tank].mountedGun(), "tank lost on save");
+    check(loaded.cars[tank].summoned && loaded.cars[tank].mounted_gun(), "tank lost on save");
     check(loaded.cars.size() == w.cars.size() && loaded.cars[heli].responding &&
               loaded.cars[heli].lift == w.cars[heli].lift,
           "patrol lost on save");
@@ -342,7 +344,7 @@ void reverseTest()
     car.body.height = w.terrain.height(car.body.p) + .8;
     car.seesSuspect = true;
     car.nextSightCheck = 0;
-    car.wedgedFor = car.reverseFor = 0;
+    car.wedged_for = car.reverse_for = 0;
     check(dot(w.player.p - car.body.p, forward(car.heading())) < -23, "the suspect is not behind the unit");
     double slowest = 0, nearest = 1e9, turned = -1;
     for (int tick = 0; tick < 600; ++tick)
@@ -414,7 +416,7 @@ void stuckTest()
     car.body.height = w.terrain.height(car.body.p) + .8;
     car.seesSuspect = true;
     car.nextSightCheck = 0;
-    car.wedgedFor = car.reverseFor = 0;
+    car.wedged_for = car.reverse_for = 0;
     double slowest = 0, nearest = 1e9;
     bool stood = false;
     for (int tick = 0; tick < 900 && w.health == 1; ++tick)
@@ -476,7 +478,7 @@ Car &onStreet(World &w, Car &car, int from, int to, double back)
     car.routeTo = to;
     car.routePhase = 1;
     car.laneIndex = 0;
-    car.plannedTo = car.previousNode = -1;
+    car.planned_to = car.previousNode = -1;
     w.new_route(car);
     car.routeDistance = car.route->length() - back;
     const auto [at, heading] = car.route->sample(car.routeDistance);
@@ -491,9 +493,9 @@ Car &onStreet(World &w, Car &car, int from, int to, double back)
     car.fireTime = 0;
     car.destroyed = car.driverless = false;
     car.seesSuspect = false;
-    car.wedgedFor = car.reverseFor = car.avoid = car.overtake = 0;
-    car.trafficLimit = 100;
-    car.senseAt = car.nextSightCheck = 0;
+    car.wedged_for = car.reverse_for = car.avoid = car.overtake = 0;
+    car.traffic_limit = 100;
+    car.sense_at = car.nextSightCheck = 0;
     return car;
 }
 // Port of the managed PolicePursuit and PoliceRuleStep: traffic is a steering cost to a
@@ -735,26 +737,34 @@ void trafficTest()
                         std::format("promzona-rejoin-{}.json",
                                     std::chrono::steady_clock::now().time_since_epoch().count());
             w.save(path);
+            if (w.cars.at(patrol).rejoining || w.cars.at(slot).rejoining)
+            {
+                // The keys of a save are its format: they do not follow the names of the members.
+                std::ifstream in(path, std::ios::binary);
+                const std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+                check(text.contains("\"wedgedFor\"") && text.contains("\"reverseFor\""),
+                      "a save keeps the keys of its format");
+            }
             resumed.load(path);
             std::filesystem::remove(path);
             for (size_t id : {patrol, slot})
             {
                 const auto &before = w.cars.at(id);
                 const auto &after = resumed.cars.at(id);
-                check(after.rejoining == before.rejoining && after.wedgedFor == before.wedgedFor &&
-                          after.reverseFor == std::max(0., before.reverseFor),
+                check(after.rejoining == before.rejoining && after.wedged_for == before.wedged_for &&
+                          after.reverse_for == std::max(0., before.reverse_for),
                       "reload lost the patrol's return manoeuvre");
             }
             checkReturn(resumed);
         };
 
         checkReload(); // both units have just stood down
-        for (int tick = 0; tick < 60 * 15 && car.reverseFor <= 0 && other.reverseFor <= 0; ++tick)
+        for (int tick = 0; tick < 60 * 15 && car.reverse_for <= 0 && other.reverse_for <= 0; ++tick)
         {
             w.step({}, 1. / 60);
             w.wanted = 0;
         }
-        check((car.rejoining && car.reverseFor > 0) || (other.rejoining && other.reverseFor > 0),
+        check((car.rejoining && car.reverse_for > 0) || (other.rejoining && other.reverse_for > 0),
               "neither returning unit started backing up");
         checkReload(); // one unit is already reversing
         checkReturn(w);

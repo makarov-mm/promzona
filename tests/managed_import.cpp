@@ -180,7 +180,7 @@ int main()
         require(std::abs(w.player.angle + .75) < 1e-9, "saved heading was not restored");
         require(w.health == 1 && w.rain == 0, "healthy dry save was changed");
         require(w.inventory.ammo(WeaponId::pistol) == 7 &&
-                    w.inventory.ammo(WeaponId::automatic) == Inventory::ammoLimit &&
+                    w.inventory.ammo(WeaponId::automatic) == Inventory::ammo_limit &&
                     w.inventory.owns(WeaponId::bazooka) && w.inventory.ammo(WeaponId::bazooka) == 0 &&
                     report.weapons == 3,
                 "ammunition was not normalised");
@@ -219,7 +219,7 @@ int main()
         first.raining = false;
         report = w.importManaged(write(first.text()));
         require(report.format == 1 && w.money == 15 && w.seed == std::uint32_t(-17) && w.health == 1 &&
-                    !w.inventory.hasWeapons() && w.rain == 0,
+                    !w.inventory.has_weapons() && w.rain == 0,
                 "format 1 save was not imported");
 
         // The city of an imported game is peopled as a new game would be.

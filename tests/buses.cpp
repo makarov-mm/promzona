@@ -184,7 +184,7 @@ void stopping(bool near)
     {
         w.step({}, frame);
         furthest = std::max(furthest, bus.body.v.length());
-        if (bus.busUntil > w.time)
+        if (bus.bus_until > w.time)
         {
             if (!stopped)
                 stoodAt = bus.body.p.z;
@@ -197,17 +197,17 @@ void stopping(bool near)
     require(std::abs(stoodAt - sign.z) < 1.6 && furthest > 3,
             "the bus stood somewhere else than at the shelter");
     require(stood > 3.9 && stood < 7.2, "the bus stood for the wrong time");
-    require(bus.body.p.z > sign.z + 3 && bus.nextBusStop > w.time, "the bus did not leave its stop");
+    require(bus.body.p.z > sign.z + 3 && bus.next_bus_stop > w.time, "the bus did not leave its stop");
     require(!bus.destroyed && bus.health == 1, "the bus was damaged at its stop");
 
     // The next stop within the half minute is passed by.
     auto &second = place(w, 9, busModel, node, north, 1, 0);
-    second.nextBusStop = w.time + 30;
+    second.next_bus_stop = w.time + 30;
     w.indexTraffic();
     for (int i = 0; i < 60 * 12 && second.routePhase == 0 && second.routeFrom == node; ++i)
     {
         w.step({}, frame);
-        require(second.busUntil <= w.time, "a bus stops at every stop it comes to");
+        require(second.bus_until <= w.time, "a bus stops at every stop it comes to");
     }
     // In the inner lane, or the other way, the shelter is not this bus's stop.
     auto &inner = place(w, 9, busModel, node, north, 0, 0);
@@ -232,14 +232,14 @@ void overtaking()
     auto &bus = place(w, 9, busModel, node, north, 1, 0);
     bus.routeDistance = sign.z - World::nodePoint(node).z - 9;
     bus.body.p = bus.route->sample(bus.routeDistance).first;
-    bus.busUntil = w.time + 6;
-    bus.nextBusStop = bus.busUntil + 34;
+    bus.bus_until = w.time + 6;
+    bus.next_bus_stop = bus.bus_until + 34;
     auto &follower = place(w, 1, 0, node, north, 1, 0);
     w.indexTraffic();
     require(follower.body.p.z < bus.body.p.z - 8, "the follower does not start behind the bus");
     for (int i = 0; i < 60 * 3; ++i)
         w.step({}, frame);
-    require(follower.laneIndex == 0 && follower.blockedSince >= 0,
+    require(follower.laneIndex == 0 && follower.blocked_since >= 0,
             "nobody makes for the other lane behind a bus at its stop");
     require(bus.laneIndex == 1 && std::abs(bus.body.p.z - sign.z) < 1.6, "the bus left its stop or its lane");
     for (int i = 0; i < 60 * 25 && follower.routeFrom == node; ++i)
@@ -250,13 +250,13 @@ void overtaking()
     auto &queued = place(w, 9, busModel, node, north, 1, 0);
     queued.routeDistance = queued.route->length();
     queued.body.p = queued.route->sample(queued.routeDistance).first;
-    queued.nextBusStop = w.time + 100;
+    queued.next_bus_stop = w.time + 100;
     auto &behind = place(w, 1, 0, node, north, 1, 0);
     behind.routeDistance = queued.routeDistance - 9.5;
     behind.body.p = behind.route->sample(behind.routeDistance).first;
     w.indexTraffic();
     w.senseTraffic(behind, false);
-    require(behind.blockedSince < 0 && behind.trafficLimit < 3 && behind.laneIndex == 1,
+    require(behind.blocked_since < 0 && behind.traffic_limit < 3 && behind.laneIndex == 1,
             "a bus at the lights is taken for a bus at its stop");
 }
 
@@ -285,11 +285,11 @@ void deadEnds()
             {
                 auto &bus = place(w, 9, busModel, from, junction, 1, 0);
                 w.planExit(bus);
-                require(bus.plannedTo >= 0 && bus.plannedTo != end && bus.plannedTo != from,
+                require(bus.planned_to >= 0 && bus.planned_to != end && bus.planned_to != from,
                         "a bus turns into a street that ends");
                 auto &car = place(w, 1, 0, from, junction, 1, 0);
                 w.planExit(car);
-                entered = entered || car.plannedTo == end;
+                entered = entered || car.planned_to == end;
             }
             require(entered, "no car ever takes the street that ends");
             break;
@@ -298,7 +298,7 @@ void deadEnds()
     require(tried >= 3, "the city has no streets that end");
     // Off an overpass or out of a tunnel the bus takes the kerb lane again.
     const RoadLevel &level = w.roadLevels.front();
-    auto &bus = place(w, 9, busModel, level.leftNode, level.rightNode, 1, 0);
+    auto &bus = place(w, 9, busModel, level.left_node, level.right_node, 1, 0);
     require(bus.routePhase == 2 && bus.laneIndex == 0, "a bus is not in the single lane of a level road");
     bus.routeDistance = bus.route->length();
     bus.body.p = bus.route->sample(bus.routeDistance).first;

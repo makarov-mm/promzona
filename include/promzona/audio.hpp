@@ -38,7 +38,7 @@ namespace Promzona
         std::map<std::string, std::vector<float>, std::less<>> clips_;
         std::vector<Voice> voices_;
         std::mutex mutex_;
-        bool playing_{}, worldPaused_{};
+        bool playing_{}, world_paused_{};
         AudioLevels levels_;
         std::array<const std::vector<float> *, 2> tracks_{};
         size_t track_{}, track_cursor_{};

@@ -140,18 +140,18 @@ void voiceTest()
           "a startle can immediately interrupt an idle line");
     w.sounds.clear();
     AudioMixer audio;
-    audio.addClip("voice", std::vector<float>(64, .5f));
-    audio.addClip("impact", std::vector<float>(64, .3f));
+    audio.add_clip("voice", std::vector<float>(64, .5f));
+    audio.add_clip("impact", std::vector<float>(64, .3f));
     w.sounds.push_back({"voice", {}, 1, false, 0});
     audio.update(w, 0);
-    check(audio.voiceCount() == 1, "speaker did not start talking");
+    check(audio.voice_count() == 1, "speaker did not start talking");
     audio.play({"voice", {}, 1, false, 0});
-    check(audio.voiceCount() == 1, "a second line replaces the same speaker's first line");
+    check(audio.voice_count() == 1, "a second line replaces the same speaker's first line");
     w.people[0].dead = true;
     w.sounds.push_back({"voice", {}, 1, false, 0});
     w.sounds.push_back({"impact", {}, 1});
     audio.update(w, 0);
-    check(audio.voiceCount() == 1, "dying speaker continued talking over the impact");
+    check(audio.voice_count() == 1, "dying speaker continued talking over the impact");
     audio.pause(false);
     std::array<float, 8> samples{};
     audio.mix(samples);
@@ -258,11 +258,11 @@ void conversationTest()
     auto &entrance = w.sites[market].entrance;
     const auto originalEntrance = entrance;
     entrance = p.body.p + Vec2{0, 15};
-    check(w.talk() && w.notice == L"Рынок — на " + streetAt(entrance) + L", 20 м на север.",
+    check(w.talk() && w.notice == L"Рынок — на " + street_at(entrance) + L", 20 м на север.",
           "market directions disagree with map north");
     w.time += 1;
     entrance = p.body.p + Vec2{-15, 0};
-    check(w.talk() && w.notice == L"Рынок — на " + streetAt(entrance) + L", 20 м на восток.",
+    check(w.talk() && w.notice == L"Рынок — на " + street_at(entrance) + L", 20 м на восток.",
           "market directions disagree with map east");
     entrance = originalEntrance;
     p.body.id = originalId;

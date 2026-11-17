@@ -441,11 +441,6 @@ namespace Promzona
                          : 2 * nodes_ / 3;
         return bridgeRow(row) && road(column, row, 1) && std::abs(p.z - coordinate(row)) < (wide_ ? 10.55 : 8.05);
     }
-    double CityLayout::deckHeight(double x) const
-    {
-        double c = std::cos(pi * std::min(1., riverDistance(x) / deckHalf()) * .5);
-        return 2.2 + 1.5 * c * c;
-    }
     bool CityLayout::urbanSite(Vec2 p, double radius) const
     {
         return std::max(std::abs(p.x), std::abs(p.z)) + radius <= coordinate(nodes_ - 1) + 7 &&
@@ -474,7 +469,7 @@ namespace Promzona
         wide_ = wide;
 
         const std::vector<RoadLevel> levels = revision
-            ? planRoadLevels(*this, static_cast<std::uint32_t>(seed))
+            ? plan_road_levels(*this, static_cast<std::uint32_t>(seed))
         : std::vector<RoadLevel>{};
 
         roads_.assign(n * n * 4, false);
@@ -548,7 +543,7 @@ namespace Promzona
             }
         for (const auto &level : levels)
         {
-            int left = level.leftNode % n, row = level.leftNode / n;
+            int left = level.left_node % n, row = level.left_node / n;
             for (int i = left; i <= left + 8; ++i)
                 for (int j = row - 1; j <= row + 2; ++j)
                 {
@@ -588,7 +583,7 @@ namespace Promzona
                                             const double dx = std::abs(x - s.x);
                                             const double centre = s.z + 18 * smooth((s.length - dx) / 36.);
                                             return dx <= s.length + plotRadius + 1.3 &&
-                                                   std::abs(z - centre) <= s.halfWidth + plotRadius + 1.3 &&
+                                                   std::abs(z - centre) <= s.half_width + plotRadius + 1.3 &&
                                                    (!s.tunnel || dx + plotRadius > s.covered - .8);
                                         });
                 if (!isPark && !canalColumn(i) && !reserved)

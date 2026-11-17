@@ -10,21 +10,78 @@ namespace Promzona
 using nlohmann::json;
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Vec2, x, z)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Vec3, x, y, z)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Body, p, v, angle, w, invMass, invI, halfW, halfH, radius, friction,
-                                   restitution, height, verticalExtent, circle, sleeping, sleepTimer, id,
-                                   roadLevel, verticalSpeed)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Person, body, target, node, next, dead, fear, heading, phase, distance,
-                                   style, health, burnUntil, burnPlayerCaused)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(CivilianCover, hide, peek, threat, vehicleAnchor, searchAt, holdUntil,
-                                   vehicle, found, peeking)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Scooter, body, owner, rider, returnAt)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Animal, species, variant, flock, p, goal, velocity, offset, altitude,
-                                   heading, distance, fear, thinkAt, deadUntil)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Flock, landing, flying, landedAt)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Rocket, p, direction, height, slope, travel, owner_car)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ReconDrone, active, position, velocity, altitude, heading, pitch, battery,
-                                   health, scanTime, readyAt, nextShot, targets, scanned)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(World::StreetHail, actor, until, spot, posted)
+// A save's keys are its format. They are written out here, each beside the member it holds, and
+// never taken from the member's name: renaming a member in the code cannot change a save file.
+template <class T> void write_fields(json &, const T &) {}
+template <class T, class M, class... Rest>
+void write_fields(json &j, const T &value, const char *key, M T::*member, Rest... rest)
+{
+    j[key] = value.*member;
+    write_fields(j, value, rest...);
+}
+template <class T> void read_fields(const json &, T &) {}
+template <class T, class M, class... Rest>
+void read_fields(const json &j, T &value, const char *key, M T::*member, Rest... rest)
+{
+    j.at(key).get_to(value.*member);
+    read_fields(j, value, rest...);
+}
+#define PROMZONA_SAVED(Type, ...)                                                                            \
+    void to_json(json &j, const Type &value)                                                                 \
+    {                                                                                                        \
+        write_fields(j, value, __VA_ARGS__);                                                                 \
+    }                                                                                                        \
+    void from_json(const json &j, Type &value)                                                               \
+    {                                                                                                        \
+        read_fields(j, value, __VA_ARGS__);                                                                  \
+    }
+// clang-format off
+PROMZONA_SAVED(Body, "p", &Body::p, "v", &Body::v, "angle", &Body::angle, "w", &Body::w,
+               "invMass", &Body::invMass, "invI", &Body::invI, "halfW", &Body::halfW, "halfH", &Body::halfH,
+               "radius", &Body::radius, "friction", &Body::friction, "restitution", &Body::restitution,
+               "height", &Body::height, "verticalExtent", &Body::verticalExtent, "circle", &Body::circle,
+               "sleeping", &Body::sleeping, "sleepTimer", &Body::sleepTimer, "id", &Body::id,
+               "roadLevel", &Body::roadLevel, "verticalSpeed", &Body::verticalSpeed)
+PROMZONA_SAVED(Person, "body", &Person::body, "target", &Person::target, "node", &Person::node,
+               "next", &Person::next, "dead", &Person::dead, "fear", &Person::fear,
+               "heading", &Person::heading, "phase", &Person::phase, "distance", &Person::distance,
+               "style", &Person::style, "health", &Person::health, "burnUntil", &Person::burnUntil,
+               "burnPlayerCaused", &Person::burnPlayerCaused)
+PROMZONA_SAVED(CivilianCover, "hide", &CivilianCover::hide, "peek", &CivilianCover::peek,
+               "threat", &CivilianCover::threat, "vehicleAnchor", &CivilianCover::vehicleAnchor,
+               "searchAt", &CivilianCover::searchAt, "holdUntil", &CivilianCover::holdUntil,
+               "vehicle", &CivilianCover::vehicle, "found", &CivilianCover::found,
+               "peeking", &CivilianCover::peeking)
+PROMZONA_SAVED(Scooter, "body", &Scooter::body, "owner", &Scooter::owner, "rider", &Scooter::rider,
+               "returnAt", &Scooter::returnAt)
+PROMZONA_SAVED(Animal, "species", &Animal::species, "variant", &Animal::variant, "flock", &Animal::flock,
+               "p", &Animal::p, "goal", &Animal::goal, "velocity", &Animal::velocity,
+               "offset", &Animal::offset, "altitude", &Animal::altitude, "heading", &Animal::heading,
+               "distance", &Animal::distance, "fear", &Animal::fear, "thinkAt", &Animal::thinkAt,
+               "deadUntil", &Animal::deadUntil)
+PROMZONA_SAVED(Flock, "landing", &Flock::landing, "flying", &Flock::flying, "landedAt", &Flock::landedAt)
+PROMZONA_SAVED(Rocket, "p", &Rocket::p, "direction", &Rocket::direction, "height", &Rocket::height,
+               "slope", &Rocket::slope, "travel", &Rocket::travel, "ownerCar", &Rocket::owner_car)
+PROMZONA_SAVED(ReconDrone, "active", &ReconDrone::active, "position", &ReconDrone::position,
+               "velocity", &ReconDrone::velocity, "altitude", &ReconDrone::altitude,
+               "heading", &ReconDrone::heading, "pitch", &ReconDrone::pitch, "battery", &ReconDrone::battery,
+               "health", &ReconDrone::health, "scanTime", &ReconDrone::scanTime,
+               "readyAt", &ReconDrone::readyAt, "nextShot", &ReconDrone::nextShot,
+               "targets", &ReconDrone::targets, "scanned", &ReconDrone::scanned)
+// clang-format on
+void to_json(json &j, const World::StreetHail &hail)
+{
+    j = {{"actor", hail.actor}, {"until", hail.until}, {"spot", hail.spot}, {"posted", hail.posted}};
+}
+// A key that an older save lacks leaves the value of an empty slot.
+void from_json(const json &j, World::StreetHail &hail)
+{
+    const World::StreetHail none{};
+    hail.actor = j.value("actor", none.actor);
+    hail.until = j.value("until", none.until);
+    hail.spot = j.value("spot", none.spot);
+    hail.posted = j.value("posted", none.posted);
+}
 void to_json(json &j, const PeaceRoute &r)
 {
     j = {{"sites", r.sites}, {"spots", r.spots},     {"completed", r.completed},   {"enabled", r.enabled},
@@ -95,95 +152,96 @@ void from_json(const json &j, Pickup &p)
     p.dropped = j.value("dropped", false);
     p.roadLevel = j.value("level", 0);
 }
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Particle, p, v, color, life, size)
+// clang-format off
+PROMZONA_SAVED(Particle, "p", &Particle::p, "v", &Particle::v, "color", &Particle::color,
+               "life", &Particle::life, "size", &Particle::size)
+// clang-format on
+#undef PROMZONA_SAVED
 
 namespace
 {
 json carState(const Car &c)
 {
     json j;
-#define WRITE(name) j[#name] = c.name
-    WRITE(body);
-    WRITE(kind);
-    WRITE(mass);
-    WRITE(wheelbase);
-    WRITE(steering);
-    WRITE(lift);
-    WRITE(verticalVelocity);
-    WRITE(roll);
-    WRITE(pitch);
-    WRITE(terrainPitch);
-    WRITE(terrainRoll);
-    WRITE(terrainGradient);
-    WRITE(terrainActive);
-    WRITE(falling);
-    WRITE(destroyed);
-    WRITE(recovering);
+    j["body"] = c.body;
+    j["kind"] = c.kind;
+    j["mass"] = c.mass;
+    j["wheelbase"] = c.wheelbase;
+    j["steering"] = c.steering;
+    j["lift"] = c.lift;
+    j["verticalVelocity"] = c.verticalVelocity;
+    j["roll"] = c.roll;
+    j["pitch"] = c.pitch;
+    j["terrainPitch"] = c.terrainPitch;
+    j["terrainRoll"] = c.terrainRoll;
+    j["terrainGradient"] = c.terrainGradient;
+    j["terrainActive"] = c.terrainActive;
+    j["falling"] = c.falling;
+    j["destroyed"] = c.destroyed;
+    j["recovering"] = c.recovering;
     if (c.recovering || c.roll_rate || c.pitch_rate || c.overturned_time)
         j["attitude"] = {c.roll_rate,     c.pitch_rate,    c.overturned_time,
                          c.righting_time, c.righting_roll, c.righting_pitch};
-    WRITE(braking);
-    WRITE(wreckSupported);
-    WRITE(health);
-    WRITE(fireTime);
-    WRITE(lastDamageAt);
-    WRITE(safeDrivingTime);
-    WRITE(impactCooldown);
-    WRITE(responding);
-    WRITE(crewLost);
-    WRITE(summoned);
-    WRITE(personal);
-    WRITE(driverless);
-    WRITE(paint);
-    WRITE(nextShot);
-    WRITE(firePlayerCaused);
-    WRITE(routeDistance);
-    WRITE(wheelTravel);
-    WRITE(turretYaw);
-    WRITE(turretPitch);
-    WRITE(model);
-    WRITE(id);
-    WRITE(routeFrom);
-    WRITE(routeTo);
-    WRITE(previousNode);
-    WRITE(routePhase);
+    j["braking"] = c.braking;
+    j["wreckSupported"] = c.wreckSupported;
+    j["health"] = c.health;
+    j["fireTime"] = c.fireTime;
+    j["lastDamageAt"] = c.lastDamageAt;
+    j["safeDrivingTime"] = c.safeDrivingTime;
+    j["impactCooldown"] = c.impactCooldown;
+    j["responding"] = c.responding;
+    j["crewLost"] = c.crewLost;
+    j["summoned"] = c.summoned;
+    j["personal"] = c.personal;
+    j["driverless"] = c.driverless;
+    j["paint"] = c.paint;
+    j["nextShot"] = c.nextShot;
+    j["firePlayerCaused"] = c.firePlayerCaused;
+    j["routeDistance"] = c.routeDistance;
+    j["wheelTravel"] = c.wheelTravel;
+    j["turretYaw"] = c.turretYaw;
+    j["turretPitch"] = c.turretPitch;
+    j["model"] = c.model;
+    j["id"] = c.id;
+    j["routeFrom"] = c.routeFrom;
+    j["routeTo"] = c.routeTo;
+    j["previousNode"] = c.previousNode;
+    j["routePhase"] = c.routePhase;
     if (c.rejoining)
     {
-        WRITE(rejoining);
-        WRITE(wedged_for);
+        j["rejoining"] = c.rejoining;
+        j["wedgedFor"] = c.wedged_for;
         j["reverseFor"] = std::max(0., c.reverse_for);
     }
-    WRITE(routeLevel);
-    WRITE(laneIndex);
-    WRITE(blocked_since);
-    WRITE(next_lane_decision);
-    WRITE(line);
-    WRITE(along);
-    WRITE(next_stop);
-    WRITE(dwell);
-#undef WRITE
+    j["routeLevel"] = c.routeLevel;
+    j["laneIndex"] = c.laneIndex;
+    j["blockedSince"] = c.blocked_since;
+    j["nextLaneDecision"] = c.next_lane_decision;
+    j["line"] = c.line;
+    j["along"] = c.along;
+    j["nextStop"] = c.next_stop;
+    j["dwell"] = c.dwell;
     j["route"] = c.route ? json(c.route->points()) : json(nullptr);
     return j;
 }
 void loadCar(const json &j, Car &c)
 {
-#define READ(name) j.at(#name).get_to(c.name)
-    READ(body);
-    READ(kind);
-    READ(mass);
-    READ(wheelbase);
-    READ(steering);
-    READ(lift);
-    READ(verticalVelocity);
-    READ(roll);
-    READ(pitch);
-    READ(terrainPitch);
-    READ(terrainRoll);
-    READ(terrainGradient);
-    READ(terrainActive);
-    READ(falling);
-    READ(destroyed);
-    READ(recovering);
+    j.at("body").get_to(c.body);
+    j.at("kind").get_to(c.kind);
+    j.at("mass").get_to(c.mass);
+    j.at("wheelbase").get_to(c.wheelbase);
+    j.at("steering").get_to(c.steering);
+    j.at("lift").get_to(c.lift);
+    j.at("verticalVelocity").get_to(c.verticalVelocity);
+    j.at("roll").get_to(c.roll);
+    j.at("pitch").get_to(c.pitch);
+    j.at("terrainPitch").get_to(c.terrainPitch);
+    j.at("terrainRoll").get_to(c.terrainRoll);
+    j.at("terrainGradient").get_to(c.terrainGradient);
+    j.at("terrainActive").get_to(c.terrainActive);
+    j.at("falling").get_to(c.falling);
+    j.at("destroyed").get_to(c.destroyed);
+    j.at("recovering").get_to(c.recovering);
     if (j.contains("attitude"))
     {
         auto a = j.at("attitude").get<std::array<double, 6>>();
@@ -199,13 +257,13 @@ void loadCar(const json &j, Car &c)
     }
     else if (c.recovering)
         c.begin_righting();
-    READ(braking);
-    READ(wreckSupported);
-    READ(health);
-    READ(fireTime);
-    READ(lastDamageAt);
-    READ(safeDrivingTime);
-    READ(impactCooldown);
+    j.at("braking").get_to(c.braking);
+    j.at("wreckSupported").get_to(c.wreckSupported);
+    j.at("health").get_to(c.health);
+    j.at("fireTime").get_to(c.fireTime);
+    j.at("lastDamageAt").get_to(c.lastDamageAt);
+    j.at("safeDrivingTime").get_to(c.safeDrivingTime);
+    j.at("impactCooldown").get_to(c.impactCooldown);
     c.personal = j.value("personal", false);
     c.driverless = j.value("driverless", false);
     c.paint = j.value("paint", 0);
@@ -214,25 +272,25 @@ void loadCar(const json &j, Car &c)
     c.crewLost = std::clamp(j.value("crewLost", 0), 0, 4);
     c.nextShot = j.value("nextShot", 0.);
     c.firePlayerCaused = j.value("firePlayerCaused", false);
-    READ(routeDistance);
-    READ(wheelTravel);
+    j.at("routeDistance").get_to(c.routeDistance);
+    j.at("wheelTravel").get_to(c.wheelTravel);
     c.turretYaw = j.value("turretYaw", 0.);
     c.turretPitch = j.value("turretPitch", 0.);
-    READ(model);
-    READ(id);
-    READ(routeFrom);
-    READ(routeTo);
-    READ(previousNode);
-    READ(routePhase);
+    j.at("model").get_to(c.model);
+    j.at("id").get_to(c.id);
+    j.at("routeFrom").get_to(c.routeFrom);
+    j.at("routeTo").get_to(c.routeTo);
+    j.at("previousNode").get_to(c.previousNode);
+    j.at("routePhase").get_to(c.routePhase);
     c.rejoining = j.value("rejoining", false);
     if (c.rejoining)
     {
-        READ(wedged_for);
-        READ(reverse_for);
+        j.at("wedgedFor").get_to(c.wedged_for);
+        j.at("reverseFor").get_to(c.reverse_for);
         if (c.wedged_for < 0 || c.reverse_for < 0 || c.reverse_for > 1.7)
             throw std::runtime_error("Invalid patrol rejoin timer");
     }
-    READ(routeLevel);
+    j.at("routeLevel").get_to(c.routeLevel);
     c.laneIndex = j.value("laneIndex", 0);
     c.blocked_since = j.value("blockedSince", -1.);
     c.next_lane_decision = j.value("nextLaneDecision", 0.);
@@ -242,7 +300,6 @@ void loadCar(const json &j, Car &c)
     c.along = j.value("along", 0.);
     c.next_stop = j.value("nextStop", 0);
     c.dwell = j.value("dwell", 0.);
-#undef READ
     c.route.reset();
     if (!j.at("route").is_null())
         c.route.emplace(j.at("route").get<std::vector<Vec2>>());
@@ -500,13 +557,12 @@ void World::load(const std::filesystem::path &path)
                 savedPickups.push_back(p);
     next.pickups = std::move(savedPickups);
     j.at("particles").get_to(next.particles);
-#define READ(name) j.at(#name).get_to(next.name)
     if (!legacy)
     {
-        READ(job);
-        READ(jobsCompleted);
-        READ(jobsFailed);
-        READ(lastPay);
+        j.at("job").get_to(next.job);
+        j.at("jobsCompleted").get_to(next.jobsCompleted);
+        j.at("jobsFailed").get_to(next.jobsFailed);
+        j.at("lastPay").get_to(next.lastPay);
         if (j.contains("hailers"))
         {
             if (j.at("hailers").size() != next.hailers.size())
@@ -530,22 +586,22 @@ void World::load(const std::filesystem::path &path)
             next.job.ride.car < int(next.cars.size()) &&
             !j.at("job").at("ride").contains("healthAtLastScare"))
             next.job.ride.health_at_last_scare = next.cars[next.job.ride.car].health;
-        READ(energySeconds);
-        READ(clinicCredit);
-        READ(purchaseAt);
+        j.at("energySeconds").get_to(next.energySeconds);
+        j.at("clinicCredit").get_to(next.clinicCredit);
+        j.at("purchaseAt").get_to(next.purchaseAt);
         if (!next.validJob() || next.jobsCompleted < 0 || next.jobsCompleted > 10000000 ||
             next.jobsFailed < 0 || next.jobsFailed > 10000000 || next.lastPay < 0 || next.lastPay > 100000 ||
             next.energySeconds < 0 || next.energySeconds > 25 || next.clinicCredit < 0 ||
             next.clinicCredit >= 1 || next.purchaseAt < 0)
             throw std::runtime_error("Invalid saved job or service state");
     }
-    READ(controlledCar);
-    READ(player);
-    READ(playerDistance);
-    READ(health);
-    READ(money);
-    READ(wanted);
-    READ(time);
+    j.at("controlledCar").get_to(next.controlledCar);
+    j.at("player").get_to(next.player);
+    j.at("playerDistance").get_to(next.playerDistance);
+    j.at("health").get_to(next.health);
+    j.at("money").get_to(next.money);
+    j.at("wanted").get_to(next.wanted);
+    j.at("time").get_to(next.time);
     next.recoveryReadyAt = j.value("recoveryReadyAt", 0.);
     if (!(next.recoveryReadyAt >= 0 && next.recoveryReadyAt <= next.time + 8.01))
         throw std::runtime_error("Invalid vehicle recovery cooldown");
@@ -553,18 +609,17 @@ void World::load(const std::filesystem::path &path)
     next.simulationSpeed = j.value("simulationSpeed", 1.);
     if (!(next.simulationSpeed >= .1 && next.simulationSpeed <= 3))
         throw std::runtime_error("Invalid simulation speed");
-    READ(rain);
-    READ(rainTarget);
-    READ(weatherClock);
+    j.at("rain").get_to(next.rain);
+    j.at("rainTarget").get_to(next.rainTarget);
+    j.at("weatherClock").get_to(next.weatherClock);
     // Games saved before the streets kept their own wetness: as wet as it rained.
     next.wetness = j.value("wetness", next.rain);
-    READ(wantedCooldown);
-    READ(shotCooldown);
-    READ(rockets);
-    READ(playerBurnUntil);
-    READ(fireClock);
-    READ(nextFlameSound);
-#undef READ
+    j.at("wantedCooldown").get_to(next.wantedCooldown);
+    j.at("shotCooldown").get_to(next.shotCooldown);
+    j.at("rockets").get_to(next.rockets);
+    j.at("playerBurnUntil").get_to(next.playerBurnUntil);
+    j.at("fireClock").get_to(next.fireClock);
+    j.at("nextFlameSound").get_to(next.nextFlameSound);
     if (next.controlledCar < -1 || next.controlledCar >= int(next.cars.size()) || next.health < 0 ||
         next.health > 1 || next.money < 0 || next.money > 999999999 || next.wanted < 0 || next.wanted > 6 ||
         next.time < 0 || next.rain < 0 || next.rain > 1 || next.rainTarget < 0 || next.rainTarget > 1 ||
@@ -768,7 +823,7 @@ void World::load(const std::filesystem::path &path)
         p.burstLeft = defence.at("burst");
         if ((p.sidearm != WeaponId::pistol && p.sidearm != WeaponId::automatic) || p.dead ||
             p.alertUntil < 0 || p.aimSeconds < 0 || p.shotAt < 0 || p.burstLeft < 0 ||
-            p.burstLeft >= weapon(p.sidearm)->npcBurst)
+            p.burstLeft >= weapon(p.sidearm)->npc_burst)
             throw std::runtime_error("Invalid saved civilian weapon state");
         if (defence.contains("cover"))
         {

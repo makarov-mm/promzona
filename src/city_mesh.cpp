@@ -114,7 +114,7 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
         }
     }
     // Clip real holes in the terrain, not transparent rectangles above it.
-    // The cutting edges are linear inside each metre-wide strip, just like centreZ().
+    // The cutting edges are linear inside each metre-wide strip, just like centre_z().
     auto clippedTile = [&](int material, double a, double b, double c, double d, double add = 0, bool bed = false)
     {
         std::vector<std::vector<Vec2>> polygons{{{a, d}, {c, d}, {c, b}, {a, b}}};
@@ -146,9 +146,9 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
             for (const auto &poly : polygons)
             {
                 auto lower =
-                    clip(poly, [&](Vec2 p) { return level.centreZ(p.x) - RoadLevel::halfWidth - p.z; });
+                    clip(poly, [&](Vec2 p) { return level.centre_z(p.x) - RoadLevel::half_width - p.z; });
                 auto upper =
-                    clip(poly, [&](Vec2 p) { return p.z - level.centreZ(p.x) - RoadLevel::halfWidth; });
+                    clip(poly, [&](Vec2 p) { return p.z - level.centre_z(p.x) - RoadLevel::half_width; });
                 if (lower.size() >= 3)
                     remaining.push_back(std::move(lower));
                 if (upper.size() >= 3)
@@ -227,10 +227,10 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
         {
             if (!level.tunnel || std::abs(mid - level.x) >= RoadLevel::length || level.roof(mid))
                 continue;
-            const auto left = level.centreZ(xs[i - 1]), right = level.centreZ(xs[i]);
+            const auto left = level.centre_z(xs[i - 1]), right = level.centre_z(xs[i]);
             auto &cut = cutsByColumn[i];
-            cut.low = std::min(cut.low, std::min(left, right) - RoadLevel::halfWidth);
-            cut.high = std::max(cut.high, std::max(left, right) + RoadLevel::halfWidth);
+            cut.low = std::min(cut.low, std::min(left, right) - RoadLevel::half_width);
+            cut.high = std::max(cut.high, std::max(left, right) + RoadLevel::half_width);
         }
     }
     // Adjacent tiles share their bed samples. Most tiles need no polygon clipping.
@@ -509,7 +509,7 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
     {
         auto point = [&](double x, double side, double offset = 0.)
         {
-            Vec2 p{x, level.centreZ(x) + side};
+            Vec2 p{x, level.centre_z(x) + side};
             return Vec3{float(x), float(level.floor(w.terrain, p) + offset), float(p.z)};
         };
         auto strip = [&](int mat, double x, double end, double left, double right, double offset = 0.)
@@ -520,7 +520,7 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
         for (int k = 0; k < 288; ++k)
         {
             double x = level.x - RoadLevel::length + k, end = x + 1;
-            if (!owns({x + .5, level.centreZ(x + .5)}))
+            if (!owns({x + .5, level.centre_z(x + .5)}))
                 continue;
             strip(Road, x, end, -4.5, 0);
             strip(Road, x, end, 0, 4.5);
@@ -532,7 +532,7 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
                 strip(Paint, x, end, side * 4.15 - .065, side * 4.15 + .065, .025);
                 if (k < 3 || k >= 285)
                     continue;
-                double edge = side * RoadLevel::halfWidth;
+                double edge = side * RoadLevel::half_width;
                 auto lo = point(x, edge, level.tunnel ? 0 : -.55),
                      hi = point(end, edge, level.tunnel ? 0 : -.55);
                 auto top = point(x, edge, level.tunnel ? RoadLevel::clearance : .85),
@@ -576,7 +576,7 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
             for (int side : {-1, 1})
             {
                 double x = level.x + side * RoadLevel::covered;
-                if (!owns({x, level.centreZ(x)}))
+                if (!owns({x, level.centre_z(x)}))
                     continue;
                 auto a = point(x, -5.8, RoadLevel::clearance), b = point(x, 5.8, RoadLevel::clearance);
                 auto c = b, d = a;
@@ -588,7 +588,7 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
         else
             for (double x = level.x - 54; x <= level.x + 54; x += 36)
             {
-                if (!owns({x, level.centreZ(x)}))
+                if (!owns({x, level.centre_z(x)}))
                     continue;
                 for (int side : {-1, 1})
                 {
