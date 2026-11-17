@@ -20,7 +20,7 @@ namespace Promzona
     struct StreamingStats
     {
         // Facade details of the apartment blocks near the eye.
-        size_t residentCells{}, totalCells{}, gpuBytes{}, peakGpuBytes{}, uploads{}, evictions{}, queued{}, ready{};
+        size_t resident_cells{}, total_cells{}, gpu_bytes{}, peak_gpu_bytes{}, uploads{}, evictions{}, queued{}, ready{};
         double maxUploadMs{};
 
         // The standing city itself, by sector.

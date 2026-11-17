@@ -85,7 +85,7 @@ void World::updateDispatch()
 {
     dispatchAt = time + .55;
     std::array<int, 15> required{};
-    for (int k : policeRoster(wantedLevel()))
+    for (int k : police_roster(wantedLevel()))
         ++required[k];
     for (size_t i = 0; i < cars.size(); ++i)
     {
@@ -124,7 +124,7 @@ void World::updateDispatch()
                 }
         }
     }
-    for (int k : policeRoster(wantedLevel()))
+    for (int k : police_roster(wantedLevel()))
         if (required[k] && deployResponder(k))
             break;
 }
@@ -195,10 +195,10 @@ bool World::rejoinRoad(Car &c)
         c.laneIndex = 0;
         c.routeFrom = way.from;
         c.routeTo = way.to;
-        c.previousNode = c.plannedTo = -1;
+        c.previousNode = c.planned_to = -1;
         c.route = std::move(path);
         c.routePhase = c.routeLevel = 0;
-        c.routeDistance = c.senseAt = 0;
+        c.routeDistance = c.sense_at = 0;
         c.rejoining = true;
         return true;
     }
@@ -212,7 +212,7 @@ void World::standDown(Car &c)
 {
     const bool pursued = c.responding;
     c.responding = c.seesSuspect = false;
-    c.avoid = c.wedgedFor = c.reverseFor = 0;
+    c.avoid = c.wedged_for = c.reverse_for = 0;
     if (!pursued || c.destroyed || c.falling || c.driverless || c.kind == 12 || c.line >= 0 || !c.route ||
         int(&c - cars.data()) == controlledCar)
         return;

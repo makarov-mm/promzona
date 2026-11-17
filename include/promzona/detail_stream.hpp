@@ -17,13 +17,17 @@ namespace Promzona
         Vec3 centre;
         float radius{};
         std::vector<BuildingPlan> buildings;
-        float distance(Vec3 eye) const { return std::max(0.f, (centre - eye).length() - radius); }
+
+        float distance(const Vec3 eye) const
+        {
+            return std::max(0.f, (centre - eye).length() - radius);
+        }
     };
 
-    constexpr float detailPrefetchDistance = 260, detailKeepDistance = 370;
-    constexpr size_t detailGpuBudget = 64 * 1024 * 1024;
-    size_t meshBytes(const MeshData &mesh);
-    size_t chunkBytes(const CityChunk &chunk);
+    constexpr float detail_prefetch_distance = 260, detail_keep_distance = 370;
+    constexpr size_t detail_gpu_budget = 64 * 1024 * 1024;
+    size_t mesh_bytes(const MeshData &mesh);
+    size_t chunk_bytes(const CityChunk &chunk);
     std::vector<size_t> detail_order(std::span<const DetailCell> cells, Vec3 eye, float range);
 
     // Owns only byte counts, not GPU objects; testable without an OpenGL context.
@@ -33,10 +37,13 @@ namespace Promzona
         size_t total_{}, limit_;
 
     public:
-        explicit DetailResidency(size_t count, size_t limit = detailGpuBudget) : bytes_(count), limit_(limit) {}
+        explicit DetailResidency(const size_t& count, const size_t& limit = detail_gpu_budget)
+            : bytes_(count), limit_(limit) { }
+
         size_t bytes() const { return total_; }
-        bool contains(size_t id) const { return bytes_.at(id) != 0; }
+        bool contains(const size_t& id) const { return bytes_.at(id) != 0; }
         void add(size_t id, size_t bytes);
+
         // Remove far cells, then the most distant cells until the reservation fits.
         [[nodiscard]] std::vector<size_t> trim(std::span<const DetailCell> cells, Vec3 eye, size_t reservation = 0);
     };
@@ -57,7 +64,7 @@ namespace Promzona
         };
 
         // At most two completed packets + one in flight; no unbounded geometry cache.
-        static constexpr size_t maxPacketBytes = 16 * 1024 * 1024, maxReady = 2, maxQueued = 8;
+        static constexpr size_t max_packet_bytes = 16 * 1024 * 1024, max_ready = 2, max_queued = 8;
         explicit DetailStream(const World &world);
         ~DetailStream();
         DetailStream(const DetailStream &) = delete;

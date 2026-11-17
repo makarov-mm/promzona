@@ -18,9 +18,9 @@ namespace Promzona
     const wchar_t *density_title(Density density);
     const char *density_code(Density density);
     Density density_from_code(std::string_view code, Density fallback);
-    Density cycleDensity(Density density, int step);
-    Density loadDensity(const std::filesystem::path &file, Density fallback);
-    [[nodiscard]] bool saveDensity(const std::filesystem::path &file, Density density);
+    Density cycle_density(Density density, int step);
+    Density load_density(const std::filesystem::path &file, Density fallback);
+    [[nodiscard]] bool save_density(const std::filesystem::path &file, Density density);
 
     enum class SceneMode
     {
@@ -99,7 +99,7 @@ namespace Promzona
         Language language{Language::russian};
         Density population{};
 
-        void open(MenuPage next)
+        void open(const MenuPage next)
         {
             page = next;
             focus = 0;
@@ -111,7 +111,7 @@ namespace Promzona
     struct MenuLayout
     {
         int x, y, width, step;
-        MenuLayout(int widthPx, int heightPx, int count);
-        int hit(int mouseX, int mouseY, int count) const;
+        MenuLayout(int width_px, int height_px, int count);
+        int hit(int mouse_x, int mouse_y, int count) const;
     };
 }

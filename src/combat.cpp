@@ -23,7 +23,7 @@ bool slab(double origin, double direction, double extent, double &near, double &
 } // namespace
 
 // Port of CityTraffic's slab ray tests; test all three axes, including entering a roof.
-double rayPrism(Vec2 origin, Vec2 direction, double y, double slope, const Body &b, double limit)
+double ray_prism(Vec2 origin, Vec2 direction, double y, double slope, const Body &b, double limit)
 {
     auto o = rotate(origin - b.p, -b.angle), d = rotate(direction, -b.angle);
     double near = 0, far = limit;
@@ -32,7 +32,7 @@ double rayPrism(Vec2 origin, Vec2 direction, double y, double slope, const Body 
                ? near
                : noHit;
 }
-double rayPerson(Vec2 origin, Vec2 direction, double y, double slope, const Body &b, double limit)
+double ray_person(Vec2 origin, Vec2 direction, double y, double slope, const Body &b, double limit)
 {
     auto delta = b.p - origin;
     double along = dot(delta, direction), side = delta.length2() - along * along;
@@ -44,7 +44,7 @@ double rayPerson(Vec2 origin, Vec2 direction, double y, double slope, const Body
         return noHit;
     return near;
 }
-double wantedPoints(double level)
+double wanted_points(double level)
 {
     if (!std::isfinite(level))
         return 0;
@@ -53,7 +53,7 @@ double wantedPoints(double level)
         points += clamp(level - i, 0., 1.) * wantedCost[i];
     return points;
 }
-double wantedFromPoints(double points)
+double wanted_from_points(double points)
 {
     if (!std::isfinite(points))
         return 0;
@@ -66,7 +66,7 @@ double wantedFromPoints(double points)
     }
     return 6;
 }
-std::span<const int> policeRoster(int level)
+std::span<const int> police_roster(int level)
 {
     static constexpr std::array<int, 9> one{3, 6}, two{3, 6, 3}, three{3, 6, 3, 7, 7},
         four{3, 6, 7, 7, 13, 13}, five{3, 6, 7, 7, 13, 13, 14, 14}, six{3, 6, 7, 7, 13, 13, 14, 14, 12};
@@ -113,7 +113,7 @@ AttackHit World::traceAttack(Vec2 from, Vec2 dir, double y, double slope, double
         }
     for (auto &b : staticBodies)
     {
-        double at = rayPrism(from, dir, y, slope, b, hit.distance);
+        double at = ray_prism(from, dir, y, slope, b, hit.distance);
         if (at < hit.distance)
             hit = {HitKind::scenery, -1, at};
     }
@@ -121,7 +121,7 @@ AttackHit World::traceAttack(Vec2 from, Vec2 dir, double y, double slope, double
     {
         if (int(i) == ignoreCar || cars[i].falling)
             continue;
-        double at = rayPrism(from, dir, y, slope, cars[i].body, hit.distance);
+        double at = ray_prism(from, dir, y, slope, cars[i].body, hit.distance);
         if (at < hit.distance)
             hit = {HitKind::car, int(i), at};
     }
@@ -129,13 +129,13 @@ AttackHit World::traceAttack(Vec2 from, Vec2 dir, double y, double slope, double
     {
         if (&people[i] == shooter || people[i].dead || people[i].riding >= 0)
             continue;
-        double at = rayPerson(from, dir, y, slope, people[i].body, hit.distance);
+        double at = ray_person(from, dir, y, slope, people[i].body, hit.distance);
         if (at < hit.distance)
             hit = {HitKind::person, int(i), at};
     }
     if (includePlayer && controlledCar < 0 && health > 0)
     {
-        double at = rayPerson(from, dir, y, slope, player, hit.distance);
+        double at = ray_person(from, dir, y, slope, player, hit.distance);
         if (at < hit.distance)
             hit = {HitKind::player, -1, at};
     }
@@ -150,7 +150,7 @@ bool World::blastVisible(Vec2 from, double y, Vec2 to, double targetY) const
     auto dir = delta / distance;
     double slope = (targetY - y) / distance;
     for (auto &b : staticBodies)
-        if (rayPrism(from, dir, y, slope, b, distance) < distance - .01)
+        if (ray_prism(from, dir, y, slope, b, distance) < distance - .01)
             return false;
     for (double at = .4; at < distance; at += .4)
         if (scenerySolid(from + dir * at, y + slope * at, .02))
@@ -168,7 +168,7 @@ void World::addCrime(double severity)
         job.ride.crime_at = time;
         notify(L"Пассажир испуган. Оплата снижена");
     }
-    wanted = wantedFromPoints(wantedPoints(wanted) + severity);
+    wanted = wanted_from_points(wanted_points(wanted) + severity);
     wantedCooldown = 12;
     lastCrimeAt = time;
 }
@@ -376,7 +376,7 @@ void World::shoot(double heading, double pitch)
         return;
     if (transitPassenger() || (controlledCar >= 0 && cars[controlledCar].destroyed))
         return;
-    bool mounted = controlledCar >= 0 && cars[controlledCar].mountedGun();
+    bool mounted = controlledCar >= 0 && cars[controlledCar].mounted_gun();
     bool cannon = mounted && cars[controlledCar].kind == 11;
     auto w = mounted ? weapon(cannon ? WeaponId::bazooka : WeaponId::automatic) : inventory.active();
     if (!w && controlledCar >= 0)
@@ -525,7 +525,7 @@ void World::combatStep(double dt)
         {
             double step = std::min({.5, remaining, weapon(WeaponId::bazooka)->range - r.travel});
             auto hit =
-                traceAttack(r.p, r.direction, r.height, r.slope, step + .001, r.travel < 5 ? r.ownerCar : -1);
+                traceAttack(r.p, r.direction, r.height, r.slope, step + .001, r.travel < 5 ? r.owner_car : -1);
             if (hit.kind != HitKind::none && hit.distance <= step)
             {
                 if (hit.kind == HitKind::water)

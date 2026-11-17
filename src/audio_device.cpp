@@ -21,7 +21,7 @@ struct AudioDevice::Impl
             return;
         }
         initialized = true;
-        const SDL_AudioSpec spec{SDL_AUDIO_F32, 2, AudioMixer::sampleRate};
+        const SDL_AudioSpec spec{SDL_AUDIO_F32, 2, AudioMixer::sample_rate};
         stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, &Impl::feed, this);
         if (!stream)
         {

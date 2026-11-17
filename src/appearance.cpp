@@ -49,14 +49,14 @@ Appearance appearance(std::uint32_t id, std::uint32_t style, Person::Uniform uni
     return a;
 }
 
-Appearance appearance(const Person &p, bool medicOnCall)
+Appearance appearance(const Person &p, bool medic_on_call)
 {
     return appearance(
         p.body.id, p.style,
-        medicOnCall && p.uniform == Person::Uniform::none ? Person::Uniform::medical : p.uniform, p.role);
+        medic_on_call && p.uniform == Person::Uniform::none ? Person::Uniform::medical : p.uniform, p.role);
 }
 
-Appearance heroAppearance()
+Appearance hero_appearance()
 {
     Appearance a;
     a.outfit = Appearance::hero;
@@ -74,7 +74,7 @@ Vec3 Appearance::cap() const
                              : Vec3{.12f, .18f, .13f};
 }
 
-void markStandingPose(SkinData &skin)
+void mark_standing_pose(SkinData &skin)
 {
     if (skin.joints <= lastArmJoint || skin.poses < 1 || skin.bones.size() < size_t(skin.joints) * 16)
         throw std::runtime_error("Human rig has no arm joints");

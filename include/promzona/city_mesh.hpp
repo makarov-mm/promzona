@@ -56,11 +56,17 @@ namespace Promzona
             return;
         const auto side = cross(tangent, std::abs(tangent.y) < .9f ? Vec3{0, 1, 0} : Vec3{1, 0, 0}).unit();
         const auto first = static_cast<std::uint32_t>(mesh.vertices.size());
+
         for (auto [centre, sign] : {std::pair{a, -1.f}, {b, -1.f}, {b, 1.f}, {a, 1.f}})
-            mesh.vertices.push_back({.position = centre + side * (radius * sign),
-                                     .normal = side,
-                                     .uv = {sign, radius},
-                                     .joints = {tangent.x, tangent.y, tangent.z, 0}});
+        {
+            mesh.vertices.push_back({
+                .position = centre + side * (radius * sign),
+                .normal = side,
+                .uv = {sign, radius},
+                .joints = {tangent.x, tangent.y, tangent.z, 0}
+            });
+        }
+
         mesh.indices.insert(mesh.indices.end(), {first, first + 1, first + 2, first, first + 2, first + 3});
     }
 
@@ -69,11 +75,14 @@ namespace Promzona
     struct LawnTile
     {
         float x0, z0, x1, z1, sw, se, nw, ne;
+
         float height(float x, float z) const
         {
             const float u = (x - x0) / (x1 - x0), v = (z - z0) / (z1 - z0);
-            return u + v <= 1 ? sw + u * (se - sw) + v * (nw - sw)
-                              : ne + (1 - u) * (nw - ne) + (1 - v) * (se - ne);
+
+            return u + v <= 1 
+                ? sw + u * (se - sw) + v * (nw - sw)
+                : ne + (1 - u) * (nw - ne) + (1 - v) * (se - ne);
         }
     };
 

@@ -19,12 +19,13 @@ namespace Promzona
     // Port of CityPersonMotion. Rendering samples this clock, never advances simulation.
     class ActorMotion
     {
-        double time_{std::numeric_limits<double>::quiet_NaN()}, damage_{};
+        double time_{ std::numeric_limits<double>::quiet_NaN() };
+        double damage_{};
         int from_{}, to_{};
         float blend_{1}, flinch_{};
 
       public:
         float heading{}, lean{};
-        ActorPose sample(const ActorState &actor, double time, int poseCount = 576);
+        ActorPose sample(const ActorState &actor, double time, int pose_count = 576);
     };
 }

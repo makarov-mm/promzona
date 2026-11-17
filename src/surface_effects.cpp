@@ -248,7 +248,7 @@ void World::potholeJolt(Car &car)
                 if ((car.body.p - potholes[n].p).length() < potholes[n].size * .65)
                 {
                     car.verticalVelocity = std::min(.8, speed * .035);
-                    car.pitchRate += .18;
+                    car.pitch_rate += .18;
                     car.impactCooldown = .5;
                     ++potholeJolts;
                     return;

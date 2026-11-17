@@ -143,7 +143,7 @@ namespace Promzona
         }
     }
     } // namespace
-    void appendTree(TreeMesh &out, const TreePlant &t, bool far)
+    void append_tree(TreeMesh &out, const TreePlant &t, bool far)
     {
         const float h = t.height, phase = float(t.seed % 1000) * .01f, kind = float(t.kind);
         const bool pine = t.kind == TreeKind::spruce;

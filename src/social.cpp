@@ -325,7 +325,7 @@ namespace Promzona
             const wchar_t *way = std::abs(onMap.x) > std::abs(onMap.z)
                                      ? (onMap.x < 0 ? L"на запад" : L"на восток")
                                      : (onMap.z < 0 ? L"на север" : L"на юг");
-            return std::wstring(place) + L"на " + streetAt(sites[site].entrance, nodes, spacing) + L", " +
+            return std::wstring(place) + L"на " + street_at(sites[site].entrance, nodes, spacing) + L", " +
                    std::to_wstring(int(std::round(delta.length() / 10)) * 10) + L" м " + way + ending;
         };
         const bool elder = p.elder();

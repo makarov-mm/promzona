@@ -605,11 +605,11 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
     {
         if (!owns(b.p))
             continue;
-        auto plan = planBuilding(b, w.terrain.height(b.p));
-        buildingCore(data, plan, b.style);
+        auto plan = plan_building(b, w.terrain.height(b.p));
+        building_core(data, plan, b.style);
         if ((b.p + Vec2{0, b.half.z + 1.25} - w.stationEntrance).length2() < .01)
         {
-            const Vec3 centre = plan.origin + Vec3{0, 4.f, plan.halfDepth + .18f};
+            const Vec3 centre = plan.origin + Vec3{0, 4.f, plan.half_depth + .18f};
             box(data[Metal], centre, {4.f, .65f, .08f});
             Vec3 face = centre + Vec3{0, 0, .085f};
             quad(data[StationSign], face + Vec3{-3.95f, -.60f, 0}, face + Vec3{3.95f, -.60f, 0},
@@ -618,12 +618,12 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
     }
     for (const auto &site : w.sites)
     {
-        if (site.existingBuilding || !owns(site.centre))
+        if (site.existing_building || !owns(site.centre))
             continue;
         auto p = ground(site.centre.x, site.centre.z);
         if (site.kind == ServiceKind::garage)
         {
-            float d = float(site.halfDepth), h = float(site.height), width = float(site.halfWidth);
+            float d = float(site.half_depth), h = float(site.height), width = float(site.half_width);
             box(data[Foundation], p + Vec3{0, h / 2, 0}, {width, h / 2, d});
             box(data[Roof], p + Vec3{0, h, 0}, {width + .13f, .11f, d + .15f});
             box(data[Metal], p + Vec3{0, 1.16f, -d - .04f}, {width - .22f, 1.14f, .04f});
@@ -632,13 +632,13 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
         }
         else if (site.kind == ServiceKind::market)
         {
-            Building stall{site.centre, {site.halfWidth, site.halfDepth}, site.height, 1, BuildingKind::stall,
+            Building stall{site.centre, {site.half_width, site.half_depth}, site.height, 1, BuildingKind::stall,
                            -1};
-            buildingCore(data, planBuilding(stall, p.y), stall.style);
+            building_core(data, plan_building(stall, p.y), stall.style);
         }
         else if (site.kind == ServiceKind::clinic)
         {
-            auto sign = p + Vec3{0, 3.35f, float(site.halfDepth) + .24f};
+            auto sign = p + Vec3{0, 3.35f, float(site.half_depth) + .24f};
             box(data[Metal], sign, {.84f, .84f, .055f});
             box(data[Lamps], sign + Vec3{0, 0, .08f}, {.60f, .17f, .035f});
             box(data[Lamps], sign + Vec3{0, 0, .08f}, {.17f, .60f, .04f});

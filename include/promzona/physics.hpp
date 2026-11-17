@@ -12,7 +12,7 @@ namespace Promzona
         struct Point
         {
             Vec2 p;
-            double penetration{}, vn0{}, normal{}, tangent{}, massN{}, massT{}, bias{};
+            double penetration{}, vn0{}, normal{}, tangent{}, mass_n{}, mass_t{}, bias{};
         };
 
         struct Contact
@@ -37,7 +37,7 @@ namespace Promzona
         static std::uint64_t pair(const Body &a, const Body &b);
 
       public:
-        std::size_t candidatePairs{}, contactCount{};
+        std::size_t candidate_pairs{}, contact_count{};
         void step(std::span<Body *> bodies, double dt, Vec2 gravity = {});
 
         void clear()

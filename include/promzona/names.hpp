@@ -14,15 +14,15 @@ namespace Promzona
         std::wstring_view russian, english, ukrainian;
     };
 
-    std::span<const StreetName> streetNames();
-    std::span<const StreetName> avenueNames();
-    const StreetName &streetName(int column);
-    const StreetName &avenueName(int row);
+    std::span<const StreetName> street_names();
+    std::span<const StreetName> avenue_names();
+    const StreetName &street_name(int column);
+    const StreetName &avenue_name(int row);
 
     // World text is Russian ("ул. Ленина"); localize() renders the other languages.
-    std::wstring streetLabel(int column);
-    std::wstring avenueLabel(int row);
+    std::wstring street_label(int column);
+    std::wstring avenue_label(int row);
 
     // The road a point lies on or beside: the nearer of the two roads through its nearest node.
-    std::wstring streetAt(Vec2 point, int nodes = 49, double spacing = 36);
+    std::wstring street_at(Vec2 point, int nodes = 49, double spacing = 36);
 }

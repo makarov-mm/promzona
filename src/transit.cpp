@@ -181,9 +181,9 @@ TransitLine makeLine(const World &world, std::span<const int> nodes, int kind)
 
 } // namespace
 
-int TransitLine::nextStopAfter(double along) const
+int TransitLine::next_stop_after(double along) const
 {
-    auto it = std::ranges::upper_bound(stops, wrapDistance(along));
+    auto it = std::ranges::upper_bound(stops, wrap_distance(along));
     return it == stops.end() ? 0 : int(it - stops.begin());
 }
 
@@ -239,9 +239,9 @@ void World::generateTransit()
                 if (!std::ranges::any_of(cars, [&](const Car &other)
                                          { return &other != &c && (other.body.p - pos).length2() < 125; }))
                     break;
-                c.along = line.wrapDistance(c.along + 13);
+                c.along = line.wrap_distance(c.along + 13);
             }
-            c.nextStop = line.nextStopAfter(c.along);
+            c.next_stop = line.next_stop_after(c.along);
             auto [p, heading] = line.pose(c.along);
             c.body.p = p;
             c.body.angle = -heading;
@@ -253,7 +253,7 @@ void World::generateTransit()
                 auto &person = people[rider++];
                 person.riding = int(slot);
                 person.seat = seat;
-                person.alight = (c.nextStop + seat + 1) % int(line.stops.size());
+                person.alight = (c.next_stop + seat + 1) % int(line.stops.size());
                 seatPassenger(person);
             }
         }
@@ -304,7 +304,7 @@ namespace
 {
 int platformStop(const TransitLine &line, const Car &car)
 {
-    return (car.nextStop + int(line.stops.size()) - 1) % int(line.stops.size());
+    return (car.next_stop + int(line.stops.size()) - 1) % int(line.stops.size());
 }
 
 bool doorsOpen(const Car &car)
@@ -572,7 +572,7 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
     if (driving)
     {
         c.dwell = 0;
-        c.nextStop = line.nextStopAfter(c.along + .7);
+        c.next_stop = line.next_stop_after(c.along + .7);
     }
     if (c.kind == 10 && driving && (local || c.driverless))
     {
@@ -590,14 +590,14 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
             controls.throttle = 0;
         }
         step_vehicle(c, controls, dt, 1 - wetness * .2);
-        c.checkTrafficAt = 0;
+        c.check_traffic_at = 0;
         return;
     }
-    if (local && c.kind == 10 && time >= c.checkTrafficAt)
+    if (local && c.kind == 10 && time >= c.check_traffic_at)
     {
         const double projected = line.track.closestDistance(b.p);
         if (std::abs(std::remainder(projected - c.along, line.track.length())) > 12.)
-            c.nextStop = line.nextStopAfter(projected);
+            c.next_stop = line.next_stop_after(projected);
         c.along = projected;
     }
     auto [point, heading] = line.pose(c.along);
@@ -608,19 +608,19 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
     if (!driving)
     {
         c.dwell = std::max(0., c.dwell - dt);
-        double toStop = line.wrapDistance(line.stops[c.nextStop] - c.along);
+        double toStop = line.wrap_distance(line.stops[c.next_stop] - c.along);
         if (toStop < .65 && std::abs(speed) < 1.4 && c.dwell <= 0)
         {
             c.dwell = 5;
-            exchangePassengers(c, c.nextStop);
-            c.nextStop = (c.nextStop + 1) % int(line.stops.size());
+            exchangePassengers(c, c.next_stop);
+            c.next_stop = (c.next_stop + 1) % int(line.stops.size());
         }
-        if (time >= c.checkTrafficAt)
+        if (time >= c.check_traffic_at)
         {
-            c.checkTrafficAt = time + .3;
-            c.serviceTarget = 7;
+            c.check_traffic_at = time + .3;
+            c.service_target = 7;
             auto slow = [&](double clearance)
-            { c.serviceTarget = std::min(c.serviceTarget, std::sqrt(3.6 * std::max(0., clearance))); };
+            { c.service_target = std::min(c.service_target, std::sqrt(3.6 * std::max(0., clearance))); };
             // Metres of clear rail ahead of the nose, as far as the look along the rails goes.
             double clearRail = 1e9;
             c.claimed = -1;
@@ -774,7 +774,7 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
         }
         double target = (c.dwell > 0 || c.fireTime > 0)
                             ? 0.
-                            : std::min(c.serviceTarget, std::sqrt(3.6 * std::max(0., toStop - .3)));
+                            : std::min(c.service_target, std::sqrt(3.6 * std::max(0., toStop - .3)));
         controls = {clamp((target - speed) * .7, -1., 1.), 0, target < .1, false};
         if (local && c.kind == 10)
         {
@@ -783,7 +783,7 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
             controls.steering = clamp(
                 std::atan2(2 * c.wheelbase * std::sin(angle), std::max(1., aim.length())) / .62, -1., 1.);
             step_vehicle(c, controls, dt, 1 - wetness * .2);
-            c.along = line.wrapDistance(c.along + speed * dt);
+            c.along = line.wrap_distance(c.along + speed * dt);
             return;
         }
     }
@@ -799,7 +799,7 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
         b.wake();
     if (!local)
     {
-        c.along = line.wrapDistance(c.along + speed * dt);
+        c.along = line.wrap_distance(c.along + speed * dt);
         auto [pos, yaw] = line.pose(c.along);
         b.p = pos;
         b.angle = -yaw;
@@ -813,7 +813,7 @@ void World::alignTram(Car &c, double dt)
     const auto &line = lines[c.line];
     auto [point, heading] = line.pose(c.along);
     auto f = forward(heading);
-    c.along = line.wrapDistance(c.along + clamp(dot(c.body.p - point, f), -40 * dt, 40 * dt));
+    c.along = line.wrap_distance(c.along + clamp(dot(c.body.p - point, f), -40 * dt, 40 * dt));
     auto [p, newHeading] = line.pose(c.along);
     c.body.p = p;
     c.body.angle = -newHeading;

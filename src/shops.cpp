@@ -35,10 +35,10 @@ namespace Promzona
                 .kind = stall ? ServiceKind::market : ServiceKind::garage, 
                 .centre = building.p,
                 .entrance = door, 
-                .halfWidth = building.half.x,
-                .halfDepth = building.half.z, 
+                .half_width = building.half.x,
+                .half_depth = building.half.z, 
                 .height = building.height, 
-                .existingBuilding = true
+                .existing_building = true
             });
         }
 
@@ -173,7 +173,7 @@ namespace Promzona
                 auto delta = w.position() - s.entrance;
                 double distance = delta.length2();
                 if (distance >= bestDistance ||
-                    dot(w.position() - s.centre, (s.entrance - s.centre).unit()) < s.halfDepth ||
+                    dot(w.position() - s.centre, (s.entrance - s.centre).unit()) < s.half_depth ||
                     std::abs(w.ground() - w.terrain.height(s.entrance)) > 1.6)
                     continue;
                 best = i;

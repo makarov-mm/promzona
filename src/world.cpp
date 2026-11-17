@@ -260,7 +260,7 @@ namespace Promzona
     {
         if (car.routePhase == 1)
         {
-            car.plannedTo = -1;
+            car.planned_to = -1;
 
             if (auto s = levelEdge(car.routeFrom, car.routeTo))
             {
@@ -287,10 +287,10 @@ namespace Promzona
             auto *call = car.kind == 4 ? ambulanceCall(car.id) : nullptr;
             int to = call && call->stage == RescueStage::driving ? ambulance_turn(*call, from, car.routeFrom)
                      : car.responding                            ? pursuitNext(from, car.routeFrom)
-                     : car.plannedTo >= 0 && std::ranges::contains(neighbours(from), car.plannedTo)
-                         ? car.plannedTo
+                     : car.planned_to >= 0 && std::ranges::contains(neighbours(from), car.planned_to)
+                         ? car.planned_to
                          : choose_next(from, car.routeFrom);
-            car.plannedTo = -1;
+            car.planned_to = -1;
             auto centre = nodePoint(from), incoming = (centre - nodePoint(car.routeFrom)).unit(),
                  outgoing = (nodePoint(to) - centre).unit();
             const double entryLane = CityLayout::laneOffset(car.laneIndex);
@@ -321,7 +321,7 @@ namespace Promzona
             car.routeLevel = 0;
         }
         car.routeDistance = 0;
-        car.senseAt = 0;
+        car.sense_at = 0;
         car.rejoining = false;
     }
 
@@ -700,7 +700,7 @@ namespace Promzona
             input.walking = {};
         }
         aiming = input.shooting;
-        bool mounted = controlledCar >= 0 && cars[controlledCar].mountedGun();
+        bool mounted = controlledCar >= 0 && cars[controlledCar].mounted_gun();
         if (mounted)
         {
             auto &c = cars[controlledCar];
@@ -830,7 +830,7 @@ namespace Promzona
             }
             else if (car.destroyed)
             {
-                stepWreck(car, dt);
+                step_wreck(car, dt);
             }
             else if ((int(i) == patrol.car && patrol.stage != PatrolStage::seated) ||
                      (medical && medical->braking) || (job.passenger() && int(i) == job.ride.car) ||
@@ -845,9 +845,9 @@ namespace Promzona
                 double cruise = car.responding                                      ? 16.
                                 : medical && medical->stage == RescueStage::driving ? 11.
                                                                                     : 7.;
-                if (time >= car.senseAt)
+                if (time >= car.sense_at)
                     senseTraffic(car, false);
-                cruise = std::min(cruise, car.trafficLimit);
+                cruise = std::min(cruise, car.traffic_limit);
                 planExit(car);
                 // A long vehicle waits further back, so that its nose stays off the crossing
                 // as an ordinary car's does.
@@ -891,7 +891,7 @@ namespace Promzona
                 if (!car.route)
                     new_route(car);
                 car.routeDistance = car.route->closestDistance(b.p);
-                if (time >= car.senseAt)
+                if (time >= car.sense_at)
                     senseTraffic(car, true);
                 planExit(car);
                 bool clear = intersectionClear(car);
@@ -966,7 +966,7 @@ namespace Promzona
                 auto dir = forward(car.heading());
                 // What the driver would do with nothing in the way.
                 const double wish = target;
-                target = std::min(target, car.trafficLimit);
+                target = std::min(target, car.traffic_limit);
                 double speed = dot(b.v, dir);
                 double steerLimit = .68 / (1 + std::pow(std::abs(speed) / 22, 2));
                 double curvature =
@@ -1032,7 +1032,7 @@ namespace Promzona
                     return false;
                 };
                 // What the driver may do with the traffic it gives way to taken into account.
-                const double allowed = std::min(wish, car.trafficLimit);
+                const double allowed = std::min(wish, car.traffic_limit);
                 if (car.responding)
                 {
                     // Port of the managed pursuit (PoliceChaseStep in CityTraffic.Pursuit.cs): a
@@ -1042,19 +1042,19 @@ namespace Promzona
                     // suspect it still waits its turn behind traffic; in sight of him it does
                     // not. A unit that holds back while a colleague makes the stop is not stuck.
                     if (wish > 1 && (car.seesSuspect || allowed > 1) && std::abs(speed) < .5)
-                        car.wedgedFor += dt;
+                        car.wedged_for += dt;
                     else
-                        car.wedgedFor = 0;
-                    if (car.reverseFor <= 0 && wish > 1 &&
-                        (car.wedgedFor > 1.8 ||
+                        car.wedged_for = 0;
+                    if (car.reverse_for <= 0 && wish > 1 &&
+                        (car.wedged_for > 1.8 ||
                          (car.seesSuspect && dot(aim - b.p, dir) < -3 && std::abs(speed) < 1.5)))
                     {
-                        car.reverseFor = 1.1;
-                        car.wedgedFor = 0;
+                        car.reverse_for = 1.1;
+                        car.wedged_for = 0;
                     }
-                    if (car.reverseFor > 0)
+                    if (car.reverse_for > 0)
                     {
-                        car.reverseFor -= dt;
+                        car.reverse_for -= dt;
                         backing = blockedBehind() ? Input{0, clamp(steering, -1., 1.), true, false}
                                                   : Input{-.65, towards > 0 ? -.85 : .85, false, false};
                     }
@@ -1066,7 +1066,7 @@ namespace Promzona
                     const bool displaced = routeError > 1.5 || dot(dir, forward(routeHeading)) < .9;
                     // Held across the route by what is ahead, or free to go and not moving:
                     // against a post or a trunk that no driver waits for.
-                    const bool held = car.routePhase != 1 && displaced && wish > 1 && car.trafficLimit < .2;
+                    const bool held = car.routePhase != 1 && displaced && wish > 1 && car.traffic_limit < .2;
                     // A unit whose call is over has no lane yet, and nobody to queue behind:
                     // units left round the place where a suspect had stood faced each other,
                     // each on the other's way back to the street, and waited for good. One
@@ -1079,22 +1079,22 @@ namespace Promzona
                             car.rejoining = false;
                     }
                     if ((held || allowed > 1 || (car.rejoining && wish > 1)) && std::abs(speed) < .25)
-                        car.wedgedFor += dt;
+                        car.wedged_for += dt;
                     else
-                        car.wedgedFor = 0;
-                    if (car.reverseFor <= 0 &&
-                        ((dot(aim - b.p, dir) < -.7 && routeError > 1.5) || car.wedgedFor > 3.5))
+                        car.wedged_for = 0;
+                    if (car.reverse_for <= 0 &&
+                        ((dot(aim - b.p, dir) < -.7 && routeError > 1.5) || car.wedged_for > 3.5))
                     {
-                        car.reverseFor = 1.7;
-                        car.wedgedFor = 0;
+                        car.reverse_for = 1.7;
+                        car.wedged_for = 0;
                     }
-                    if (car.reverseFor > 0)
+                    if (car.reverse_for > 0)
                     {
-                        car.reverseFor -= dt;
+                        car.reverse_for -= dt;
                         backing = blockedBehind() ? Input{0, clamp(steering, -1., 1.), true, false}
                                                   : Input{clamp((-1.8 - speed) * .35, -.4, .4),
                                                           steering > 0 ? -.8 : .8, false, false};
-                        if (car.reverseFor <= 0 && car.rejoining)
+                        if (car.reverse_for <= 0 && car.rejoining)
                             rejoinRoad(car);
                     }
                 }

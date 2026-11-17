@@ -11,10 +11,12 @@
     <PreferredToolArchitecture>x64</PreferredToolArchitecture>
   </PropertyGroup>
   <PropertyGroup Label="Vcpkg">
-    <!-- SDL3 comes from vcpkg.json; the CMake build fetches it by itself instead. -->
+    <!-- SDL3 comes from vcpkg.json; the CMake build fetches it by itself instead.
+         vcpkg itself is imported at the end of this file. -->
     <VcpkgEnableManifest>true</VcpkgEnableManifest>
     <VcpkgUseStatic>true</VcpkgUseStatic>
     <VcpkgTriplet>x64-windows-static</VcpkgTriplet>
+    <VcpkgInstalledDir>$(MSBuildProjectDirectory)\build\vcpkg_installed\</VcpkgInstalledDir>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Label="Configuration">
@@ -209,4 +211,14 @@
     <Image Include="Content\PROMZONA.ico" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <!-- After "vcpkg integrate install" the line above has already imported vcpkg. Without it the project
+       imports vcpkg by itself: the copy named by VCPKG_ROOT, else the one that ships with Visual Studio. -->
+  <PropertyGroup Condition="'$(VcpkgPropsImported)' != 'true'">
+    <PromzonaVcpkgTargets Condition="'$(VCPKG_ROOT)' != ''">$(VCPKG_ROOT)\scripts\buildsystems\msbuild\vcpkg.targets</PromzonaVcpkgTargets>
+    <PromzonaVcpkgTargets Condition="'$(PromzonaVcpkgTargets)' == '' or !Exists('$(PromzonaVcpkgTargets)')">$(VsInstallRoot)\VC\vcpkg\scripts\buildsystems\msbuild\vcpkg.targets</PromzonaVcpkgTargets>
+  </PropertyGroup>
+  <Import Project="$(PromzonaVcpkgTargets)" Condition="'$(VcpkgPropsImported)' != 'true' and Exists('$(PromzonaVcpkgTargets)')" />
+  <Target Name="PromzonaRequireVcpkg" BeforeTargets="ClCompile" Condition="'$(VcpkgPropsImported)' != 'true'">
+    <Error Text="SDL3 comes from vcpkg (vcpkg.json), and vcpkg was not found. Add the &quot;vcpkg package manager&quot; component in Visual Studio Installer, or set VCPKG_ROOT to your own copy of vcpkg." />
+  </Target>
 </Project>

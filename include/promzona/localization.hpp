@@ -27,7 +27,7 @@ namespace Promzona
     Language languageFromCode(std::string_view code);
     Language cycleLanguage(Language language, int step);
     Language loadLanguage(const std::filesystem::path &file, Language fallback);
-    [[nodiscard]] bool saveLanguage(const std::filesystem::path &file, Language language);
+    [[nodiscard]] bool save_language(const std::filesystem::path &file, Language language);
 
     // Port of Ukrainian.Translate: the longest catalogue phrase starting at a word
     // boundary is replaced, and replaced text is never translated a second time.

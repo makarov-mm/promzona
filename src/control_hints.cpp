@@ -39,7 +39,7 @@ namespace Promzona
                 hints = {{L"W/S", L"Вперёд / назад"}, {L"Space", L"Тормоз"}};
             else
                 hints = {{L"W/S", L"Газ / тормоз"}, {L"A/D", L"Руль"}, {L"Space", L"Ручник"}};
-            if (car.mountedGun())
+            if (car.mounted_gun())
                 hints.insert(hints.end(), {{L"Мышь", L"Башня"}, {L"ЛКМ", L"Огонь"}});
             else if (world.inventory.active())
                 hints.push_back({L"ЛКМ", L"Огонь вперёд"});
@@ -66,7 +66,7 @@ namespace Promzona
         }
         // Weapons are switched on foot and in ordinary vehicles; mounted guns are fixed.
         if (world.playerScooter < 0 && world.inventory.hasWeapons() &&
-            (world.controlledCar < 0 || !world.cars[world.controlledCar].mountedGun()))
+            (world.controlledCar < 0 || !world.cars[world.controlledCar].mounted_gun()))
             hints.push_back({L"[ ]", L"Оружие"});
         const auto &job = world.job;
         const int garage = world.garage_in_reach();

@@ -41,24 +41,24 @@ namespace Promzona
         bool playing_{}, worldPaused_{};
         AudioLevels levels_;
         std::array<const std::vector<float> *, 2> tracks_{};
-        size_t track_{}, trackCursor_{};
+        size_t track_{}, track_cursor_{};
         Vec2 listener_;
         double heading_{};
         void trim();
 
       public:
-        static constexpr int sampleRate = 22050, maxVoices = 32;
+        static constexpr int sample_rate = 22050, max_voices = 32;
         explicit AudioMixer(const std::filesystem::path &audioDirectory = {});
-        void addClip(std::string name, std::vector<float> samples);
-        void update(World &world, double cameraHeading);
+        void add_clip(std::string name, std::vector<float> samples);
+        void update(World &world, double camera_heading);
         void play(const SoundEvent &event);
-        void pause(bool paused, bool worldPaused = false);
-        void setLevels(AudioLevels levels);
-        void nextTrack();
+        void pause(bool paused, bool world_paused = false);
+        void set_levels(AudioLevels levels);
+        void next_track();
         void clear();
         void mix(std::span<float> stereo);
-        size_t voiceCount();
-        size_t clipCount() const { return clips_.size(); }
+        size_t voice_count();
+        size_t clip_count() const { return clips_.size(); }
     };
 
     class AudioDevice

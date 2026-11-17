@@ -185,11 +185,11 @@ namespace Promzona
     void Car::begin_righting()
     {
         recovering = true;
-        rightingRoll = std::remainder(roll, 2 * pi);
-        rightingPitch = std::remainder(pitch, 2 * pi);
-        rightingTime = overturnedTime = 0;
+        righting_roll = std::remainder(roll, 2 * pi);
+        righting_pitch = std::remainder(pitch, 2 * pi);
+        righting_time = overturned_time = 0;
         body.v = {};
-        body.w = rollRate = pitchRate = verticalVelocity = 0;
+        body.w = roll_rate = pitch_rate = verticalVelocity = 0;
         body.wake();
     }
 
@@ -200,48 +200,48 @@ namespace Promzona
         const auto f = forward(heading());
         const double side = dot(change, Vec2{f.z, -f.x});
         const double cap = destroyed ? 3. : 4.;
-        rollRate += clamp(side * (destroyed ? .16 : .20), -cap, cap);
-        pitchRate += clamp(dot(change, f) * (destroyed ? .09 : .11), -2., 2.);
+        roll_rate += clamp(side * (destroyed ? .16 : .20), -cap, cap);
+        pitch_rate += clamp(dot(change, f) * (destroyed ? .09 : .11), -2., 2.);
     }
 
     void Car::settle_attitude(double dt, bool playerDriving)
     {
         if (recovering)
         {
-            rightingTime += dt;
-            const double t = clamp(rightingTime / 2.2, 0., 1.);
+            righting_time += dt;
+            const double t = clamp(righting_time / 2.2, 0., 1.);
             const double u = clamp((t - .18) / .64, 0., 1.);
             const double remaining = 1. - u * u * (3. - 2. * u);
-            roll = rightingRoll * remaining;
-            pitch = rightingPitch * remaining;
+            roll = righting_roll * remaining;
+            pitch = righting_pitch * remaining;
             lift = t < 1. ? 1.5 * std::sin(pi * t) : 0.;
             if (t >= 1.)
             {
                 recovering = false;
-                rightingTime = 0;
+                righting_time = 0;
             }
             return;
         }
-        if (roll == 0 && pitch == 0 && rollRate == 0 && pitchRate == 0)
+        if (roll == 0 && pitch == 0 && roll_rate == 0 && pitch_rate == 0)
             return;
         const bool supported = lift <= .04;
         if (supported)
         {
-            rollRate -= (destroyed ? 9. : 12.) * std::sin(2. * roll) * dt;
-            pitchRate -= (destroyed ? 12. * std::sin(2. * pitch) : 18. * std::sin(pitch)) * dt;
+            roll_rate -= (destroyed ? 9. : 12.) * std::sin(2. * roll) * dt;
+            pitch_rate -= (destroyed ? 12. * std::sin(2. * pitch) : 18. * std::sin(pitch)) * dt;
         }
-        rollRate *= std::exp(-dt * (supported ? (destroyed ? 2.8 : 2.1) : .16));
-        pitchRate *= std::exp(-dt * (supported ? (destroyed ? 2.8 : 2.2) : .18));
-        roll = std::remainder(roll + rollRate * dt, 2 * pi);
-        pitch = std::remainder(pitch + pitchRate * dt, 2 * pi);
-        if (std::abs(roll) + std::abs(rollRate) < .0001)
-            roll = rollRate = 0;
-        if (std::abs(pitch) + std::abs(pitchRate) < .0001)
-            pitch = pitchRate = 0;
+        roll_rate *= std::exp(-dt * (supported ? (destroyed ? 2.8 : 2.1) : .16));
+        pitch_rate *= std::exp(-dt * (supported ? (destroyed ? 2.8 : 2.2) : .18));
+        roll = std::remainder(roll + roll_rate * dt, 2 * pi);
+        pitch = std::remainder(pitch + pitch_rate * dt, 2 * pi);
+        if (std::abs(roll) + std::abs(roll_rate) < .0001)
+            roll = roll_rate = 0;
+        if (std::abs(pitch) + std::abs(pitch_rate) < .0001)
+            pitch = pitch_rate = 0;
         const bool stuck = playerDriving && !destroyed && !falling && fireTime <= 0 && lift < .12 &&
                            body.v.length2() < .7 * .7 && std::cos(roll) * std::cos(pitch) < -.45;
-        overturnedTime = stuck ? overturnedTime + dt : 0.;
-        if (overturnedTime > 4.)
+        overturned_time = stuck ? overturned_time + dt : 0.;
+        if (overturned_time > 4.)
             begin_righting();
     }
 
@@ -256,7 +256,7 @@ namespace Promzona
         wreckSupported = false;
     }
 
-    void stepWreck(Car &car, double dt)
+    void step_wreck(Car &car, double dt)
     {
         auto &b = car.body;
         bool supported = car.wreckSupported || (car.lift <= .03 && car.verticalVelocity <= 0);
@@ -285,7 +285,7 @@ namespace Promzona
             return;
         if (car.destroyed)
         {
-            stepWreck(car, dt);
+            step_wreck(car, dt);
             return;
         }
         if (car.recovering)

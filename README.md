@@ -134,7 +134,7 @@ For technical details, see [city geometry and streaming](docs/ARCHITECTURE.md) a
 
 The game uses C++23, OpenGL 3.3, and SDL3 for the window, input, and audio. Images are decoded with stb_image and the HUD text is drawn with stb_truetype. On Windows the HUD uses the system's Segoe UI and Arial; elsewhere it uses the bundled Liberation Sans from `Content/Fonts`. Code specific to the operating system lives in `src/platform_sdl.cpp`.
 
-Open [Promzona.slnx](Promzona.slnx) in Visual Studio 2026, select **Debug | x64** or **Release | x64**, and press **F5** for a windowed debugging session. The project uses the v145 toolset and reads assets directly from the repository's `Content` directory. It takes SDL3 from [vcpkg.json](vcpkg.json) through Visual Studio's vcpkg integration (run `vcpkg integrate install` once if it is not enabled).
+Open [Promzona.slnx](Promzona.slnx) in Visual Studio 2026, select **Debug | x64** or **Release | x64**, and press **F5** for a windowed debugging session. The project uses the v145 toolset and reads assets directly from the repository's `Content` directory. It takes SDL3 from [vcpkg.json](vcpkg.json) with the vcpkg that ships with Visual Studio (the **vcpkg package manager** component of the C++ workload) or with the copy named by `VCPKG_ROOT`; nothing has to be set up by hand. The first build downloads and builds SDL3, which takes a few minutes and puts it in `build/vcpkg_installed`.
 
 To generate a Visual Studio solution that also includes the libraries and tests, use CMake 4.2 or newer:
 

@@ -43,7 +43,7 @@ namespace Promzona
         scroll_ = 0;
     }
 
-    std::span<const std::wstring> GameConsole::visibleLines(size_t count) const
+    std::span<const std::wstring> GameConsole::visible_lines(size_t count) const
     {
         size_t end = output_.size() - scroll_, start = end > count ? end - count : 0;
         return std::span(output_).subspan(start, end - start);
@@ -74,10 +74,10 @@ namespace Promzona
     {
         if (recall_.empty())
             return;
-        if (historyPos_ == recall_.size())
+        if (history_pos_ == recall_.size())
             draft_ = input_;
-        historyPos_ = static_cast<size_t>(std::clamp(static_cast<int>(historyPos_) + direction, 0, static_cast<int>(recall_.size())));
-        input_ = historyPos_ == recall_.size() ? draft_ : recall_[historyPos_];
+        history_pos_ = static_cast<size_t>(std::clamp(static_cast<int>(history_pos_) + direction, 0, static_cast<int>(recall_.size())));
+        input_ = history_pos_ == recall_.size() ? draft_ : recall_[history_pos_];
         caret_ = input_.size();
     }
 
@@ -142,7 +142,7 @@ namespace Promzona
                 recall_.erase(recall_.begin());
             recall_.push_back(line);
         }
-        historyPos_ = recall_.size();
+        history_pos_ = recall_.size();
         draft_.clear();
         input_.clear();
         caret_ = 0;

@@ -2,7 +2,7 @@
 
 namespace Promzona
 {
-ActorPose ActorMotion::sample(const ActorState &p, double time, int poseCount)
+ActorPose ActorMotion::sample(const ActorState &p, double time, int pose_count)
 {
     const bool running = p.speed > (p.player ? 3.8 : 2.1);
     int clip = p.dead || p.knocked         ? 0
@@ -14,10 +14,10 @@ ActorPose ActorMotion::sample(const ActorState &p, double time, int poseCount)
                : running                   ? 2
                                            : 1;
     // Legacy 193-frame models have no gun, scooter, or punch cycles.
-    auto compatible = [poseCount](int c)
+    auto compatible = [pose_count](int c)
     {
         int start = c == 5 ? 384 : c == 6 ? 448 : c == 7 ? 512 : c * 64;
-        return start + (c == 3 ? 1 : 64) <= poseCount ? c : c == 7 ? 2 : c == 6 ? 1 : 0;
+        return start + (c == 3 ? 1 : 64) <= pose_count ? c : c == 7 ? 2 : c == 6 ? 1 : 0;
     };
     clip = compatible(clip);
     double dt = time - time_;

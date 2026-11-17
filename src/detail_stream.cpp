@@ -5,15 +5,15 @@
 
 namespace Promzona
 {
-size_t meshBytes(const MeshData &m)
+size_t mesh_bytes(const MeshData &m)
 {
     return m.vertices.size() * sizeof(Vertex) + m.indices.size() * sizeof(std::uint32_t);
 }
-size_t chunkBytes(const CityChunk &c)
+size_t chunk_bytes(const CityChunk &c)
 {
     size_t n{};
     for (const auto &m : c)
-        n += meshBytes(m);
+        n += mesh_bytes(m);
     return n;
 }
 std::vector<size_t> detail_order(std::span<const DetailCell> cells, Vec3 eye, float range)
@@ -45,7 +45,7 @@ std::vector<size_t> DetailResidency::trim(std::span<const DetailCell> cells, Vec
     std::ranges::sort(ranked, std::greater<>{});
     std::vector<size_t> evict;
     for (const auto &[distance, id] : ranked)
-        if (distance > detailKeepDistance || total_ + reservation > limit_)
+        if (distance > detail_keep_distance || total_ + reservation > limit_)
         {
             total_ -= bytes_[id];
             bytes_[id] = 0;
@@ -61,18 +61,18 @@ DetailStream::DetailStream(const World &world)
         if (b.kind != BuildingKind::apartment)
             continue; // Other facades are complete in the core mesh.
         grouped[{int(std::floor(b.p.x / 72)), int(std::floor(b.p.z / 72))}].push_back(
-            planBuilding(b, world.terrain.height(b.p)));
+            plan_building(b, world.terrain.height(b.p)));
     }
     for (auto &[key, plans] : grouped)
     {
         Vec3 low{1e9f, 1e9f, 1e9f}, high{-1e9f, -1e9f, -1e9f};
         for (const auto &p : plans)
         {
-            low = {std::min(low.x, p.origin.x - p.halfWidth - 2), std::min(low.y, p.origin.y - 1),
-                   std::min(low.z, p.origin.z - p.halfDepth - 2)};
-            high = {std::max(high.x, p.origin.x + p.halfWidth + 2),
+            low = {std::min(low.x, p.origin.x - p.half_width - 2), std::min(low.y, p.origin.y - 1),
+                   std::min(low.z, p.origin.z - p.half_depth - 2)};
+            high = {std::max(high.x, p.origin.x + p.half_width + 2),
                     std::max(high.y, p.origin.y + p.height + 2),
-                    std::max(high.z, p.origin.z + p.halfDepth + 2)};
+                    std::max(high.z, p.origin.z + p.half_depth + 2)};
         }
         cells_.push_back({(low + high) * .5f, (high - low).length() * .5f, std::move(plans)});
     }
@@ -115,7 +115,7 @@ void DetailStream::request(std::span<const size_t> ids)
     jobs_.clear();
     for (auto id : ids)
     {
-        if (jobs_.size() == maxQueued)
+        if (jobs_.size() == max_queued)
             break;
         if (id == active_ || std::ranges::any_of(ready_, [id](const auto &p) { return p->id == id; }) ||
             std::ranges::find(jobs_, id) != jobs_.end())
@@ -156,7 +156,7 @@ void DetailStream::run(StopToken stop)
             size_t id;
             {
                 std::unique_lock lock(mutex_);
-                wake_.wait(lock, [&] { return stop.stop_requested() || (!jobs_.empty() && ready_.size() < maxReady); });
+                wake_.wait(lock, [&] { return stop.stop_requested() || (!jobs_.empty() && ready_.size() < max_ready); });
                 if (stop.stop_requested())
                     return;
                 id = jobs_.front();
@@ -167,11 +167,11 @@ void DetailStream::run(StopToken stop)
             packet->id = id;
             for (const auto &p : cells_[id].buildings)
             {
-                buildingDetails(packet->geometry, p);
-                if (chunkBytes(packet->geometry) > maxPacketBytes)
+                building_details(packet->geometry, p);
+                if (chunk_bytes(packet->geometry) > max_packet_bytes)
                     throw std::runtime_error("Detail cell exceeds geometry budget");
             }
-            packet->bytes = chunkBytes(packet->geometry);
+            packet->bytes = chunk_bytes(packet->geometry);
             {
                 std::scoped_lock lock(mutex_);
                 active_.reset();

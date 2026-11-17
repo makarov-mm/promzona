@@ -157,8 +157,8 @@ namespace Promzona
         if (c.line >= 0)
         {
             c.along = found->along;
-            c.nextStop = lines[c.line].nextStopAfter(c.along);
-            c.dwell = c.checkTrafficAt = 0;
+            c.next_stop = lines[c.line].next_stop_after(c.along);
+            c.dwell = c.check_traffic_at = 0;
         }
 
         c.begin_righting();

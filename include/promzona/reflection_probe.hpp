@@ -33,14 +33,14 @@ namespace Promzona
             return directions[face];
         }
 
-        static Vec3 up(int face)
+        static Vec3 up(const int face)
         {
             static constexpr Vec3 ups[6] = {{0, -1, 0}, {0, -1, 0}, {0, 0, 1},
                                             {0, 0, -1}, {0, -1, 0}, {0, -1, 0}};
             return ups[face];
         }
 
-        static Mat4 view(Vec3 centre, int face)
+        static Mat4 view(const Vec3 centre, const int face)
         {
             return Mat4::look_at(centre, centre + direction(face), up(face));
         }
@@ -54,25 +54,26 @@ namespace Promzona
         // new cube is begun when there is none, when its centre is 22 m behind, when the
         // light or the weather has changed, when other scenery is loaded (`generation`),
         // and every twelve seconds.
-        int begin(Vec3 centre, double hour, double rain, double time, int generation)
+        int begin(const Vec3& centre, const double hour, const double rain, const double time, const int generation)
         {
             if (face_ < 0)
             {
-                if (ready_ && (centre - centre_).length() < 22 && std::abs(hour - hour_) < .25 &&
-                    std::abs(rain - rain_) < .12 && generation == generation_ && time < nextTime_ &&
-                    time > nextTime_ - 13)
+                if (ready_ && (centre - centre_).length() < 22 && std::abs(hour - hour_) < .25 && std::abs(rain - rain_) < .12 && generation == generation_ && time < nextTime_ && time > nextTime_ - 13)
                     return -1;
+
                 pending_ = centre;
                 pendingHour_ = hour;
                 pendingRain_ = rain;
                 generation_ = generation;
                 face_ = 0;
             }
+
             return face_;
         }
+
         // The face that begin() gave is rendered. True when it was the sixth: the new cube
         // is complete and takes the place of the old one.
-        bool finish(double time)
+        bool finish(const double time)
         {
             ++captured_;
             if (++face_ < 6)
@@ -85,7 +86,9 @@ namespace Promzona
             nextTime_ = time + 12;
             return true;
         }
+
         bool ready() const { return ready_; }
+
         // Centre of the finished cube, and of the one being taken.
         Vec3 centre() const { return centre_; }
         Vec3 pending() const { return pending_; }

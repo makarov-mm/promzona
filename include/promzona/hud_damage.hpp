@@ -9,7 +9,7 @@ namespace Promzona
     class HudDamage
     {
     public:
-        static constexpr std::size_t textureCount = 3;
+        static constexpr std::size_t texture_count = 3;
 
     private:
         struct Span
@@ -20,14 +20,14 @@ namespace Promzona
         static constexpr int band = 32;
         int width_{}, height_{};
         std::vector<Span> painted_, previous_;
-        std::array<std::vector<Span>, textureCount> uploaded_;
+        std::array<std::vector<Span>, texture_count> uploaded_;
 
     public:
         void resize(int width, int height)
         {
             width_ = width;
             height_ = height;
-            painted_.assign((height + band - 1) / band, {width, 0});
+            painted_.assign((height + band - 1) / band, {.left = width, .right = 0});
             previous_ = painted_;
 
             for (std::vector<Span> &footprint : uploaded_)
@@ -48,10 +48,14 @@ namespace Promzona
 
         void touch(int x, int y, int width, int height)
         {
-            int l = std::max(x, 0), r = std::min(x + width, width_);
-            int top = std::max(y, 0), bottom = std::min(y + height, height_);
+            const int l = std::max(x, 0);
+            const int r = std::min(x + width, width_);
+            const int top = std::max(y, 0);
+            const int bottom = std::min(y + height, height_);
+
             if (l >= r || top >= bottom)
                 return;
+
             for (int i = top / band; i <= (bottom - 1) / band; ++i)
             {
                 painted_[i].left = std::min(painted_[i].left, l);
@@ -65,9 +69,9 @@ namespace Promzona
         }
 
         // A reused texture still contains the HUD from its own last frame.
-        template <class F> void uploadRegions(std::size_t slot, F consume)
+        template <class F> void upload_regions(const std::size_t slot, F consume)
         {
-            auto &footprint = uploaded_.at(slot);
+            std::vector<Span> &footprint = uploaded_.at(slot);
             emit(footprint, true, consume);
             footprint = painted_;
         }
@@ -76,7 +80,11 @@ namespace Promzona
         template <class F> void emit(const std::vector<Span> &footprint, bool includeCurrent, F &consume) const
         {
             int top = 0;
-            Span active {.left = width_, .right = 0};
+
+            Span active {
+                .left = width_, 
+                .right = 0
+            };
 
             for (size_t i = 0; i <= footprint.size(); ++i)
             {

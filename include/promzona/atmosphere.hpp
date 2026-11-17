@@ -12,24 +12,24 @@ namespace Promzona
         Vec3 horizon {.x = .64f, .y = .73f, .z = .80f}, zenith {.x = .19f, .y = .39f, .z = .65f};
         float rain{}, daylight{1}, golden{};
 
-        static Atmosphere create(double rain, double daylight, double sunHeight, double wetness, bool evening = false)
+        static Atmosphere create(const double rain, const double daylight, const double sun_height, const double wetness, const bool evening = false)
         {
-            auto finite = [](double value, double otherwise)
+            auto finite = [](const double value, const double otherwise)
             {
                 return std::isfinite(value) ? value : otherwise;
             };
 
-            auto step = [](float low, float high, float value)
+            auto step = [](const float low, const float high, const float value)
             {
                 return static_cast<float>(smooth((value - low) / (high - low)));
             };
 
-            auto blend = [](Vec3 a, Vec3 b, float t) { return a + (b - a) * t; };
+            auto blend = [](const Vec3& a, const Vec3& b, const float t) { return a + (b - a) * t; };
 
             const float r = static_cast<float>(clamp(finite(rain, 0), 0., 1.)),
                 d = static_cast<float>(clamp(finite(daylight, 1), 0., 1.)),
                 w = static_cast<float>(clamp(finite(wetness, 0), 0., 1.)),
-                height = static_cast<float>(finite(sunHeight, 1));
+                height = static_cast<float>(finite(sun_height, 1));
 
             const float clear = (1 - r) * (1 - r);
             Atmosphere air;
@@ -50,9 +50,9 @@ namespace Promzona
         }
 
         // Share of the light that crosses `distance` metres of haze between two heights.
-        double transmittance(double distance, double eyeHeight = 0, double targetHeight = 0) const
+        double transmittance(const double distance, const double eye_height = 0, const double target_height = 0) const
         {
-            const double a = std::max(0., eyeHeight) / heightScale, b = std::max(0., targetHeight) / heightScale;
+            const double a = std::max(0., eye_height) / heightScale, b = std::max(0., target_height) / heightScale;
             const double layer = std::abs(b - a) < .001 ? std::exp(-(a + b) * .5) : (std::exp(-a) - std::exp(-b)) / (b - a);
             return std::exp(-std::min(80., std::max(0., distance) * density * layer));
         }

@@ -24,8 +24,8 @@ namespace Promzona
     {
         ServiceKind kind{};
         Vec2 centre, entrance;
-        double halfWidth{}, halfDepth{}, height{};
-        bool existingBuilding{};
+        double half_width{}, half_depth{}, height{};
+        bool existing_building{};
 
         bool food() const
         {

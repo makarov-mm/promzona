@@ -59,8 +59,8 @@ namespace Promzona
                 }
             };
 
-            addNames(streetNames());
-            addNames(avenueNames());
+            addNames(street_names());
+            addNames(avenue_names());
             return result;
         }
     }
@@ -98,7 +98,7 @@ namespace Promzona
         return in >> code ? languageFromCode(code) : fallback;
     }
 
-    bool saveLanguage(const std::filesystem::path &file, Language language)
+    bool save_language(const std::filesystem::path &file, Language language)
     {
         std::ofstream out(file);
         out << languageCode(language) << '\n';

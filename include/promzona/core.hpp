@@ -122,7 +122,7 @@ namespace Promzona
         double sleepTimer{};
         std::uint32_t id{};
 
-        bool isStatic() const
+        bool is_static() const
         {
             return invMass == 0;
         }
@@ -133,19 +133,19 @@ namespace Promzona
             sleepTimer = 0;
         }
 
-        Vec2 velocityAt(Vec2 point) const
+        Vec2 velocity_at(const Vec2& point) const
         {
             return v + perpendicular(point - p) * w;
         }
 
-        void impulse(Vec2 impulse, Vec2 offset = {})
+        void impulse(const Vec2& impulse, const Vec2& offset = {})
         {
             wake();
             v += impulse * invMass;
             w += cross(offset, impulse) * invI;
         }
 
-        void mass(double kilograms)
+        void mass(const double kilograms)
         {
             invMass = kilograms > 0 ? 1 / kilograms : 0;
             invI = kilograms > 0 ? 3 / (kilograms * (halfW * halfW + halfH * halfH)) : 0;
@@ -175,13 +175,13 @@ namespace Promzona
 
         // The junction after routeTo, chosen on the way to it: a driver enters a crossing only
         // when the street beyond has room. Not saved; a loaded car simply chooses again.
-        int plannedTo{-1};
+        int planned_to{-1};
 
         // The junction a tram or a trolleybus is ready to cross: no car enters it first.
         int claimed{-1};
 
         // A bus stands at its stop until the first and passes the stops by until the second.
-        double busUntil{}, nextBusStop{};
+        double bus_until{}, next_bus_stop{};
 
         // Where and since when the car has not moved a metre: a driver who has waited two
         // minutes for nothing gives up out of sight (World::renewCity). Not saved.
@@ -190,7 +190,7 @@ namespace Promzona
 
         // A driver pushed off the route who cannot go on backs up a little and tries again
         // (the managed CityCar.Stuck and ReverseFor). Saved while rejoining traffic.
-        double wedgedFor{}, reverseFor{};
+        double wedged_for{}, reverse_for{};
 
         // A crew on a call goes round whoever is ahead: by this much steering when it makes
         // straight for the suspect (the managed PolicePursuit), and pulled out of its lane by
@@ -203,20 +203,20 @@ namespace Promzona
 
         // Moved by the distant model in the last step. Not saved.
         bool distant{};
-        double blockedSince{-1}, nextLaneDecision{}, senseAt{}, trafficLimit{100};
-        int line{-1}, nextStop{};
-        double along{}, dwell{}, serviceTarget{7}, checkTrafficAt{};
+        double blocked_since{-1}, next_lane_decision{}, sense_at{}, traffic_limit{100};
+        int line{-1}, next_stop{};
+        double along{}, dwell{}, service_target{7}, check_traffic_at{};
         std::optional<Path> route;
         double heading() const { return -body.angle; }
-        double rollRate{}, pitchRate{}, overturnedTime{}, rightingTime{}, rightingRoll{}, rightingPitch{};
+        double roll_rate{}, pitch_rate{}, overturned_time{}, righting_time{}, righting_roll{}, righting_pitch{};
         void begin_righting();
         void apply_impact_rotation(Vec2 velocityChange);
         void settle_attitude(double dt, bool playerDriving);
-        bool mountedGun() const { return kind == 11 || kind == 14; }
+        bool mounted_gun() const { return kind == 11 || kind == 14; }
         bool grounded() const { return lift < .12 && std::cos(roll) * std::cos(pitch) > .45; }
         void destroy();
     };
 
     void step_vehicle(Car &car, Input input, double dt, double traction = 1);
-    void stepWreck(Car &car, double dt);
+    void step_wreck(Car &car, double dt);
 }

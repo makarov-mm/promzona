@@ -10,13 +10,13 @@ namespace Promzona
         Vec3 centre, right, normal;
         std::uint32_t seed{};
         int curtain{}, balcony{-1};
-        bool airConditioner{};
+        bool air_conditioner{};
     };
 
     struct BuildingPlan
     {
         Vec3 origin;
-        float halfWidth{}, halfDepth{}, height{};
+        float half_width{}, half_depth{}, height{};
         bool windowsOnZ{};
         BuildingKind kind{BuildingKind::apartment};
         int front{1};
@@ -24,8 +24,8 @@ namespace Promzona
         std::vector<FacadeWindow> windows;
     };
 
-    BuildingPlan planBuilding(const Building &building, double ground);
-    void buildingCore(CityChunk &data, const BuildingPlan &plan, int facade);
-    void buildingDetails(CityChunk &data, const BuildingPlan &plan);
+    BuildingPlan plan_building(const Building &building, double ground);
+    void building_core(CityChunk &data, const BuildingPlan &plan, int facade);
+    void building_details(CityChunk &data, const BuildingPlan &plan);
     constexpr float building_detail_start = 135, building_detail_end = 185;
 }

@@ -58,7 +58,7 @@ Vec3 extents(Vec3 right, Vec3 n, Vec3 half)
 // Special buildings share the footprint and overall height used for contacts.
 void districtBuilding(CityChunk &data, const BuildingPlan &p, int style)
 {
-    const float x = p.halfWidth, z = p.halfDepth, h = p.height, front = float(p.front);
+    const float x = p.half_width, z = p.half_depth, h = p.height, front = float(p.front);
     auto part = [&](int mat, float dx, float y, float dz, float hx, float hy, float hz)
     { box(data[mat], p.origin + Vec3{dx, y, dz}, {hx, hy, hz}); };
     auto point = [&](float dx, float y, float dz) { return p.origin + Vec3{dx, y, dz}; };
@@ -218,12 +218,12 @@ void districtBuilding(CityChunk &data, const BuildingPlan &p, int style)
     }
 }
 } // namespace
-BuildingPlan planBuilding(const Building &b, double ground)
+BuildingPlan plan_building(const Building &b, double ground)
 {
     BuildingPlan p;
     p.origin = {float(b.p.x), float(ground), float(b.p.z)};
-    p.halfWidth = float(b.half.x);
-    p.halfDepth = float(b.half.z);
+    p.half_width = float(b.half.x);
+    p.half_depth = float(b.half.z);
     p.height = float(b.height);
     p.windowsOnZ = entranceNormal(b.half).z > 0;
     p.seed = hash(std::uint32_t(std::llround(b.p.x * 10)) ^ hash(std::uint32_t(std::llround(b.p.z * 10))) ^
@@ -232,13 +232,13 @@ BuildingPlan planBuilding(const Building &b, double ground)
     p.front = b.front;
     if (p.kind != BuildingKind::apartment)
         return p;
-    float half = p.windowsOnZ ? p.halfWidth : p.halfDepth;
+    float half = p.windowsOnZ ? p.half_width : p.half_depth;
     int columns = std::max(1, int((2 * half - 1.2f) / bay));
     for (int side : {-1, 1})
     {
         Vec3 normal = p.windowsOnZ ? Vec3{0, 0, float(side)} : Vec3{float(side), 0, 0};
         auto right = cross({0, 1, 0}, normal);
-        float depth = p.windowsOnZ ? p.halfDepth : p.halfWidth;
+        float depth = p.windowsOnZ ? p.half_depth : p.half_width;
         int floor = 0;
         for (float y = firstWindow; y + windowHalfHeight + .5f < p.height; y += storey, ++floor)
             for (int col = 0; col < columns; ++col)
@@ -254,13 +254,13 @@ BuildingPlan planBuilding(const Building &b, double ground)
                 // Continuous vertical stacks: balconies are architecture, not random speckles.
                 if (floor > 0 && col % 3 == int(p.seed % 3))
                     w.balcony = int(hash(p.seed + col) % 3);
-                w.airConditioner = w.balcony < 0 && id % 7 == 0;
+                w.air_conditioner = w.balcony < 0 && id % 7 == 0;
                 p.windows.push_back(w);
             }
     }
     return p;
 }
-void buildingCore(CityChunk &data, const BuildingPlan &p, int facade)
+void building_core(CityChunk &data, const BuildingPlan &p, int facade)
 {
     if (p.kind != BuildingKind::apartment)
     {
@@ -269,8 +269,8 @@ void buildingCore(CityChunk &data, const BuildingPlan &p, int facade)
     }
     const Vec3 front = p.windowsOnZ ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
     const Vec3 side = cross({0, 1, 0}, front);
-    const float half = p.windowsOnZ ? p.halfWidth : p.halfDepth;
-    const float depth = p.windowsOnZ ? p.halfDepth : p.halfWidth;
+    const float half = p.windowsOnZ ? p.half_width : p.half_depth;
+    const float depth = p.windowsOnZ ? p.half_depth : p.half_width;
     auto shell = [&](MeshData &mesh, float height, float outset, float tile)
     {
         const float width = half + outset, length = depth + outset;
@@ -320,15 +320,15 @@ void buildingCore(CityChunk &data, const BuildingPlan &p, int facade)
     };
     shell(data[Facade + clamp(facade, 0, 7)], p.height, 0, 3.2f);
     shell(data[Foundation], .60f, .035f, 2.f);
-    box(data[Roof], p.origin + Vec3{0, p.height + .12f, 0}, {p.halfWidth + .12f, .12f, p.halfDepth + .12f});
+    box(data[Roof], p.origin + Vec3{0, p.height + .12f, 0}, {p.half_width + .12f, .12f, p.half_depth + .12f});
     // What a roof carries, seen from above: the lift machine rooms over the stairwells, vent
     // stacks, and on some houses an aerial mast or, on a tower, a water tank. Low houses keep a
     // bare roof. The plan seed decides, so a building always looks the same.
     if (p.height > 13)
     {
         const float top = p.height + .24f;
-        const bool alongX = p.halfWidth >= p.halfDepth;
-        const float length = alongX ? p.halfWidth : p.halfDepth, breadth = alongX ? p.halfDepth : p.halfWidth;
+        const bool alongX = p.half_width >= p.half_depth;
+        const float length = alongX ? p.half_width : p.half_depth, breadth = alongX ? p.half_depth : p.half_width;
         auto onRoof = [&](float along, float across, float y, Vec3 half)
         {
             const Vec3 offset = alongX ? Vec3{along, y, across} : Vec3{across, y, along};
@@ -394,24 +394,24 @@ void buildingCore(CityChunk &data, const BuildingPlan &p, int facade)
                  at(side * .84f, .18f, 1), at(side * .84f, .18f, .05f));
     }
 }
-void buildingDetails(CityChunk &data, const BuildingPlan &p)
+void building_details(CityChunk &data, const BuildingPlan &p)
 {
     if (p.kind != BuildingKind::apartment)
         return;
     // Parapet, drainpipe, entrance canopy and roof ventilation: metre-sized silhouettes.
     for (int side : {-1, 1})
     {
-        box(data[Roof], p.origin + Vec3{0, p.height + .35f, side * (p.halfDepth - .06f)},
-            {p.halfWidth, .15f, .09f});
-        box(data[Roof], p.origin + Vec3{side * (p.halfWidth - .06f), p.height + .35f, 0},
-            {.09f, .15f, p.halfDepth});
+        box(data[Roof], p.origin + Vec3{0, p.height + .35f, side * (p.half_depth - .06f)},
+            {p.half_width, .15f, .09f});
+        box(data[Roof], p.origin + Vec3{side * (p.half_width - .06f), p.height + .35f, 0},
+            {.09f, .15f, p.half_depth});
     }
-    box(data[Roof], p.origin + Vec3{p.halfWidth * .32f, p.height + .65f, -p.halfDepth * .3f},
+    box(data[Roof], p.origin + Vec3{p.half_width * .32f, p.height + .65f, -p.half_depth * .3f},
         {.65f, .4f, .5f});
     Vec3 n = p.windowsOnZ ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
     Vec3 r = cross({0, 1, 0}, n);
-    float depth = p.windowsOnZ ? p.halfDepth : p.halfWidth;
-    float half = p.windowsOnZ ? p.halfWidth : p.halfDepth;
+    float depth = p.windowsOnZ ? p.half_depth : p.half_width;
+    float half = p.windowsOnZ ? p.half_width : p.half_depth;
     auto entrance = p.origin + n * (depth + .09f);
     auto localBox = [&](int material, Vec3 c, Vec3 size) { box(data[material], c, extents(r, n, size)); };
     const Vec3 door = entrance - n * (.09f + recess);
@@ -440,7 +440,7 @@ void buildingDetails(CityChunk &data, const BuildingPlan &p)
              at(-.73f, -.55f, 0));
         face(data[Frame], at(-.73f, -.63f, .21f), at(.73f, -.63f, .21f), at(.73f, -.60f, .21f),
              at(-.73f, -.60f, .21f));
-        if (w.airConditioner)
+        if (w.air_conditioner)
         {
             box(data[Frame], at(.8f, -.94f, .22f), extents(w.right, w.normal, {.39f, .24f, .22f}));
             panel(data[Metal], at(.8f, -.94f, .45f), w.right, w.normal, .27f, .15f);

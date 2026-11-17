@@ -21,7 +21,7 @@ NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Scooter, body, owner, rider, returnAt)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Animal, species, variant, flock, p, goal, velocity, offset, altitude,
                                    heading, distance, fear, thinkAt, deadUntil)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Flock, landing, flying, landedAt)
-NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Rocket, p, direction, height, slope, travel, ownerCar)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Rocket, p, direction, height, slope, travel, owner_car)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(ReconDrone, active, position, velocity, altitude, heading, pitch, battery,
                                    health, scanTime, readyAt, nextShot, targets, scanned)
 NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE_WITH_DEFAULT(World::StreetHail, actor, until, spot, posted)
@@ -119,9 +119,9 @@ json carState(const Car &c)
     WRITE(falling);
     WRITE(destroyed);
     WRITE(recovering);
-    if (c.recovering || c.rollRate || c.pitchRate || c.overturnedTime)
-        j["attitude"] = {c.rollRate,     c.pitchRate,    c.overturnedTime,
-                         c.rightingTime, c.rightingRoll, c.rightingPitch};
+    if (c.recovering || c.roll_rate || c.pitch_rate || c.overturned_time)
+        j["attitude"] = {c.roll_rate,     c.pitch_rate,    c.overturned_time,
+                         c.righting_time, c.righting_roll, c.righting_pitch};
     WRITE(braking);
     WRITE(wreckSupported);
     WRITE(health);
@@ -150,16 +150,16 @@ json carState(const Car &c)
     if (c.rejoining)
     {
         WRITE(rejoining);
-        WRITE(wedgedFor);
-        j["reverseFor"] = std::max(0., c.reverseFor);
+        WRITE(wedged_for);
+        j["reverseFor"] = std::max(0., c.reverse_for);
     }
     WRITE(routeLevel);
     WRITE(laneIndex);
-    WRITE(blockedSince);
-    WRITE(nextLaneDecision);
+    WRITE(blocked_since);
+    WRITE(next_lane_decision);
     WRITE(line);
     WRITE(along);
-    WRITE(nextStop);
+    WRITE(next_stop);
     WRITE(dwell);
 #undef WRITE
     j["route"] = c.route ? json(c.route->points()) : json(nullptr);
@@ -190,12 +190,12 @@ void loadCar(const json &j, Car &c)
         if (!std::ranges::all_of(a, [](double v) { return std::isfinite(v); }) || a[2] < 0 || a[2] > 4.1 ||
             a[3] < 0 || a[3] > 2.2)
             throw std::runtime_error("Invalid vehicle recovery state");
-        c.rollRate = a[0];
-        c.pitchRate = a[1];
-        c.overturnedTime = a[2];
-        c.rightingTime = a[3];
-        c.rightingRoll = a[4];
-        c.rightingPitch = a[5];
+        c.roll_rate = a[0];
+        c.pitch_rate = a[1];
+        c.overturned_time = a[2];
+        c.righting_time = a[3];
+        c.righting_roll = a[4];
+        c.righting_pitch = a[5];
     }
     else if (c.recovering)
         c.begin_righting();
@@ -227,20 +227,20 @@ void loadCar(const json &j, Car &c)
     c.rejoining = j.value("rejoining", false);
     if (c.rejoining)
     {
-        READ(wedgedFor);
-        READ(reverseFor);
-        if (c.wedgedFor < 0 || c.reverseFor < 0 || c.reverseFor > 1.7)
+        READ(wedged_for);
+        READ(reverse_for);
+        if (c.wedged_for < 0 || c.reverse_for < 0 || c.reverse_for > 1.7)
             throw std::runtime_error("Invalid patrol rejoin timer");
     }
     READ(routeLevel);
     c.laneIndex = j.value("laneIndex", 0);
-    c.blockedSince = j.value("blockedSince", -1.);
-    c.nextLaneDecision = j.value("nextLaneDecision", 0.);
-    c.senseAt = 0;
-    c.trafficLimit = 100;
+    c.blocked_since = j.value("blockedSince", -1.);
+    c.next_lane_decision = j.value("nextLaneDecision", 0.);
+    c.sense_at = 0;
+    c.traffic_limit = 100;
     c.line = j.value("line", -1);
     c.along = j.value("along", 0.);
-    c.nextStop = j.value("nextStop", 0);
+    c.next_stop = j.value("nextStop", 0);
     c.dwell = j.value("dwell", 0.);
 #undef READ
     c.route.reset();
@@ -636,7 +636,7 @@ void World::load(const std::filesystem::path &path)
             c.kind > 14 || c.mass <= 0 || c.mass > 100000 || c.wheelbase <= 0 ||
             c.model >= std::size(fleet) || c.nextShot < 0 || c.health > 1 || c.health < -.5 || c.lift < 0 ||
             c.fireTime < 0 || c.safeDrivingTime < 0 || c.impactCooldown < 0 || c.laneIndex < 0 ||
-            c.laneIndex > 1 || (c.routePhase == 2 && c.laneIndex != 0) || c.nextLaneDecision < 0)
+            c.laneIndex > 1 || (c.routePhase == 2 && c.laneIndex != 0) || c.next_lane_decision < 0)
             throw std::runtime_error("Invalid saved vehicle");
         if (c.id != size_t(&c - next.cars.data()) || c.line < -1 || c.line >= int(next.lines.size()) ||
             ((c.kind == 9 || c.kind == 10) != (c.line >= 0)))
@@ -648,7 +648,7 @@ void World::load(const std::filesystem::path &path)
         {
             const auto &line = next.lines[c.line];
             if (c.kind != line.kind || c.model != unsigned(c.kind - 1) || c.along < 0 ||
-                c.along >= line.track.length() || c.nextStop < 0 || c.nextStop >= int(line.stops.size()) ||
+                c.along >= line.track.length() || c.next_stop < 0 || c.next_stop >= int(line.stops.size()) ||
                 c.dwell < 0 || c.dwell > 6)
                 throw std::runtime_error("Invalid saved transit line position");
             if (!j.contains("transitStopLayout"))
@@ -660,7 +660,7 @@ void World::load(const std::filesystem::path &path)
                 int previous = (upcoming + int(line.stops.size()) - 1) % int(line.stops.size());
                 if (std::abs(std::remainder(c.along - line.stops[previous], line.track.length())) > .65)
                     c.dwell = 0;
-                c.nextStop = upcoming;
+                c.next_stop = upcoming;
             }
         }
         if (c.routeLevel != 0 && !next.levelById(c.routeLevel))
@@ -891,7 +891,7 @@ void World::load(const std::filesystem::path &path)
             throw std::runtime_error("Saved passenger does not match the active trip");
     }
     for (auto &r : next.rockets)
-        if (r.ownerCar < -1 || r.ownerCar >= int(next.cars.size()) || r.travel < 0 ||
+        if (r.owner_car < -1 || r.owner_car >= int(next.cars.size()) || r.travel < 0 ||
             r.travel > weapon(WeaponId::bazooka)->range || std::abs(r.direction.length() - 1) > 1e-6 ||
             std::abs(r.slope) > 4 || std::max(std::abs(r.p.x), std::abs(r.p.z)) > landEdge + 200)
             throw std::runtime_error("Invalid saved rocket");

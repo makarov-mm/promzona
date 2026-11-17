@@ -156,12 +156,12 @@ void ContactWorld::collide(Body &a, Body &b)
 }
 static void applyContact(Body &a, Body &b, Vec2 p, Vec2 impulse)
 {
-    if (!a.isStatic() && !a.sleeping)
+    if (!a.is_static() && !a.sleeping)
     {
         a.v -= impulse * a.invMass;
         a.w -= cross(p - a.p, impulse) * a.invI;
     }
-    if (!b.isStatic() && !b.sleeping)
+    if (!b.is_static() && !b.sleeping)
     {
         b.v += impulse * b.invMass;
         b.w += cross(p - b.p, impulse) * b.invI;
@@ -174,10 +174,10 @@ void ContactWorld::step(std::span<Body *> bodies, double dt, Vec2 gravity)
     contacts_.clear();
     grid_.clear();
     pairs_.clear();
-    candidatePairs = 0;
+    candidate_pairs = 0;
     for (auto b : bodies)
     {
-        if (!b->isStatic() && !b->sleeping)
+        if (!b->is_static() && !b->sleeping)
             b->v += gravity * dt;
         double extent = b->circle ? b->radius : std::hypot(b->halfW, b->halfH);
         int x0 = int(std::floor((b->p.x - extent) / 8)), x1 = int(std::floor((b->p.x + extent) / 8)),
@@ -196,7 +196,7 @@ void ContactWorld::step(std::span<Body *> bodies, double dt, Vec2 gravity)
             for (size_t j = i + 1; j < cell.size(); j++)
             {
                 auto a = cell[i], b = cell[j];
-                if ((a->isStatic() && b->isStatic()) || (a->sleeping && b->sleeping))
+                if ((a->is_static() && b->is_static()) || (a->sleeping && b->sleeping))
                     continue;
                 if (pairs_.insert(pair(*a, *b)).second)
                 {
@@ -207,10 +207,10 @@ void ContactWorld::step(std::span<Body *> bodies, double dt, Vec2 gravity)
             }
     std::ranges::sort(candidates,
                       [](auto a, auto b) { return pair(*a.first, *a.second) < pair(*b.first, *b.second); });
-    candidatePairs = candidates.size();
+    candidate_pairs = candidates.size();
     for (auto [a, b] : candidates)
         collide(*a, *b);
-    contactCount = contacts_.size();
+    contact_count = contacts_.size();
     for (auto &c : contacts_)
     {
         auto &a = *c.a;
@@ -241,9 +241,9 @@ void ContactWorld::step(std::span<Body *> bodies, double dt, Vec2 gravity)
                    ia = a.sleeping ? 0 : a.invI, ib = b.sleeping ? 0 : b.invI;
             double kn = ma + mb + ia * std::pow(cross(ra, c.n), 2) + ib * std::pow(cross(rb, c.n), 2),
                    kt = ma + mb + ia * std::pow(cross(ra, t), 2) + ib * std::pow(cross(rb, t), 2);
-            p.massN = kn > 0 ? 1 / kn : 0;
-            p.massT = kt > 0 ? 1 / kt : 0;
-            p.vn0 = dot(b.velocityAt(p.p) - a.velocityAt(p.p), c.n);
+            p.mass_n = kn > 0 ? 1 / kn : 0;
+            p.mass_t = kt > 0 ? 1 / kt : 0;
+            p.vn0 = dot(b.velocity_at(p.p) - a.velocity_at(p.p), c.n);
             p.bias = -.2 / dt * std::max(0., p.penetration - .005);
             if (reuse)
             {
@@ -267,14 +267,14 @@ void ContactWorld::step(std::span<Body *> bodies, double dt, Vec2 gravity)
             for (int k = 0; k < c.count; k++)
             {
                 auto &p = c.p[k];
-                double vn = dot(b.velocityAt(p.p) - a.velocityAt(p.p), c.n),
+                double vn = dot(b.velocity_at(p.p) - a.velocity_at(p.p), c.n),
                        push = std::max(p.vn0 < -1 ? -e * p.vn0 : 0., -p.bias);
-                double nn = std::max(0., p.normal - (vn - push) * p.massN);
+                double nn = std::max(0., p.normal - (vn - push) * p.mass_n);
                 applyContact(a, b, p.p, c.n * (nn - p.normal));
                 p.normal = nn;
                 auto t = perpendicular(c.n);
-                double vt = dot(b.velocityAt(p.p) - a.velocityAt(p.p), t),
-                       nt = clamp(p.tangent - vt * p.massT, -friction * nn, friction * nn);
+                double vt = dot(b.velocity_at(p.p) - a.velocity_at(p.p), t),
+                       nt = clamp(p.tangent - vt * p.mass_t, -friction * nn, friction * nn);
                 applyContact(a, b, p.p, t * (nt - p.tangent));
                 p.tangent = nt;
             }
@@ -288,7 +288,7 @@ void ContactWorld::step(std::span<Body *> bodies, double dt, Vec2 gravity)
             w.impulses[k] = {c.p[k].normal, c.p[k].tangent};
     }
     for (auto b : bodies)
-        if (!b->isStatic() && !b->sleeping)
+        if (!b->is_static() && !b->sleeping)
         {
             b->p += b->v * dt;
             b->angle = wrap(b->angle + b->w * dt);

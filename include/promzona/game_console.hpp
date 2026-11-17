@@ -11,13 +11,13 @@ namespace Promzona
     {
         std::wstring input_, draft_;
         std::vector<std::wstring> recall_, output_;
-        size_t caret_{}, historyPos_{}, scroll_{};
+        size_t caret_{}, history_pos_{}, scroll_{};
         void write(std::wstring line);
 
       public:
         const std::wstring &input() const { return input_; }
         size_t caret() const { return caret_; }
-        std::span<const std::wstring> visibleLines(size_t count) const;
+        std::span<const std::wstring> visible_lines(size_t count) const;
         void insert(wchar_t c);
         void move(int delta);
         void erase(bool backwards);

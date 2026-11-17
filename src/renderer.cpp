@@ -676,7 +676,7 @@ struct Renderer::Impl
     std::array<Image, 7> weaponArt;
     Minimap minimap;
     HudDamage hudDamage;
-    std::array<GLuint, HudDamage::textureCount> hudTextures{};
+    std::array<GLuint, HudDamage::texture_count> hudTextures{};
     std::size_t hudTextureSlot{};
     GLuint hudUploadBuffer{};
     struct HudRegion
@@ -846,7 +846,7 @@ struct Renderer::Impl
                 throw std::runtime_error("Sun shadow framebuffer incomplete");
         }
         BindFramebuffer(FRAMEBUFFER, 0);
-        const auto density = cloudMap(512);
+        const auto density = cloud_map(512);
         glGenTextures(1, &cloudDensity);
         glBindTexture(GL_TEXTURE_2D, cloudDensity);
         glTexImage2D(GL_TEXTURE_2D, 0, R8, 512, 512, 0, GL_RED, GL_UNSIGNED_BYTE, density.data());
@@ -898,7 +898,7 @@ struct Renderer::Impl
         {
             auto name = i ? "woman" : "man";
             auto s = load_skin(root / (std::string("Models/PeopleSkinned/") + name + ".cityskin"));
-            markStandingPose(s);
+            mark_standing_pose(s);
             skin[i].upload(s.mesh);
             patrolCap[i].upload(policeCap(s));
             poses[i] = s.poses;
@@ -1233,7 +1233,7 @@ struct Renderer::Impl
         {
             auto file = dir / (std::string("ambulance-") + name + ".glb");
             auto mesh = load_glb(file);
-            auto image = uploadTexture(file, decode_image(mesh.embeddedColor));
+            auto image = uploadTexture(file, decode_image(mesh.embedded_color));
             // The articulated exporter stores wheel membership in the palette V coordinate.
             std::vector<MeshData> groups(model.wheels.size() + 1);
             for (auto index : mesh.indices)
@@ -1299,7 +1299,7 @@ struct Renderer::Impl
                 b.part = part.value("part", 0);
                 int mat = part.at("material");
                 b.color =
-                    data.embeddedColor.empty() ? white : uploadTexture(file, decode_image(data.embeddedColor));
+                    data.embedded_color.empty() ? white : uploadTexture(file, decode_image(data.embedded_color));
                 if (mat < 0 && j.value("farSurfaceAlpha", false))
                 {
                     b.surface = 14;
@@ -1913,13 +1913,13 @@ struct Renderer::Impl
         if (!detailAnchor || (*detailAnchor - eye).length() >= 4)
         {
             detailAnchor = eye;
-            detailCandidates = detail_order(cells, eye, detailPrefetchDistance);
+            detailCandidates = detail_order(cells, eye, detail_prefetch_distance);
             detailIdle = false;
             evict(0);
         }
         else if (detailIdle)
             return;
-        if (pendingDetail && cells[pendingDetail->id].distance(eye) > detailKeepDistance)
+        if (pendingDetail && cells[pendingDetail->id].distance(eye) > detail_keep_distance)
         {
             pendingDetail.reset();
             pendingBatches.clear();
@@ -1930,7 +1930,7 @@ struct Renderer::Impl
         for (auto id : detailCandidates)
         {
             workingSet += measuredDetailBytes[id];
-            if (workingSet > detailGpuBudget)
+            if (workingSet > detail_gpu_budget)
                 break; // Do not continually replace nearer cells with farther ones at the budget limit.
             if (!detailResidency->contains(id) && (!pendingDetail || pendingDetail->id != id))
                 wanted.push_back(id);
@@ -1957,7 +1957,7 @@ struct Renderer::Impl
         while (pendingSurface < SurfaceCount)
         {
             auto &mesh = pendingDetail->geometry[pendingSurface];
-            size_t bytes = meshBytes(mesh);
+            size_t bytes = mesh_bytes(mesh);
             double elapsed =
                 std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
             if (uploaded && (uploaded + bytes > 2 * 1024 * 1024 || elapsed >= 1.5))
@@ -2242,7 +2242,7 @@ struct Renderer::Impl
     {
         hudRegions.clear();
         hudPixelsUploaded = 0;
-        hudDamage.uploadRegions(hudTextureSlot, [&](int x, int y, int w, int h) {
+        hudDamage.upload_regions(hudTextureSlot, [&](int x, int y, int w, int h) {
             hudRegions.push_back({x, y, w, h, hudPixelsUploaded});
             hudPixelsUploaded += size_t(w) * h;
         });
@@ -2379,16 +2379,16 @@ std::string Renderer::sceneryStats() const
            " submitted_triangles=" + std::to_string(r.submittedTriangles) +
            " trees=" + std::to_string(r.treeCount) + " shadow_batches=" + std::to_string(r.shadowBatches) +
            " resident_mesh_MiB=" +
-           std::to_string((r.sceneryBytes + r.sectorBytes + stream.gpuBytes) / (1024 * 1024)) +
+           std::to_string((r.sceneryBytes + r.sectorBytes + stream.gpu_bytes) / (1024 * 1024)) +
            " base_MiB=" + std::to_string((r.sceneryBytes + r.sectorBytes) / (1024 * 1024)) +
-           " detail_MiB=" + std::to_string(stream.gpuBytes / (1024 * 1024)) +
-           " detail_cells=" + std::to_string(stream.residentCells) + "/" + std::to_string(stream.totalCells) +
+           " detail_MiB=" + std::to_string(stream.gpu_bytes / (1024 * 1024)) +
+           " detail_cells=" + std::to_string(stream.resident_cells) + "/" + std::to_string(stream.total_cells) +
            " hud_upload_pixels=" + std::to_string(r.hudPixelsUploaded) + "/" +
            std::to_string(size_t(r.width) * r.height) + " effect_quads=" + std::to_string(r.effects.size()) +
            " effect_draws=" + std::to_string(r.effects.size() != 0) +
            " detail_uploads=" + std::to_string(stream.uploads) +
            " evictions=" + std::to_string(stream.evictions) +
-           " peak_detail_MiB=" + std::to_string(stream.peakGpuBytes / (1024 * 1024)) +
+           " peak_detail_MiB=" + std::to_string(stream.peak_gpu_bytes / (1024 * 1024)) +
            " max_detail_upload_ms=" + std::to_string(stream.maxUploadMs) +
            " sectors=" + std::to_string(stream.residentSectors) + "/" + std::to_string(stream.totalSectors) +
            " sector_uploads=" + std::to_string(stream.sectorUploads) +
@@ -2564,7 +2564,7 @@ void Renderer::prepare(const World &world)
                                                         : .22f),
                                     TreeKind(species),
                                     std::uint32_t(719 + variant * 4321)};
-                appendTree(data, prototype, lod != 0);
+                append_tree(data, prototype, lod != 0);
                 auto &model = r.treeModels[(species * 3 + variant) * 2 + lod];
                 for (int part = 0; part < 2; ++part)
                 {
@@ -2594,7 +2594,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     ActiveTexture(TEXTURE0);
     float day = float(world.clock.daylight()), rain = float(world.rain);
     // The sky and the haze of the managed game for this hour and weather.
-    const auto air = Atmosphere::create(world.rain, world.clock.daylight(), world.clock.sunHeight(),
+    const auto air = Atmosphere::create(world.rain, world.clock.daylight(), world.clock.sun_height(),
                                         world.wetness, world.clock.hour > 12);
     const Vec3 fog = air.horizon;
 
@@ -2609,7 +2609,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     const float farPlane = std::max(650.f, range + view.distance + 100.f);
     const auto projection = Mat4::perspective(float(pi / 3), float(w) / h, nearPlane, farPlane);
     auto vp = projection * Mat4::look_at(view.eye, view.target);
-    Vec3 sun{float(std::cos((world.clock.hour - 6) * pi / 12)), float(world.clock.sunHeight()), .3f};
+    Vec3 sun{float(std::cos((world.clock.hour - 6) * pi / 12)), float(world.clock.sun_height()), .3f};
     const Vec3 shadowFocus = view.weapon_sight ? view.eye : view.target;
     auto shadow = sunShadow(shadowFocus, sun);
     const bool farEnabled = view.shadows && r.graphics.quality > 1 && shadow.strength > 0.f;
@@ -2737,7 +2737,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     const Mat4 probeMatrix = probeFace < 0
                                  ? Mat4::identity()
                                  : ReflectionProbe::projection() * ReflectionProbe::view(probeEye, probeFace);
-    const Vec3 sunRay{float(std::cos((world.clock.hour - 6) * pi / 12)), float(world.clock.sunHeight()), .3f};
+    const Vec3 sunRay{float(std::cos((world.clock.hour - 6) * pi / 12)), float(world.clock.sun_height()), .3f};
     Uniform3f(r.uniform("uFog"), fog.x, fog.y, fog.z);
     Uniform3f(r.uniform("uZenith"), air.zenith.x, air.zenith.y, air.zenith.z);
     Uniform4f(r.uniform("uAir"), air.density, air.heightScale, air.golden, float(world.wetness));
@@ -2997,7 +2997,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             auto centre = t.foot + Vec3{0, t.height * .55f, 0};
             // Conservative sphere covers both LODs, the crown and the wind deformation.
             float radius = t.height * .8f, distance = (centre - eye).length();
-            if (distance - radius > std::min(float(treeDrawDistance), passRange) ||
+            if (distance - radius > std::min(float(tree_draw_distance), passRange) ||
                 !inPass(centre, radius))
                 continue;
             float angle = float(t.seed % 1000) * .01f;
@@ -3005,9 +3005,9 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 t.foot.x,        t.foot.y,        t.foot.z, t.height / 8,
                 std::sin(angle), std::cos(angle), angle,    float(t.seed % 97) / 97};
             int base = (std::to_underlying(t.kind) * 3 + int(t.seed % 3)) * 2;
-            if (!farPass && distance - radius < treeLodEnd)
+            if (!farPass && distance - radius < tree_lod_end)
                 r.treeInstances[base].push_back(instance);
-            if (farPass || distance + radius > treeLodStart)
+            if (farPass || distance + radius > tree_lod_start)
                 r.treeInstances[base + 1].push_back(instance);
         }
         auto drawTrees = [&](bool leafPass)
@@ -3352,12 +3352,12 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         if (world.controlledCar < 0)
         {
             auto gun = world.aiming ? world.inventory.active() : nullptr;
-            person(world.player, heroAppearance(), -world.player.angle, world.playerDistance,
+            person(world.player, hero_appearance(), -world.player.angle, world.playerDistance,
                    world.playerKnockedUntil > world.time, true, nullptr, gun ? gun->id : WeaponId::none,
                    world.playerScooter >= 0);
         }
         if (world.transitPassenger())
-            person(world.player, heroAppearance(), -world.player.angle, 0, false, true,
+            person(world.player, hero_appearance(), -world.player.angle, 0, false, true,
                    &world.cars[world.controlledCar]);
         // Light road vehicles use the existing seated rig. Only nearby cabins
         // need a driver mesh; full-size opaque and public-service cabins have their own layout.
@@ -3380,7 +3380,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             seated.height = car.body.height + .14;
             // Whoever the crew turns out to be once set down, at the wheel it is in uniform.
             person(seated,
-                   driving ? heroAppearance()
+                   driving ? hero_appearance()
                            : appearance(seated.id, car.id % 2,
                                         car.kind == 3 || car.kind == 6 ? Person::Uniform::police
                                         : car.kind == 13 ? Person::Uniform::fsb
@@ -3705,7 +3705,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     if (post)
         // Contact shading follows the quality setting, as in the managed game: none at
         // the lowest, eight samples at the middle one and twelve at the highest.
-        r.post.present(w, h, day, rain, float(world.clock.sunHeight()), r.graphics.bloom,
+        r.post.present(w, h, day, rain, float(world.clock.sun_height()), r.graphics.bloom,
                        {projection.m[0], projection.m[5], nearPlane, farPlane,
                         r.graphics.quality > 1   ? 12
                         : r.graphics.quality > 0 ? 8
@@ -3882,7 +3882,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         }
         // The street has a line of its own: beside the clock it ran under the key hints.
         if (my - 36 >= energyTop + 30)
-            r.text(mx, my - 36, streetAt(focus, World::nodes, World::spacing), rgb(196, 205, 188));
+            r.text(mx, my - 36, street_at(focus, World::nodes, World::spacing), rgb(196, 205, 188));
         r.minimap.copy_view(focus, r.mapPixels);
         r.hud.blit(mx, my, ms, ms, r.mapPixels.data());
         auto map = [&](Vec2 p)
@@ -3996,7 +3996,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             const auto &line = world->lines[car.line];
             const bool stopped = car.dwell > 0;
             const int stop =
-                stopped ? (car.nextStop + int(line.stops.size()) - 1) % int(line.stops.size()) : car.nextStop;
+                stopped ? (car.next_stop + int(line.stops.size()) - 1) % int(line.stops.size()) : car.next_stop;
             const auto title =
                 (car.kind == 9 ? L"Трамвай №" : L"Троллейбус №") + std::to_wstring(car.line + 1);
             const auto label = world->transitExitRequested ? L"Выход на остановке "
@@ -4041,7 +4041,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
                 status = L"Скройтесь от преследования";
             else
                 status += L"   " + std::to_wstring(int((world->jobTarget() - focus).length())) + L" м   " +
-                          streetAt(world->jobTarget(), World::nodes, World::spacing);
+                          street_at(world->jobTarget(), World::nodes, World::spacing);
             if (j.series)
                 status = std::to_wstring(world->seriesStage + 1) + L"/3   " + status;
             std::wstring details = L"$" + std::to_wstring(world->expectedPay());
@@ -4114,7 +4114,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         r.text(16, 8, L"КОНСОЛЬ   ·   help   ·   ↑↓ история   ·   Tab дополнить   ·   PgUp/PgDn журнал",
                rgb(169, 195, 178));
         int y = 44;
-        for (const auto &line : console->visibleLines(size_t((height - 89) / 24)))
+        for (const auto &line : console->visible_lines(size_t((height - 89) / 24)))
         {
             r.text(18, y, line, rgb(224, 222, 201));
             y += 24;

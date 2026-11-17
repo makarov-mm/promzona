@@ -70,24 +70,24 @@ std::vector<float> read_wave(const std::filesystem::path &path)
     }
     if (rate < 8000 || rate > 192000 || size < 2 || size % 2)
         throw std::runtime_error("Invalid WAV format");
-    size_t count = size / 2, output = count * AudioMixer::sampleRate / rate;
+    size_t count = size / 2, output = count * AudioMixer::sample_rate / rate;
     std::vector<float> samples(output);
     for (size_t i = 0; i < output; i++)
     {
-        size_t at = std::min(count - 1, i * rate / AudioMixer::sampleRate);
+        size_t at = std::min(count - 1, i * rate / AudioMixer::sample_rate);
         samples[i] = static_cast<std::int16_t>(u16(data + at * 2)) / 32768.f;
     }
     return samples;
 }
 AudioMixer::AudioMixer(const std::filesystem::path &directory)
 {
-    voices_.reserve(maxVoices);
+    voices_.reserve(max_voices);
     if (!directory.empty() && std::filesystem::is_directory(directory))
         for (auto &entry : std::filesystem::directory_iterator(directory))
             if (entry.path().extension() == ".wav")
-                addClip(entry.path().stem().string(), read_wave(entry.path()));
+                add_clip(entry.path().stem().string(), read_wave(entry.path()));
 }
-void AudioMixer::addClip(std::string name, std::vector<float> samples)
+void AudioMixer::add_clip(std::string name, std::vector<float> samples)
 {
     if (samples.empty() || std::ranges::any_of(samples, [](float f) { return !std::isfinite(f); }))
         throw std::invalid_argument("Empty or invalid audio clip");
@@ -102,7 +102,7 @@ void AudioMixer::addClip(std::string name, std::vector<float> samples)
 }
 void AudioMixer::trim()
 {
-    while (voices_.size() >= maxVoices)
+    while (voices_.size() >= max_voices)
     {
         auto it = std::ranges::find_if(voices_, [](auto &v) { return !v.loop; });
         if (it == voices_.end())
@@ -128,12 +128,12 @@ void AudioMixer::play(const SoundEvent &event)
     v.pan = spatial_audio(v.ui ? listener_ : v.source, listener_, heading_, v.gain);
     voices_.push_back(v);
 }
-void AudioMixer::update(World &world, double cameraHeading)
+void AudioMixer::update(World &world, double camera_heading)
 {
     {
         std::lock_guard lock(mutex_);
         listener_ = world.position();
-        heading_ = cameraHeading;
+        heading_ = camera_heading;
         std::erase_if(voices_,
                       [&](Voice &voice)
                       {
@@ -230,30 +230,30 @@ void AudioMixer::update(World &world, double cameraHeading)
             play(event);
     world.sounds.clear();
 }
-void AudioMixer::setLevels(AudioLevels levels)
+void AudioMixer::set_levels(AudioLevels levels)
 {
     std::lock_guard lock(mutex_);
     levels_.master = std::clamp(levels.master, 0, 100);
     levels_.radio = std::clamp(levels.radio, 0, 50);
 }
-void AudioMixer::nextTrack()
+void AudioMixer::next_track()
 {
     std::lock_guard lock(mutex_);
     track_ = (track_ + 1) % tracks_.size();
-    trackCursor_ = 0;
+    track_cursor_ = 0;
 }
-void AudioMixer::pause(bool paused, bool worldPaused)
+void AudioMixer::pause(bool paused, bool world_paused)
 {
     std::lock_guard lock(mutex_);
     playing_ = !paused;
-    worldPaused_ = worldPaused;
+    worldPaused_ = world_paused;
 }
 void AudioMixer::clear()
 {
     std::lock_guard lock(mutex_);
     voices_.clear();
 }
-size_t AudioMixer::voiceCount()
+size_t AudioMixer::voice_count()
 {
     std::lock_guard lock(mutex_);
     return voices_.size();
@@ -293,19 +293,19 @@ void AudioMixer::mix(std::span<float> stereo)
             if (!tracks_[track_])
                 track_ = 1 - track_;
             const auto &music = *tracks_[track_];
-            size_t n = std::min(music.size() - trackCursor_, stereo.size() / 2 - frame);
+            size_t n = std::min(music.size() - track_cursor_, stereo.size() / 2 - frame);
             for (size_t i = 0; i < n; ++i)
             {
-                float value = music[trackCursor_ + i] * (levels_.radio * .01f);
+                float value = music[track_cursor_ + i] * (levels_.radio * .01f);
                 stereo[2 * (frame + i)] += value;
                 stereo[2 * (frame + i) + 1] += value;
             }
             frame += n;
-            trackCursor_ += n;
-            if (trackCursor_ == music.size())
+            track_cursor_ += n;
+            if (track_cursor_ == music.size())
             {
                 track_ = 1 - track_;
-                trackCursor_ = 0;
+                track_cursor_ = 0;
             }
         }
     }

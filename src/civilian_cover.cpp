@@ -43,7 +43,7 @@ bool World::coverAllowsAim(Person &p, std::span<const Car *const> traffic, Vec2 
                 Body box = body;
                 box.halfW += clearance;
                 box.halfH += clearance;
-                return rayPrism(from, ray, y1, slope, box, length) <= length;
+                return ray_prism(from, ray, y1, slope, box, length) <= length;
             };
             for (const Car *car : traffic)
                 if ((!lineOfFire || &car->body != &target) && crosses(car->body))

@@ -87,20 +87,20 @@ void World::indexTraffic()
 // the last moment and go wherever they have to.
 void World::planExit(Car &car)
 {
-    if (car.plannedTo >= 0 || car.routePhase == 1 || car.responding || car.line >= 0 || !car.route)
+    if (car.planned_to >= 0 || car.routePhase == 1 || car.responding || car.line >= 0 || !car.route)
         return;
     const auto *call = car.kind == 4 ? ambulanceCall(int(car.id)) : nullptr;
     if ((call && call->stage == RescueStage::driving) || neighbours(car.routeTo).empty())
         return;
-    car.plannedTo = choose_next(car.routeTo, car.routeFrom);
+    car.planned_to = choose_next(car.routeTo, car.routeFrom);
     // A bus does not turn into a street it could leave only by turning round. It is too
     // long for the turn at the end, and stood across the street there.
-    if (car.kind == 5 && neighbours(car.plannedTo).size() < 2)
+    if (car.kind == 5 && neighbours(car.planned_to).size() < 2)
     {
         auto ways = neighbours(car.routeTo);
         std::erase_if(ways, [&](int n) { return n == car.routeFrom || neighbours(n).size() < 2; });
         if (!ways.empty())
-            car.plannedTo = ways[size_t(car.id + car.routeTo) % ways.size()];
+            car.planned_to = ways[size_t(car.id + car.routeTo) % ways.size()];
     }
 }
 
@@ -213,13 +213,13 @@ bool World::intersectionClear(const Car &car) const
         if (!free)
             return false;
     }
-    if (car.plannedTo < 0)
+    if (car.planned_to < 0)
         return true;
     // Do not block the box: beyond the crossing of the street the car leaves by there
     // must be room for all of it, or the queue ahead keeps it in the middle of the
     // junction and the cross traffic with it. A city of such junctions stops for good.
-    const Vec2 out = (nodePoint(car.plannedTo) - centre).unit(), side = perpendicular(out);
-    const double lane = CityLayout::laneOffset(levelEdge(node, car.plannedTo) ? 0 : car.laneIndex);
+    const Vec2 out = (nodePoint(car.planned_to) - centre).unit(), side = perpendicular(out);
+    const double lane = CityLayout::laneOffset(levelEdge(node, car.planned_to) ? 0 : car.laneIndex);
     const double need = 9.5 + 2 * car.body.halfH + 1.1;
     return each(need + 8,
                 [&](const Car &c)
@@ -242,9 +242,9 @@ double World::busStopLimit(Car &bus)
 {
     if (bus.destroyed || bus.driverless || bus.fireTime > 0 || bus.responding || int(bus.id) == controlledCar)
         return 100;
-    if (bus.busUntil > time)
+    if (bus.bus_until > time)
         return 0;
-    if (time < bus.nextBusStop || bus.routePhase != 0 || bus.routeTo != bus.routeFrom + nodes ||
+    if (time < bus.next_bus_stop || bus.routePhase != 0 || bus.routeTo != bus.routeFrom + nodes ||
         (layout.wide() && bus.laneIndex == 0) || busStopOfNode.empty())
         return 100;
     const int stop = busStopOfNode[size_t(bus.routeFrom)];
@@ -255,8 +255,8 @@ double World::busStopLimit(Car &bus)
         return 100;
     if (ahead < 1.5 && bus.body.v.length2() < .36)
     {
-        bus.busUntil = time + 4 + bus.id % 4;
-        bus.nextBusStop = bus.busUntil + 34;
+        bus.bus_until = time + 4 + bus.id % 4;
+        bus.next_bus_stop = bus.bus_until + 34;
         return 0;
     }
     return std::max(.5, std::sqrt(5.5 * std::max(0., ahead)));
@@ -266,7 +266,7 @@ bool World::tryChangeLane(Car &c, int destination)
 {
     if (!layout.wide() || !c.route || c.routePhase != 0 || c.body.roadLevel != 0 || c.line >= 0 ||
         c.responding || c.personal || c.summoned || destination < 0 || destination > 1 ||
-        c.laneIndex == destination || time < c.nextLaneDecision || c.destroyed || c.falling)
+        c.laneIndex == destination || time < c.next_lane_decision || c.destroyed || c.falling)
         return false;
     if (trafficCells.empty())
         indexTraffic();
@@ -320,8 +320,8 @@ bool World::tryChangeLane(Car &c, int destination)
     c.route = std::move(merge);
     c.routeDistance = 0;
     c.laneIndex = destination;
-    c.nextLaneDecision = time + 8;
-    c.blockedSince = -1;
+    c.next_lane_decision = time + 8;
+    c.blocked_since = -1;
     return true;
 }
 
@@ -335,7 +335,7 @@ void World::sensePursuit(Car &c, bool local)
 {
     const auto &b = c.body;
     const Vec2 nose = forward(c.heading());
-    c.blockedSince = -1;
+    c.blocked_since = -1;
     c.avoid = c.pullOut = 0;
     if (!local)
     {
@@ -357,7 +357,7 @@ void World::sensePursuit(Car &c, bool local)
                        if (ahead > -b.halfH - other.body.halfH && ahead < 18 &&
                            std::abs(dot(gap, side)) < b.halfW + other.body.halfW + .5)
                        {
-                           c.trafficLimit = 12;
+                           c.traffic_limit = 12;
                            c.pullOut = -2.8;
                        }
                    }
@@ -421,7 +421,7 @@ void World::sensePursuit(Car &c, bool local)
                 }
             }
         c.avoid = steer;
-        c.trafficLimit = speed;
+        c.traffic_limit = speed;
         return;
     }
     // Along the street the same cost is paid in metres: the unit pulls out of its lane to
@@ -502,8 +502,8 @@ void World::sensePursuit(Car &c, bool local)
     // below four for a car.
     for (size_t k = 0; k < count; ++k)
         if (mine > shadows[k].from + .3 && mine < shadows[k].to - .3 && shadows[k].gap > -1)
-            c.trafficLimit =
-                std::min(c.trafficLimit, shadows[k].walker ? 5. : pace(shadows[k].gap - shadows[k].closing));
+            c.traffic_limit =
+                std::min(c.traffic_limit, shadows[k].walker ? 5. : pace(shadows[k].gap - shadows[k].closing));
 }
 
 void World::senseTraffic(Car &c, bool local)
@@ -511,8 +511,8 @@ void World::senseTraffic(Car &c, bool local)
     if (trafficCells.empty())
         indexTraffic();
     const double interval = local ? .15 : .38;
-    c.senseAt = time + interval + (c.id % 7) * .012;
-    c.trafficLimit = 100;
+    c.sense_at = time + interval + (c.id % 7) * .012;
+    c.traffic_limit = 100;
     if (c.responding)
     {
         sensePursuit(c, local);
@@ -567,11 +567,11 @@ void World::senseTraffic(Car &c, bool local)
         const double leader = std::max(0., leaderSpeed);
         // Both stopping distance and time headway matter, in particular at a
         // stationary queue. A driver with no clearance must remain stationary.
-        c.trafficLimit = std::min({c.trafficLimit, std::sqrt(leader * leader + 5.5 * space),
+        c.traffic_limit = std::min({c.traffic_limit, std::sqrt(leader * leader + 5.5 * space),
                                    space / .95 + std::min(leader, space)});
     };
     if (c.kind == 5)
-        c.trafficLimit = std::min(c.trafficLimit, busStopLimit(c));
+        c.traffic_limit = std::min(c.traffic_limit, busStopLimit(c));
     const Car *blocker = nullptr;
     double nearest = 24;
     // In a turn the bonnet does not point where the car is going. Whoever is on the
@@ -793,20 +793,20 @@ void World::senseTraffic(Car &c, bool local)
     // A bus keeps its lane whatever stands in it.
     if (!blocker || c.routePhase != 0 || c.kind == 5)
     {
-        c.blockedSince = -1;
+        c.blocked_since = -1;
         return;
     }
     // A queue at the lights is not an obstacle: keeping eight metres behind its last car
     // halved what a block can hold and left the next car across the junction.
     // Whoever follows a bus to its stop goes round it at once.
-    const bool atStop = blocker->kind == 5 && blocker->busUntil > time;
+    const bool atStop = blocker->kind == 5 && blocker->bus_until > time;
     const bool queue = !blocker->destroyed && !blocker->driverless && blocker->line < 0 &&
                        blocker->routePhase == 0 && blocker->routeFrom == c.routeFrom &&
                        blocker->routeTo == c.routeTo && int(blocker->id) != controlledCar &&
                        !blocker->personal && !blocker->summoned && !atStop;
     if (queue)
     {
-        c.blockedSince = -1;
+        c.blocked_since = -1;
         return;
     }
     if (layout.wide() && c.route && blocker->body.v.length2() < 1 && c.route->length() - c.routeDistance >= 8)
@@ -818,12 +818,12 @@ void World::senseTraffic(Car &c, bool local)
         if (std::abs(offset - CityLayout::laneOffset(c.laneIndex)) < .7)
             limit(nearest - b.halfH - projectedExtent(blocker->body, dir) - 8, 0);
     }
-    if (c.blockedSince < 0)
-        c.blockedSince = time;
-    if (time < c.nextLaneDecision ||
-        (time - c.blockedSince < 2 && blocker->line < 0 && !blocker->destroyed && !atStop))
+    if (c.blocked_since < 0)
+        c.blocked_since = time;
+    if (time < c.next_lane_decision ||
+        (time - c.blocked_since < 2 && blocker->line < 0 && !blocker->destroyed && !atStop))
         return;
     if (random.next() >= .65 || !tryChangeLane(c, 1 - c.laneIndex))
-        c.nextLaneDecision = time + 1.5;
+        c.next_lane_decision = time + 1.5;
 }
 } // namespace Promzona

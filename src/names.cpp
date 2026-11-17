@@ -112,36 +112,36 @@ template <size_t N> const StreetName &pick(const std::array<StreetName, N> &name
 }
 } // namespace
 
-std::span<const StreetName> streetNames()
+std::span<const StreetName> street_names()
 {
     return streets;
 }
-std::span<const StreetName> avenueNames()
+std::span<const StreetName> avenue_names()
 {
     return avenues;
 }
-const StreetName &streetName(int column)
+const StreetName &street_name(int column)
 {
     return pick(streets, column);
 }
-const StreetName &avenueName(int row)
+const StreetName &avenue_name(int row)
 {
     return pick(avenues, row);
 }
-std::wstring streetLabel(int column)
+std::wstring street_label(int column)
 {
-    return L"ул. " + std::wstring(streetName(column).russian);
+    return L"ул. " + std::wstring(street_name(column).russian);
 }
-std::wstring avenueLabel(int row)
+std::wstring avenue_label(int row)
 {
-    return L"ул. " + std::wstring(avenueName(row).russian);
+    return L"ул. " + std::wstring(avenue_name(row).russian);
 }
-std::wstring streetAt(Vec2 point, int nodes, double spacing)
+std::wstring street_at(Vec2 point, int nodes, double spacing)
 {
     const double low = -(nodes - 1) * spacing * .5;
     const int i = clamp(int(std::lround((point.x - low) / spacing)), 0, nodes - 1);
     const int j = clamp(int(std::lround((point.z - low) / spacing)), 0, nodes - 1);
     const double dx = std::abs(point.x - (low + i * spacing)), dz = std::abs(point.z - (low + j * spacing));
-    return dx <= dz ? streetLabel(i) : avenueLabel(j);
+    return dx <= dz ? street_label(i) : avenue_label(j);
 }
 } // namespace Promzona

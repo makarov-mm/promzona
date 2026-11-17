@@ -18,8 +18,9 @@ namespace Promzona
     {
         std::vector<Vertex> vertices;
         std::vector<std::uint32_t> indices;
+
         // Material-baked far LODs keep their colour image inside the GLB.
-        std::vector<unsigned char> embeddedColor;
+        std::vector<unsigned char> embedded_color;
     };
 
     struct SkinData

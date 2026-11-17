@@ -215,7 +215,7 @@ namespace
             };
         }
 
-        const bool mounted = w.controlledCar >= 0 && !w.transitPassenger() && w.cars[w.controlledCar].mountedGun();
+        const bool mounted = w.controlledCar >= 0 && !w.transitPassenger() && w.cars[w.controlledCar].mounted_gun();
         const bool on_foot = w.controlledCar < 0 && w.playerScooter < 0 && a.cameraMode == 0;
         const bool aim = w.health > 0 && ((on_foot && w.inventory.active()) || (a.cameraMode == 0 && mounted && a.firing));
 
@@ -568,7 +568,7 @@ int main(int argc, char *argv[])
         };
 
         WindowOptions options;
-        options.title = "PROMZONA — C++23 migration";
+        options.title = "PROMZONA";
         options.fullscreen = !windowed;
         options.background = smoke;
         options.vsync = !profile;
@@ -610,7 +610,7 @@ int main(int argc, char *argv[])
                                : scenario == L"crowd" ? Density::full
                                : scenario == L"aerial" ? Density::max
                                : smoke                ? Density::low
-                                                      : loadDensity(densityFile, Density::max);
+                                                      : load_density(densityFile, Density::max);
             SaveSlots slots(app.saveFile);
             auto refreshSlots = [&]
             {
@@ -646,7 +646,7 @@ int main(int argc, char *argv[])
             AudioMixer audio(content / "Audio");
             const auto audioFile = app.saveFile.parent_path() / "audio-levels.txt";
             AudioLevels levels = smoke ? AudioLevels{} : AudioLevels::load(audioFile);
-            audio.setLevels(levels);
+            audio.set_levels(levels);
             AudioDevice audioOutput(audio);
             if (!audioOutput.error().empty())
                 log << audioOutput.error() << std::endl;
@@ -995,7 +995,7 @@ int main(int argc, char *argv[])
                     }
                 }
                 if (!app.console && app.pressed['M'])
-                    audio.nextTrack();
+                    audio.next_track();
                 if (!app.loading && app.menu)
                 {
                     auto rows = menus.rows(world != nullptr, graphics, displayMode, levels);
@@ -1117,24 +1117,24 @@ int main(int argc, char *argv[])
                                 levels.master = std::clamp(levels.master + 5 * step, 0, 100);
                             else
                                 levels.radio = std::clamp(levels.radio + 5 * step, 0, 50);
-                            audio.setLevels(levels);
+                            audio.set_levels(levels);
                             if ((!smoke || scenario == L"settings") && !levels.save(audioFile))
                                 app.message = L"Не удалось сохранить громкость.";
                             break;
                         case MenuItem::language:
                             menus.language = cycleLanguage(menus.language, step);
                             renderer.language(menus.language);
-                            if (!smoke && !saveLanguage(languageFile, menus.language))
+                            if (!smoke && !save_language(languageFile, menus.language))
                                 app.message = L"Не удалось сохранить язык.";
                             break;
                         case MenuItem::population:
-                            menus.population = cycleDensity(menus.population, step);
-                            if (!smoke && !saveDensity(densityFile, menus.population))
+                            menus.population = cycle_density(menus.population, step);
+                            if (!smoke && !save_density(densityFile, menus.population))
                                 app.message = L"Не удалось сохранить плотность населения.";
                             break;
                         case nextTrack:
                             if (activate)
-                                audio.nextTrack();
+                                audio.next_track();
                             break;
                         }
                     }
@@ -1651,7 +1651,7 @@ int main(int argc, char *argv[])
                                     c.body.height = world->terrain.height(p) + .8;
                                     c.body.angle = -heading;
                                     c.body.v = {};
-                                    c.nextStop = (stop + 1) % int(line.stops.size());
+                                    c.next_stop = (stop + 1) % int(line.stops.size());
                                     c.dwell = 3;
                                     world->player.p = line.curb(stop);
                                     world->player.height = world->terrain.height(world->player.p) + .85;
@@ -1754,7 +1754,7 @@ int main(int argc, char *argv[])
                                     if (world->ownedGarage != index || car.paint <= 0 || world->money != 100)
                                         throw std::runtime_error("Workshop purchase or repaint failed");
                                 }
-                                auto centre = site.centre + front * (shopping ? 1.5 : site.halfDepth + 1.7);
+                                auto centre = site.centre + front * (shopping ? 1.5 : site.half_depth + 1.7);
                                 auto eye =
                                     centre + front * (shopping ? 6.3 : 8.) + Vec2{shopping ? 3.3 : 6., 0};
                                 View view;
@@ -1993,11 +1993,11 @@ int main(int argc, char *argv[])
                                 const Building *selected = nullptr;
                                 auto forecourt = [&](const Building &b)
                                 {
-                                    const auto plan = planBuilding(b, world->terrain.height(b.p));
+                                    const auto plan = plan_building(b, world->terrain.height(b.p));
                                     const Vec3 n = plan.windowsOnZ ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
                                     const Vec3 side = cross({0, 1, 0}, n);
                                     const Vec3 front =
-                                        plan.origin + n * (plan.windowsOnZ ? plan.halfDepth : plan.halfWidth);
+                                        plan.origin + n * (plan.windowsOnZ ? plan.half_depth : plan.half_width);
                                     for (float along = 3; along <= 19; along += 1.5f)
                                         for (float across : {0.f, 7.f})
                                         {
@@ -2019,10 +2019,10 @@ int main(int argc, char *argv[])
                                         selected = &b;
                                 if (!selected)
                                     throw std::runtime_error("No facade review building");
-                                auto plan = planBuilding(*selected, world->terrain.height(selected->p));
+                                auto plan = plan_building(*selected, world->terrain.height(selected->p));
                                 Vec3 n = plan.windowsOnZ ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
                                 auto r = cross({0, 1, 0}, n);
-                                float depth = plan.windowsOnZ ? plan.halfDepth : plan.halfWidth;
+                                float depth = plan.windowsOnZ ? plan.half_depth : plan.half_width;
                                 auto front = plan.origin + n * depth;
                                 View v;
                                 v.eye = front + n * 17 + r * 7 + Vec3{0, 6, 0};
@@ -2484,7 +2484,7 @@ int main(int argc, char *argv[])
                             // The pointer is captured while hidden; its raw motion turns the view.
                             const auto [dx, dy] = window->takeMotion();
                             if (app.mouseLookReady && (world->controlledCar < 0 || world->transitPassenger() ||
-                                                       world->cars[world->controlledCar].mountedGun()))
+                                                       world->cars[world->controlledCar].mounted_gun()))
                             {
                                 app.look = wrap(app.look - dx * .003);
                                 app.lookPitch = clamp(app.lookPitch - dy * .003, -1.1, 1.1);
@@ -2723,10 +2723,10 @@ int main(int argc, char *argv[])
                             log << "Streaming camera " << phase << ": apartment at " << selected->p.x << ", "
                                 << selected->p.z << " (distance to district corner "
                                 << (selected->p - stops[phase]).length() << " m)" << std::endl;
-                        auto plan = planBuilding(*selected, world->terrain.height(selected->p));
+                        auto plan = plan_building(*selected, world->terrain.height(selected->p));
                         Vec3 normal = plan.windowsOnZ ? Vec3{0, 0, 1} : Vec3{1, 0, 0};
                         auto front =
-                            plan.origin + normal * (plan.windowsOnZ ? plan.halfDepth : plan.halfWidth);
+                            plan.origin + normal * (plan.windowsOnZ ? plan.half_depth : plan.half_width);
                         view.target = front + Vec3{0, 5, 0};
                         view.eye = front + normal * 23 + cross({0, 1, 0}, normal) * 12 + Vec3{0, 8, 0};
                         world->clock.set_hour(10);
@@ -2803,7 +2803,7 @@ int main(int argc, char *argv[])
                     if (smoke && scenario == L"streaming")
                     {
                         auto stats = renderer.streamingStats();
-                        if (stats.peakGpuBytes > 64 * 1024 * 1024 || stats.queued > 8 || stats.ready > 2 ||
+                        if (stats.peak_gpu_bytes > 64 * 1024 * 1024 || stats.queued > 8 || stats.ready > 2 ||
                             stats.sectorsQueued > SectorStream::maxQueued ||
                             stats.sectorsReady > SectorStream::maxReady)
                             throw std::runtime_error("Streaming exceeded its memory/queue budget");
@@ -2813,7 +2813,7 @@ int main(int argc, char *argv[])
                             throw std::runtime_error("Streaming left the ground at the camera unbuilt");
                         if (frames % 180 == 179)
                         {
-                            if (stats.residentCells == 0)
+                            if (stats.resident_cells == 0)
                                 throw std::runtime_error(
                                     "Streaming left a visited neighbourhood without details");
                             if (stats.nearestMissingSector <= float(graphics.distance) + sectorReach ||
@@ -2860,7 +2860,7 @@ int main(int argc, char *argv[])
                 if (smoke && recoveryScenario && world && !app.loading)
                 {
                     auto &car = world->cars.at(world->controlledCar);
-                    if (!rightingCaptured && car.recovering && car.rightingTime > 1.15)
+                    if (!rightingCaptured && car.recovering && car.righting_time > 1.15)
                     {
                         renderer.screenshot(smokeOutput / "righting.bmp", app.width, app.height);
                         rightingCaptured = true;
@@ -2904,14 +2904,14 @@ int main(int argc, char *argv[])
                         throw std::runtime_error("Passenger input did not board and request the next stop");
                     const auto &car = world->cars[world->controlledCar];
                     const auto &line = world->lines[car.line];
-                    int departure = (car.nextStop + int(line.stops.size()) - 1) % int(line.stops.size());
+                    int departure = (car.next_stop + int(line.stops.size()) - 1) % int(line.stops.size());
                     double travelled = std::remainder(car.along - line.stops[departure], line.track.length());
                     if (travelled < 1 || car.dwell > 0)
                         throw std::runtime_error("AI service failed to leave platform");
-                    requestedPlatform = line.curb(car.nextStop);
+                    requestedPlatform = line.curb(car.next_stop);
                     renderer.screenshot(smokeOutput / "onboard.bmp", app.width, app.height);
                     log << "Passenger seat=" << world->playerTransitSeat << " AI distance=" << travelled
-                        << " requested stop=" << car.nextStop + 1 << std::endl;
+                        << " requested stop=" << car.next_stop + 1 << std::endl;
                     if (smokeFrames > 610)
                         world->simulationSpeed = 3;
                 }
@@ -2921,8 +2921,8 @@ int main(int argc, char *argv[])
                     if (scenario == L"streaming")
                     {
                         auto stats = renderer.streamingStats();
-                        if (stats.evictions < 10 || stats.uploads <= stats.residentCells ||
-                            stats.residentCells >= stats.totalCells || stats.sectorEvictions < 20 ||
+                        if (stats.evictions < 10 || stats.uploads <= stats.resident_cells ||
+                            stats.resident_cells >= stats.total_cells || stats.sectorEvictions < 20 ||
                             stats.sectorUploads < 20)
                             throw std::runtime_error(
                                 "Streaming route did not exercise eviction and reloading");
@@ -3111,7 +3111,7 @@ int main(int argc, char *argv[])
                     }
                     if (scenario == L"console" &&
                         (!consoleReviewed || world->money != 35 || app.terminal.input() != L"wanted " ||
-                         app.terminal.visibleLines(6).size() != 6))
+                         app.terminal.visible_lines(6).size() != 6))
                         throw std::runtime_error("Console commands or keyboard editing failed");
                     if (scenario == L"job-board" && !app.jobsOpen)
                         throw std::runtime_error("Journal did not open");

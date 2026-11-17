@@ -159,7 +159,7 @@ MeshData load_glb(const std::filesystem::path &file)
             size_t offset = view.value("byteOffset", 0uz), length = view.at("byteLength");
             if (view.value("buffer", 0) != 0 || offset > bin.size() || length > bin.size() - offset)
                 throw std::runtime_error("GLB image out of bounds");
-            mesh.embeddedColor.assign(bin.begin() + offset, bin.begin() + offset + length);
+            mesh.embedded_color.assign(bin.begin() + offset, bin.begin() + offset + length);
         }
     }
     if (mesh.indices.empty())

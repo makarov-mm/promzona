@@ -56,20 +56,20 @@ namespace Promzona
                                   : fallback;
     }
 
-    Density cycleDensity(Density density, int step)
+    Density cycle_density(Density density, int step)
     {
         constexpr int levels = std::to_underlying(Density::max) + 1;
         return static_cast<Density>((std::to_underlying(density) + (step < 0 ? levels - 1 : 1)) % levels);
     }
 
-    Density loadDensity(const std::filesystem::path &file, Density fallback)
+    Density load_density(const std::filesystem::path &file, Density fallback)
     {
         std::ifstream in(file);
         std::string code;
         return in >> code ? density_from_code(code, fallback) : fallback;
     }
 
-    bool saveDensity(const std::filesystem::path &file, Density density)
+    bool save_density(const std::filesystem::path &file, Density density)
     {
         std::ofstream out(file);
         out << density_code(density) << '\n';
