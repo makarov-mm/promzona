@@ -1,8 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><TargetFramework>net10.0</TargetFramework><OutputType>Exe</OutputType><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
-  <ItemGroup>
-    <Compile Include="../../migration/reference/Apps/Promzona/Game/CityTraffic.Layout.cs" Link="CityLayout.cs" />
-    <Compile Include="../../migration/reference/Apps/Promzona/Game/CityPoint.cs" Link="CityPoint.cs" />
-    <Compile Include="../../migration/reference/Apps/Promzona/Game/CityCivicSites.cs" Link="CityCivicSites.cs" />
-  </ItemGroup>
-</Project>
