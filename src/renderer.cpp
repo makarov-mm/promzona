@@ -23,8 +23,12 @@
 #include "promzona/visibility.hpp"
 #include "promzona/sun_shadow.hpp"
 #include "promzona/detail_stream.hpp"
+#include "promzona/text.hpp"
+#include "ui_canvas.hpp"
+#include <optional>
 #include <chrono>
 #include <cstring>
+#include <cwchar>
 #include <fstream>
 #include <iomanip>
 #include <map>
@@ -678,10 +682,8 @@ struct Renderer::Impl
     size_t hudPixelsUploaded{};
     std::array<uint32_t, Minimap::size * Minimap::size> mapPixels{};
     int width{}, height{};
-    HDC uiDC{};
-    HBITMAP bitmap{}, oldBitmap{};
-    void *pixels{};
-    HFONT font{}, large{};
+    HudCanvas hud;
+    std::optional<Font> font, large, letteringFont;
     // Every caller names its uniform with a string literal, so the address of the name
     // finds its location without comparing text.
     std::unordered_map<const char *, GLint> locations;
@@ -877,11 +879,8 @@ struct Renderer::Impl
             quad(arrow, rim[i], rim[(i + 1) % 4], {}, {});
         quad(arrow, rim[3], rim[2], rim[1], rim[0]);
         marker.upload(arrow);
-        uiDC = CreateCompatibleDC(nullptr);
-        font = CreateFontW(-21, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
-                           CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Segoe UI");
-        large = CreateFontW(-55, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
-                            CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH, L"Segoe UI");
+        font.emplace(ui_font_file(root, false), 21);
+        large.emplace(ui_font_file(root, true), 55);
         for (int i = 0; i < 2; i++)
         {
             auto name = i ? "woman" : "man";
@@ -1194,39 +1193,18 @@ struct Renderer::Impl
     // has the proportions of the panel, so that a short name is not drawn out along it.
     GLuint lettering(const std::wstring &text, float aspect)
     {
-        HDC dc = CreateCompatibleDC(nullptr);
-        HFONT face =
-            CreateFontW(-56, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
-                        CLIP_DEFAULT_PRECIS, ANTIALIASED_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Arial");
-        auto oldFont = SelectObject(dc, face);
-        RECT bounds{};
-        DrawTextW(dc, text.c_str(), int(text.size()), &bounds, DT_CALCRECT | DT_SINGLELINE | DT_NOPREFIX);
-        const int h = int(bounds.bottom) + 8,
-                  w = (std::max(int(bounds.right) + 16, int(float(h) * aspect)) + 3) / 4 * 4;
-        BITMAPINFO info{};
-        info.bmiHeader = {sizeof(BITMAPINFOHEADER), w, -h, 1, 32, BI_RGB};
-        void *bits{};
-        HBITMAP canvas = CreateDIBSection(dc, &info, DIB_RGB_COLORS, &bits, nullptr, 0);
-        if (!canvas || !bits)
-            throw std::runtime_error("Cannot draw vehicle lettering");
-        auto previous = SelectObject(dc, canvas);
-        RECT all{0, 0, w, h};
-        FillRect(dc, &all, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
-        SetBkMode(dc, TRANSPARENT);
-        SetTextColor(dc, RGB(255, 255, 255));
-        DrawTextW(dc, text.c_str(), int(text.size()), &all,
-                  DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
-        GdiFlush();
+        if (!letteringFont)
+            letteringFont.emplace(lettering_font_file(root), 56);
+        const int h = letteringFont->height() + 8,
+                  w = (std::max(letteringFont->width(text) + 16, int(float(h) * aspect)) + 3) / 4 * 4;
+        HudCanvas canvas;
+        canvas.resize(w, h);
+        canvas.text_box(*letteringFont, 0, 0, w, h, text, rgb(255, 255, 255), true, false);
         Image image{unsigned(w), unsigned(h), std::vector<unsigned char>(size_t(w) * size_t(h) * 4, 255)};
-        const auto *drawn = static_cast<const unsigned char *>(bits);
+        const auto *drawn = canvas.data();
         for (size_t i = 0; i < size_t(w) * size_t(h); ++i)
-            image.rgba[i * 4 + 3] = drawn[i * 4 + 1];
-        SelectObject(dc, previous);
-        SelectObject(dc, oldFont);
-        DeleteObject(canvas);
-        DeleteObject(face);
-        DeleteDC(dc);
-        return uploadTexture(std::filesystem::path(L"lettering") / text, image);
+            image.rgba[i * 4 + 3] = static_cast<unsigned char>((drawn[i] >> 8) & 0xFF);
+        return uploadTexture(std::filesystem::path("lettering") / utf8_path(utf8(text)), image);
     }
     void loadAmbulance(Model &model, const std::filesystem::path &dir)
     {
@@ -1379,17 +1357,6 @@ struct Renderer::Impl
             DeleteProgram(ui);
         if (effectShader)
             DeleteProgram(effectShader);
-        if (bitmap)
-        {
-            SelectObject(uiDC, oldBitmap);
-            DeleteObject(bitmap);
-        }
-        if (uiDC)
-            DeleteDC(uiDC);
-        if (font)
-            DeleteObject(font);
-        if (large)
-            DeleteObject(large);
     }
     void buildFixtureModels()
     {
@@ -2212,13 +2179,7 @@ struct Renderer::Impl
         items.reserve(hints.size());
         const int left = w >= 650 ? 235 : 8;
         const int right = w - 14;
-        auto measure = [&](const std::wstring &s)
-        {
-            SIZE size{};
-            GetTextExtentPoint32W(uiDC, s.c_str(), int(s.size()), &size);
-            return int(size.cx);
-        };
-        auto old = SelectObject(uiDC, font);
+        auto measure = [&](const std::wstring &s) { return font->width(s); };
         int row = 0, cursor = left + 9;
         for (const auto &hint : hints)
         {
@@ -2232,18 +2193,17 @@ struct Renderer::Impl
             items.push_back({cursor, row, cap});
             cursor += hintWidth + 17;
         }
-        SelectObject(uiDC, old);
         int top = h - 18 - (row + 1) * 33 - 4;
-        rect(left, top, right - left, (row + 1) * 33 + 4, RGB(14, 23, 21));
-        rect(left, top, right - left, 2, RGB(83, 124, 94));
+        rect(left, top, right - left, (row + 1) * 33 + 4, rgb(14, 23, 21));
+        rect(left, top, right - left, 2, rgb(83, 124, 94));
         for (const auto &[hint, item] : std::views::zip(hints, items))
         {
             auto [x, line, cap] = item;
             int y = top + 5 + line * 33;
-            rect(x, y, cap, 27, RGB(122, 153, 128));
-            rect(x + 1, y + 1, cap - 2, 25, RGB(35, 49, 42));
-            draw(x + 6, y + 1, hint.key, RGB(226, 238, 217), false);
-            draw(x + cap + 6, y + 1, hint.action, RGB(205, 214, 203), false);
+            rect(x, y, cap, 27, rgb(122, 153, 128));
+            rect(x + 1, y + 1, cap - 2, 25, rgb(35, 49, 42));
+            draw(x + 6, y + 1, hint.key, rgb(226, 238, 217), false);
+            draw(x + cap + 6, y + 1, hint.action, rgb(205, 214, 203), false);
         }
         return top;
     }
@@ -2251,31 +2211,15 @@ struct Renderer::Impl
     {
         if (width == w && height == h)
             return;
-        if (bitmap)
-        {
-            SelectObject(uiDC, oldBitmap);
-            DeleteObject(bitmap);
-        }
-        BITMAPINFO info{};
-        info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-        info.bmiHeader.biWidth = w;
-        info.bmiHeader.biHeight = -h;
-        info.bmiHeader.biPlanes = 1;
-        info.bmiHeader.biBitCount = 32;
-        info.bmiHeader.biCompression = BI_RGB;
-        bitmap = CreateDIBSection(uiDC, &info, DIB_RGB_COLORS, &pixels, nullptr, 0);
-        if (!bitmap)
-            throw std::runtime_error("HUD allocation failed");
-        oldBitmap = static_cast<HBITMAP>(SelectObject(uiDC, bitmap));
+        hud.resize(w, h);
         width = w;
         height = h;
         hudDamage.resize(w, h);
         hudTextureSlot = 0;
-        std::memset(pixels, 0, size_t(w) * h * 4);
         for (GLuint texture : hudTextures)
         {
             glBindTexture(GL_TEXTURE_2D, texture);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, pixels);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, hud.data());
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         }
@@ -2295,7 +2239,7 @@ struct Renderer::Impl
             return;
 
         hudStaging.resize(hudPixelsUploaded);
-        const auto *source = static_cast<const std::uint32_t *>(pixels);
+        const auto *source = hud.data();
         for (const auto &area : hudRegions)
         {
             for (int row = 0; row < area.height; ++row)
@@ -2313,41 +2257,28 @@ struct Renderer::Impl
         BindBuffer(PIXEL_UNPACK_BUFFER, 0);
     }
     // Game text is authored in Russian and translated at the moment it is drawn.
-    void text(int x, int y, const std::wstring &s, COLORREF color = RGB(235, 231, 208), bool big = false)
+    void text(int x, int y, const std::wstring &s, Color color = rgb(235, 231, 208), bool big = false)
     {
         draw(x, y, localize(s, language), color, big);
     }
-    void draw(int x, int y, const std::wstring &s, COLORREF color, bool big)
+    void draw(int x, int y, const std::wstring &s, Color color, bool big)
     {
-        auto old = SelectObject(uiDC, big ? large : font);
-        SetBkMode(uiDC, TRANSPARENT);
-        SetTextColor(uiDC, color);
-        SIZE extent{};
-        GetTextExtentPoint32W(uiDC, s.c_str(), int(s.size()), &extent);
+        const Font &face = big ? *large : *font;
         // Include glyph overhang at either end of the run.
-        hudDamage.touch(x - 3, y - 1, extent.cx + 6, extent.cy + 2);
-        TextOutW(uiDC, x, y, s.c_str(), int(s.size()));
-        SelectObject(uiDC, old);
+        hudDamage.touch(x - 3, y - 1, face.width(s) + 6, face.height() + 2);
+        hud.text(face, x, y, s, color);
     }
-    void menuText(int x, int y, int boxWidth, int boxHeight, const std::wstring &source, COLORREF color,
+    void menuText(int x, int y, int boxWidth, int boxHeight, const std::wstring &source, Color color,
                   bool title = false)
     {
-        const auto s = localize(source, language);
-        RECT bounds{x, y, x + boxWidth, y + boxHeight};
-        auto old = SelectObject(uiDC, title ? large : font);
-        SetBkMode(uiDC, TRANSPARENT);
-        SetTextColor(uiDC, color);
-        DrawTextW(uiDC, s.c_str(), int(s.size()), &bounds,
-                  DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX);
+        hud.text_box(title ? *large : *font, x, y, boxWidth, boxHeight, localize(source, language), color, false,
+                     true);
         hudDamage.touch(x, y, boxWidth, boxHeight);
-        SelectObject(uiDC, old);
     }
-    void rect(int x, int y, int w, int h, COLORREF color)
+    void rect(int x, int y, int w, int h, Color color)
     {
-        RECT r{x, y, x + w, y + h};
         hudDamage.touch(x, y, w, h);
-        SetDCBrushColor(uiDC, color);
-        FillRect(uiDC, &r, static_cast<HBRUSH>(GetStockObject(DC_BRUSH)));
+        hud.fill(x, y, w, h, color);
     }
     // Blends an RGBA picture over what is already painted, averaging the source texels
     // under every HUD pixel. Black is the unpainted canvas, so the result is never black.
@@ -2357,9 +2288,8 @@ struct Renderer::Impl
         if (im.rgba.size() < size_t(sourceWidth) * sourceHeight * 4 || sourceWidth <= 0 ||
             sourceHeight <= 0 || w <= 0 || h <= 0)
             return;
-        GdiFlush();
         hudDamage.touch(x, y, w, h);
-        auto surface = static_cast<uint32_t *>(pixels);
+        auto surface = hud.data();
         for (int row = 0; row < h; ++row)
         {
             const int line = y + row;
@@ -3686,7 +3616,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
     glViewport(0, 0, w, h);
     r.canvas(w, h);
     r.hudDamage.begin();
-    auto surface = static_cast<uint32_t *>(r.pixels);
+    auto surface = r.hud.data();
     r.hudDamage.regions(false,
                         [&](int x, int y, int width, int height)
                         {
@@ -3696,9 +3626,9 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
     if (progress >= 0)
     {
         const int width = std::min(600, w - 32), x = (w - width) / 2;
-        r.text(x, h / 2 - 63, L"PROMZONA", RGB(220, 173, 96), true);
-        r.rect(x, h / 2, width, 15, RGB(37, 43, 40));
-        r.rect(x, h / 2, int(width * progress), 15, RGB(113, 151, 98));
+        r.text(x, h / 2 - 63, L"PROMZONA", rgb(220, 173, 96), true);
+        r.rect(x, h / 2, width, 15, rgb(37, 43, 40));
+        r.rect(x, h / 2, int(width * progress), 15, rgb(113, 151, 98));
         r.text(x, h / 2 + 26, L"Подготовка города");
     }
     else if (menu && front)
@@ -3708,21 +3638,21 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         const int x = layout.x, y = layout.y, width = layout.width, step = layout.step;
         const int bottom = y + int(rows.size()) * step;
         const int headingHeight = std::min(y - 4, 68);
-        r.rect(x - 12, y - headingHeight - 3, width + 24, bottom - y + headingHeight + 60, RGB(19, 27, 26));
+        r.rect(x - 12, y - headingHeight - 3, width + 24, bottom - y + headingHeight + 60, rgb(19, 27, 26));
         const wchar_t *heading = front->page == MenuPage::settings ? L"НАСТРОЙКИ"
                                  : front->page == MenuPage::home   ? L"PROMZONA"
                                                                    : L"ЗАМЕНА СЛОТА";
-        r.menuText(x + 10, y - headingHeight, width - 20, headingHeight, heading, RGB(231, 193, 122),
+        r.menuText(x + 10, y - headingHeight, width - 20, headingHeight, heading, rgb(231, 193, 122),
                    width >= 450 && headingHeight >= 60);
         for (int i = 0; i < int(rows.size()); ++i)
         {
             const auto &row = rows[i];
             const int top = y + i * step;
             const bool selected = i == front->focus;
-            r.rect(x, top, width, step - 2, selected ? RGB(57, 66, 59) : RGB(27, 36, 34));
+            r.rect(x, top, width, step - 2, selected ? rgb(57, 66, 59) : rgb(27, 36, 34));
             if (selected)
-                r.rect(x, top, 3, step - 2, RGB(231, 177, 94));
-            const COLORREF ink = row.enabled ? RGB(229, 231, 212) : RGB(140, 146, 137);
+                r.rect(x, top, 3, step - 2, rgb(231, 177, 94));
+            const Color ink = row.enabled ? rgb(229, 231, 212) : rgb(140, 146, 137);
             const int column = width * 53 / 100;
             r.menuText(x + 12, top, (row.value.empty() ? width : column) - 20, step - 2, row.label, ink);
             if (!row.value.empty())
@@ -3730,9 +3660,9 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         }
         if (world && front->page == MenuPage::home)
             r.text(x, bottom + 2, L"Автосохранение: слот " + std::to_wstring(front->active),
-                   RGB(190, 197, 177));
+                   rgb(190, 197, 177));
         r.menuText(x + 8, bottom + 22, width - 16, 30, L"↑↓ Выбор     ←→ Изменить     Enter ОК     Esc Назад",
-                   RGB(190, 197, 177));
+                   rgb(190, 197, 177));
     }
     if (world && !menu && progress < 0)
     {
@@ -3741,11 +3671,11 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         const Car *driven = world->controlledCar >= 0 && !world->transitPassenger()
                                 ? &world->cars[world->controlledCar]
                                 : nullptr;
-        r.rect(20, 20, 270, driven ? 112 : 70, RGB(12, 19, 18));
-        r.text(35, 28, L"$ " + std::to_wstring(world->money), RGB(154, 207, 144));
-        r.rect(35, 66, 230, 12, RGB(53, 57, 55));
+        r.rect(20, 20, 270, driven ? 112 : 70, rgb(12, 19, 18));
+        r.text(35, 28, L"$ " + std::to_wstring(world->money), rgb(154, 207, 144));
+        r.rect(35, 66, 230, 12, rgb(53, 57, 55));
         r.rect(35, 66, int(230 * clamp(world->health, 0., 1.)), 12,
-               world->godMode ? RGB(226, 196, 92) : RGB(117, 182, 103));
+               world->godMode ? rgb(226, 196, 92) : rgb(117, 182, 103));
         if (driven)
         {
             const double condition = clamp(driven->health, 0., 1.);
@@ -3753,10 +3683,10 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
                    driven->fireTime > 0
                        ? std::wstring(L"МАШИНА ГОРИТ")
                        : L"МАШИНА  " + std::to_wstring(int(std::round(condition * 100))) + L"%",
-                   driven->fireTime > 0 ? RGB(255, 112, 58) : RGB(166, 194, 217));
-            r.rect(35, 114, 230, 6, RGB(53, 57, 55));
+                   driven->fireTime > 0 ? rgb(255, 112, 58) : rgb(166, 194, 217));
+            r.rect(35, 114, 230, 6, rgb(53, 57, 55));
             r.rect(35, 114, int(230 * condition), 6,
-                   driven->fireTime > 0 ? RGB(230, 66, 26) : RGB(82, 145, 201));
+                   driven->fireTime > 0 ? rgb(230, 66, 26) : rgb(82, 145, 201));
         }
         // Weapon panel of the managed HUD: badge, name and rounds. A mounted gun never runs dry.
         const auto weapon = world->inventory.active();
@@ -3772,44 +3702,44 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             constexpr std::array weaponLabels{L"КУЛАКИ", L"ПИСТОЛЕТ", L"АВТОМАТ", L"БАЗУКА", L"ОГНЕМЁТ"};
             const size_t art = cannon ? 5 : mountedGun ? 6 : weapon ? size_t(weapon->id) : 0;
             const int px = beside ? 298 : 20, py = beside ? 20 : statusBottom;
-            r.rect(px, py, 270, 63, RGB(12, 19, 18));
-            r.rect(px, py, 270, 2, RGB(227, 166, 82));
+            r.rect(px, py, 270, 63, rgb(12, 19, 18));
+            r.rect(px, py, 270, 2, rgb(227, 166, 82));
             r.icon(px + 4, py + 10, 88, 44, r.weaponArt[art]);
             r.text(px + 100, py + 4,
                    cannon       ? L"ТАНКОВАЯ ПУШКА"
                    : mountedGun ? L"БОРТОВОЙ ПУЛЕМЁТ"
                                 : weaponLabels[weapon ? art : 0],
-                   RGB(245, 227, 189));
+                   rgb(245, 227, 189));
             r.draw(px + 100, py + 30,
                    cannon || mountedGun ? L"∞"
                    : weapon             ? std::to_wstring(world->inventory.ammo(weapon->id))
                                         : L"—",
-                   RGB(227, 166, 82), false);
+                   rgb(227, 166, 82), false);
         }
         const int energyTop = statusBottom + (armed && !beside ? 69 : 0);
         {
             // Real frame intervals, not simulation time.
             wchar_t rate[48];
-            swprintf_s(rate, L"%d FPS  ·  %.1f ms", int(fps), 1000. / std::max(1., fps));
-            r.draw(w - 250, 25, rate, RGB(235, 231, 208), false);
+            std::swprintf(rate, std::size(rate), L"%d FPS  ·  %.1f ms", int(fps), 1000. / std::max(1., fps));
+            r.draw(w - 250, 25, rate, rgb(235, 231, 208), false);
         }
         if (world->wantedLevel() > 0)
         {
-            r.text(w - 250, 60, L"В РОЗЫСКЕ", RGB(239, 159, 68));
+            r.text(w - 250, 60, L"В РОЗЫСКЕ", rgb(239, 159, 68));
             for (int i = 0; i < world->wantedLevel(); i++)
-                r.rect(w - 250 + i * 30, 90, 24, 10, RGB(228, 121, 44));
+                r.rect(w - 250 + i * 30, 90, 24, 10, rgb(228, 121, 44));
             if (world->patrol.hold > 0)
             {
-                r.text(w - 250, 108, L"Задержание", RGB(250, 199, 126));
-                r.rect(w - 250, 139, 174, 5, RGB(51, 45, 38));
+                r.text(w - 250, 108, L"Задержание", rgb(250, 199, 126));
+                r.rect(w - 250, 139, 174, 5, rgb(51, 45, 38));
                 double limit = world->controlledCar < 0 ? 1.5 : 2.5;
                 r.rect(w - 250, 139, int(174 * std::min(1., world->patrol.hold / limit)), 5,
-                       RGB(239, 159, 68));
+                       rgb(239, 159, 68));
             }
         }
         int mx = 22, my = h - 245;
         constexpr int ms = Minimap::size;
-        r.rect(mx - 5, my - 5, ms + 10, ms + 10, RGB(17, 28, 26));
+        r.rect(mx - 5, my - 5, ms + 10, ms + 10, rgb(17, 28, 26));
         auto focus = world->drone.active ? world->drone.position : world->position();
         if (world->layout.revision() == CityLayout::districtRevision)
         {
@@ -3825,30 +3755,30 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             }
             // In a very short window the labels would run into the status box.
             if (my - 64 >= energyTop + 30)
-                r.text(mx, my - 64, label, RGB(225, 218, 191));
+                r.text(mx, my - 64, label, rgb(225, 218, 191));
         }
         // The street has a line of its own: beside the clock it ran under the key hints.
         if (my - 36 >= energyTop + 30)
-            r.text(mx, my - 36, streetAt(focus, World::nodes, World::spacing), RGB(196, 205, 188));
+            r.text(mx, my - 36, streetAt(focus, World::nodes, World::spacing), rgb(196, 205, 188));
         r.minimap.copy_view(focus, r.mapPixels);
-        BITMAPINFO mapInfo{};
-        mapInfo.bmiHeader = {sizeof(BITMAPINFOHEADER), ms, -ms, 1, 32, BI_RGB};
-        SetDIBitsToDevice(r.uiDC, mx, my, ms, ms, 0, 0, 0, ms, r.mapPixels.data(), &mapInfo, DIB_RGB_COLORS);
+        r.hud.blit(mx, my, ms, ms, r.mapPixels.data());
         auto map = [&](Vec2 p)
         {
             Vec2 offset = Minimap::offset(p - focus);
-            return POINT{mx + ms / 2 + LONG(std::lround(offset.x)),
-                         my + ms / 2 + LONG(std::lround(offset.z))};
+            struct Point
+            {
+                int x, y;
+            };
+            return Point{mx + ms / 2 + int(std::lround(offset.x)), my + ms / 2 + int(std::lround(offset.z))};
         };
-        int saved = SaveDC(r.uiDC);
-        IntersectClipRect(r.uiDC, mx, my, mx + ms, my + ms);
+        r.hud.push_clip(mx, my, ms, ms);
         for (auto &c : world->cars)
         {
             auto p = map(c.body.p);
             // A bus, a tram and a trolleybus are the larger marks.
             const int half = c.kind == 5 || c.kind == 9 || c.kind == 10 ? 2 : 1;
             if (p.x > mx && p.x < mx + ms && p.y > my && p.y < my + ms)
-                r.rect(p.x - half, p.y - half, 2 * half + 1, 2 * half + 1, RGB(104, 157, 176));
+                r.rect(p.x - half, p.y - half, 2 * half + 1, 2 * half + 1, rgb(104, 157, 176));
         }
         for (const auto &pickup : world->pickups)
         {
@@ -3859,11 +3789,11 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
                 continue;
             if (pickup.health)
             {
-                r.rect(p.x - 2, p.y, 5, 1, RGB(125, 236, 172));
-                r.rect(p.x, p.y - 2, 1, 5, RGB(125, 236, 172));
+                r.rect(p.x - 2, p.y, 5, 1, rgb(125, 236, 172));
+                r.rect(p.x, p.y - 2, 1, 5, rgb(125, 236, 172));
             }
             else
-                r.rect(p.x - 1, p.y - 1, 3, 3, pickup.energy ? RGB(184, 225, 75) : RGB(243, 178, 68));
+                r.rect(p.x - 1, p.y - 1, 3, 3, pickup.energy ? rgb(184, 225, 75) : rgb(243, 178, 68));
         }
         if (world->job.kind == JobKind::none && world->controlledCar >= 0)
             for (auto hail : world->hailers)
@@ -3876,7 +3806,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
                 auto p = map(person.body.p);
                 if (p.x < mx || p.x >= mx + ms || p.y < my || p.y >= my + ms)
                     continue;
-                auto ink = RGB(84, 232, 179);
+                auto ink = rgb(84, 232, 179);
                 r.rect(p.x - 1, p.y - 4, 3, 2, ink);
                 r.rect(p.x - 3, p.y - 2, 2, 3, ink);
                 r.rect(p.x + 2, p.y - 2, 2, 3, ink);
@@ -3885,7 +3815,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         if (world->ownedGarage >= 0)
         {
             auto door = map(world->sites[world->ownedGarage].entrance);
-            auto ink = RGB(87, 237, 215);
+            auto ink = rgb(87, 237, 215);
             r.rect(door.x - 4, door.y - 3, 9, 2, ink);
             r.rect(door.x - 4, door.y - 1, 2, 5, ink);
             r.rect(door.x + 3, door.y - 1, 2, 5, ink);
@@ -3894,45 +3824,45 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         {
             Vec2 d = world->jobTarget() - focus;
             auto p = map(focus + d * (1 / std::max(1., std::max(std::abs(d.x), std::abs(d.z)) / 122.)));
-            r.rect(p.x - 4, p.y - 4, 9, 9, RGB(47, 42, 30));
-            r.rect(p.x - 2, p.y - 2, 5, 5, RGB(255, 189, 65));
+            r.rect(p.x - 4, p.y - 4, 9, 9, rgb(47, 42, 30));
+            r.rect(p.x - 2, p.y - 2, 5, 5, rgb(255, 189, 65));
         }
         if (world->drone.active)
         {
             auto roof = map(world->buildings[world->drone.targets[world->drone.scanned]].p);
             auto pilot = map(world->player.p);
-            r.rect(roof.x - 3, roof.y - 3, 7, 7, RGB(94, 241, 191));
-            r.rect(pilot.x - 2, pilot.y - 2, 5, 5, RGB(255, 255, 255));
+            r.rect(roof.x - 3, roof.y - 3, 7, 7, rgb(94, 241, 191));
+            r.rect(pilot.x - 2, pilot.y - 2, 5, 5, rgb(255, 255, 255));
         }
-        RestoreDC(r.uiDC, saved);
-        r.rect(mx + ms / 2 - 3, my + ms / 2 - 3, 7, 7, RGB(255, 189, 76));
+        r.hud.pop_clip();
+        r.rect(mx + ms / 2 - 3, my + ms / 2 - 3, 7, 7, rgb(255, 189, 76));
         double heading = world->drone.active         ? world->drone.heading
                          : world->controlledCar >= 0 ? world->cars[world->controlledCar].heading()
                                                      : -world->player.angle;
         Vec2 nose = Minimap::offset(forward(heading) * 12.);
         for (int k = 3; k <= 8; ++k)
             r.rect(mx + ms / 2 + int(std::lround(nose.x * k / 8)) - 1,
-                   my + ms / 2 + int(std::lround(nose.z * k / 8)) - 1, 3, 3, RGB(255, 200, 90));
-        r.rect(mx + 4, my + 4, 18, 23, RGB(20, 28, 25));
+                   my + ms / 2 + int(std::lround(nose.z * k / 8)) - 1, 3, 3, rgb(255, 200, 90));
+        r.rect(mx + 4, my + 4, 18, 23, rgb(20, 28, 25));
         r.text(mx + 6, my + 2, L"N");
         int hour = int(world->clock.hour), minute = int((world->clock.hour - hour) * 60);
         wchar_t time[32];
-        swprintf_s(time, L"%02d:%02d", hour, minute);
-        r.draw(mx, my + ms + 6, time, RGB(235, 231, 208), false);
+        std::swprintf(time, std::size(time), L"%02d:%02d", hour, minute);
+        r.draw(mx, my + ms + 6, time, rgb(235, 231, 208), false);
         if (world->drone.active)
         {
             const auto &d = world->drone;
             auto delta = world->buildings[d.targets[d.scanned]].p - d.position;
-            const auto mint = RGB(119, 237, 189);
+            const auto mint = rgb(119, 237, 189);
             const int left = w / 2 - 155;
-            r.rect(left, 22, 310, 81, RGB(17, 28, 26));
+            r.rect(left, 22, 310, 81, rgb(17, 28, 26));
             r.text(left + 12, 27, L"РАЗВЕДКА     АКБ " + std::to_wstring(int(std::ceil(d.battery))) + L"%",
                    mint);
             r.text(left + 12, 55,
                    L"Крыша " + std::to_wstring(d.scanned + 1) + L"/3   " +
                        std::to_wstring(int(delta.length())) + L" м",
                    mint);
-            r.rect(left + 12, 92, 286, 4, RGB(70, 94, 85));
+            r.rect(left + 12, 92, 286, 4, rgb(70, 94, 85));
             r.rect(left + 12, 92, int(286 * clamp(d.scanTime / 2., 0., 1.)), 4, mint);
             r.rect(w / 2 - 7, h / 2, 15, 1, mint);
             r.rect(w / 2, h / 2 - 7, 1, 15, mint);
@@ -3951,14 +3881,14 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
                                                            : L"Следующая остановка ";
             const auto status = label + std::to_wstring(stop + 1);
             const int left = w / 2 - 174;
-            r.rect(left, 22, 348, 62, RGB(18, 33, 32));
-            r.text(left + 12, 26, title, RGB(133, 225, 208));
+            r.rect(left, 22, 348, 62, rgb(18, 33, 32));
+            r.text(left + 12, 26, title, rgb(133, 225, 208));
             r.text(left + 12, 53, status);
         }
         if (r.weaponSight && !console && !jobsOpen && world->openMarket < 0)
         {
-            r.rect(w / 2 - 2, h / 2 - 2, 5, 5, RGB(28, 32, 29));
-            r.rect(w / 2 - 1, h / 2 - 1, 3, 3, RGB(243, 235, 209));
+            r.rect(w / 2 - 2, h / 2 - 2, 5, 5, rgb(28, 32, 29));
+            r.rect(w / 2 - 1, h / 2 - 1, 3, 3, rgb(243, 235, 209));
         }
         const auto hints = jobsOpen
             ? std::vector<ControlHint>{{L"1–8", L"Выбрать заказ"}, {L"J / Esc", L"Закрыть"}}
@@ -3967,7 +3897,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         if (world->energySeconds > 0)
             r.text(35, energyTop,
                    L"Энергия  " + std::to_wstring(int(std::ceil(world->energySeconds))) + L" с",
-                   RGB(93, 218, 226));
+                   rgb(93, 218, 226));
         if (world->job.kind != JobKind::none)
         {
             const auto &j = world->job;
@@ -4004,18 +3934,18 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
                     L"%   нужно " + std::to_wstring(int(std::round(world->deliveryHealth() * 100))) + L"%";
             else if (j.passenger() && j.acquired)
                 details += j.ride.scares == 0 ? L"   Пассажир спокоен" : L"   Пассажир испуган";
-            r.rect(235, hintTop - 69, 520, 63, RGB(17, 26, 24));
-            r.text(247, hintTop - 65, status, RGB(242, 194, 98));
-            r.text(247, hintTop - 37, details, RGB(202, 218, 201));
+            r.rect(235, hintTop - 69, 520, 63, rgb(17, 26, 24));
+            r.text(247, hintTop - 65, status, rgb(242, 194, 98));
+            r.text(247, hintTop - 37, details, rgb(202, 218, 201));
         }
         if (world->time < world->noticeUntil)
             r.text(235, hintTop - (world->job.kind != JobKind::none ? 100 : 35), world->notice,
-                   RGB(252, 206, 124));
+                   rgb(252, 206, 124));
         if (world->openMarket >= 0)
         {
             int left = std::max(12, w - 430), top = std::max(15, h / 2 - 122);
-            r.rect(left, top, 404, 244, RGB(24, 32, 29));
-            r.text(left + 20, top + 12, L"РЫНОК", RGB(244, 192, 103));
+            r.rect(left, top, 404, 244, rgb(24, 32, 29));
+            r.text(left + 20, top + 12, L"РЫНОК", rgb(244, 192, 103));
             std::array<std::wstring, 4> names{
                 world->inventory.owns(WeaponId::pistol) ? L"Пистолетные патроны ×30"
                                                         : L"Пистолет и 30 патронов",
@@ -4025,18 +3955,18 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             for (int i = 0; i < 4; ++i)
             {
                 int price = world->shop_price(static_cast<ShopItem>(i));
-                auto color = price > world->money ? RGB(159, 148, 139) : RGB(232, 229, 211);
+                auto color = price > world->money ? rgb(159, 148, 139) : rgb(232, 229, 211);
                 r.text(left + 20, top + 54 + 34 * i, L"[" + std::to_wstring(i + 1) + L"]  " + names[i],
                        color);
                 r.text(left + 330, top + 54 + 34 * i, L"$" + std::to_wstring(price), color);
             }
-            r.text(left + 20, top + 201, L"[E] Закрыть", RGB(161, 184, 165));
+            r.text(left + 20, top + 201, L"[E] Закрыть", rgb(161, 184, 165));
         }
         else if (jobsOpen)
         {
             int left = std::max(12, w / 2 - 254), top = std::max(10, h / 2 - 204);
-            r.rect(left, top, 508, 408, RGB(21, 30, 27));
-            r.text(left + 20, top + 12, L"ЗАКАЗЫ", RGB(244, 192, 103));
+            r.rect(left, top, 508, 408, rgb(21, 30, 27));
+            r.text(left + 20, top + 12, L"ЗАКАЗЫ", rgb(244, 192, 103));
             r.text(left + 20, top + 56, L"[1] Доставить автомобиль");
             r.text(left + 20, top + 90, L"[2] Устранить цель");
             r.text(left + 20, top + 124, L"[3] Отказаться от текущего заказа");
@@ -4050,30 +3980,29 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
                    L"Выполнено " + std::to_wstring(world->jobsCompleted) + L"   Серий " +
                        std::to_wstring(world->seriesCompleted) + L"   Заработано $" +
                        std::to_wstring(world->jobEarnings),
-                   RGB(182, 205, 181));
-            r.text(left + 20, top + 371, L"[J] Закрыть", RGB(148, 170, 151));
+                   rgb(182, 205, 181));
+            r.text(left + 20, top + 371, L"[J] Закрыть", rgb(148, 170, 151));
         }
     }
     if (console)
     {
         int height = std::min(290, std::max(135, h / 2));
-        r.rect(0, 0, w, height, RGB(12, 20, 20));
+        r.rect(0, 0, w, height, rgb(12, 20, 20));
         r.text(16, 8, L"КОНСОЛЬ   ·   help   ·   ↑↓ история   ·   Tab дополнить   ·   PgUp/PgDn журнал",
-               RGB(169, 195, 178));
+               rgb(169, 195, 178));
         int y = 44;
         for (const auto &line : console->visibleLines(size_t((height - 89) / 24)))
         {
-            r.text(18, y, line, RGB(224, 222, 201));
+            r.text(18, y, line, rgb(224, 222, 201));
             y += 24;
         }
         auto prompt = console->input();
         prompt.insert(console->caret(), 1, L'│');
         // The player's own input is shown as typed.
-        r.draw(16, height - 36, L"> " + prompt, RGB(245, 196, 104), false);
+        r.draw(16, height - 36, L"> " + prompt, rgb(245, 196, 104), false);
     }
     else if (!message.empty())
-        r.text(25, menu ? h - 30 : 196, message, RGB(224, 172, 91));
-    GdiFlush(); // Finish drawing into the DIB before OpenGL reads its memory.
+        r.text(25, menu ? h - 30 : 196, message, rgb(224, 172, 91));
     frame_trace.enter(FrameTrace::hudUpload);
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
@@ -4097,21 +4026,32 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
 void Renderer::screenshot(const std::filesystem::path &file, int w, int h)
 {
     std::vector<unsigned char> pixels(size_t(w) * h * 4);
-    glReadPixels(0, 0, w, h, 0x80e1, GL_UNSIGNED_BYTE, pixels.data());
-    BITMAPFILEHEADER fh{};
-    BITMAPINFOHEADER ih{};
-    fh.bfType = 0x4d42;
-    fh.bfOffBits = sizeof fh + sizeof ih;
-    fh.bfSize = fh.bfOffBits + DWORD(pixels.size());
-    ih.biSize = sizeof ih;
-    ih.biWidth = w;
-    ih.biHeight = h;
-    ih.biPlanes = 1;
-    ih.biBitCount = 32;
-    ih.biCompression = BI_RGB;
+    glReadPixels(0, 0, w, h, 0x80e1 /* GL_BGRA */, GL_UNSIGNED_BYTE, pixels.data());
+    // A bottom-up 32-bit BMP, written field by field so no structure packing is involved.
+    std::vector<unsigned char> header;
+    auto put = [&](std::uint32_t value, int bytes)
+    {
+        for (int i = 0; i < bytes; ++i)
+            header.push_back(static_cast<unsigned char>(value >> (8 * i)));
+    };
+    constexpr std::uint32_t headers = 14 + 40;
+    put(0x4d42, 2);
+    put(headers + std::uint32_t(pixels.size()), 4);
+    put(0, 4);
+    put(headers, 4);
+    put(40, 4);
+    put(std::uint32_t(w), 4);
+    put(std::uint32_t(h), 4);
+    put(1, 2);
+    put(32, 2);
+    put(0, 4); // BI_RGB
+    put(std::uint32_t(pixels.size()), 4);
+    put(0, 4);
+    put(0, 4);
+    put(0, 4);
+    put(0, 4);
     std::ofstream out(file, std::ios::binary);
-    out.write(reinterpret_cast<const char *>(&fh), sizeof fh);
-    out.write(reinterpret_cast<const char *>(&ih), sizeof ih);
+    out.write(reinterpret_cast<const char *>(header.data()), std::streamsize(header.size()));
     out.write(reinterpret_cast<const char *>(pixels.data()), std::streamsize(pixels.size()));
     if (!out)
         throw std::runtime_error("Screenshot write failed");

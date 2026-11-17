@@ -2,8 +2,6 @@
 #include "promzona/audio.hpp"
 #include <fstream>
 #include <iostream>
-#include <windows.h>
-#include <objbase.h>
 #include <exception>
 #include <stdexcept>
 
@@ -12,9 +10,6 @@ int main(int argc, char **argv)
 {
     if (argc != 2)
         return 2;
-    auto hr = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    if (FAILED(hr))
-        return 3;
     unsigned meshes = 0, skins = 0, images = 0, failures = 0, embedded = 0, waves = 0;
     try
     {
@@ -108,7 +103,6 @@ int main(int argc, char **argv)
         ++failures;
         std::cerr << e.what() << '\n';
     }
-    CoUninitialize();
     std::cout << meshes << " GLB, " << skins << " skins, " << images << " images, " << embedded
               << " embedded textures, " << waves << " WAV; " << failures << " failures\n";
     return failures ? 1 : 0;

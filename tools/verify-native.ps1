@@ -52,7 +52,9 @@ try {
     }
     $allowed=@('KERNEL32.dll','USER32.dll','GDI32.dll','ADVAPI32.dll','SHELL32.dll','ole32.dll',
         'OLEAUT32.dll','WINMM.dll','OPENGL32.dll','windowscodecs.dll','COMDLG32.dll','IMM32.dll',
-        'VERSION.dll','WS2_32.dll','bcrypt.dll','api-ms-win-core-synch-l1-2-0.dll')
+        'VERSION.dll','WS2_32.dll','bcrypt.dll','api-ms-win-core-synch-l1-2-0.dll',
+        # Statically linked SDL3: device enumeration for input and audio.
+        'SETUPAPI.dll','CFGMGR32.dll','HID.dll','dwmapi.dll','UxTheme.dll','SHLWAPI.dll')
     foreach($name in $imports){
         if($name -notin $allowed){throw "Unexpected runtime dependency: $name"}
     }

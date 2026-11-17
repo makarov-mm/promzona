@@ -8,12 +8,14 @@
 #include <chrono>
 #include <fstream>
 #include <future>
-#include <windows.h>
-#include <GL/gl.h>
+#include "platform.hpp"
+#include "promzona/gl.hpp"
+#include "promzona/text.hpp"
+#include <SDL3/SDL_main.h>
+#include <cstdlib>
+#include <deque>
 #include <random>
 #include <ranges>
-#include <shellapi.h>
-#include <shlobj.h>
 #include <thread>
 #include <format>
 #include <stdexcept>
@@ -24,7 +26,9 @@ namespace
 
     struct Application
     {
-        HWND window{};
+        GameWindow *window{};
+        // Synthetic input of the automated scenarios, handled with the next system events.
+        std::deque<InputEvent> posted;
         bool running{true}, active{true}, menu{true}, console{}, loading{}, cursorHidden{};
         bool keys[256]{}, pressed[256]{}, firing{};
         int width{1280}, height{720}, wheel{}, cameraMode{};
@@ -44,48 +48,26 @@ namespace
 
             cursorHidden = hidden;
 
-            if (hidden)
-                while (ShowCursor(FALSE) >= 0)
-                {
-                }
-            else
-                while (ShowCursor(TRUE) < 0)
-                {
-                }
+            if (window)
+                window->capturePointer(hidden);
         }
     };
 
-    LRESULT CALLBACK windowProc(HWND window, UINT msg, WPARAM w, LPARAM l)
+    void handle(Application *a, const InputEvent &e)
     {
-        Application *a = reinterpret_cast<Application *>(GetWindowLongPtrW(window, GWLP_USERDATA));
-
-        if (msg == WM_NCCREATE)
+        using T = InputEvent::Type;
+        const int w = e.a;
+        switch (e.type)
         {
-            a = static_cast<Application *>(reinterpret_cast<CREATESTRUCTW *>(l)->lpCreateParams);
-            SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(a));
-        }
-
-        if (!a)
-            return DefWindowProcW(window, msg, w, l);
-
-        switch (msg)
-        {
-        case WM_ERASEBKGND:
-        {
-            RECT r;
-            GetClientRect(window, &r);
-            FillRect(reinterpret_cast<HDC>(w), &r, static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH)));
-            return 1;
-        }
-        case WM_CLOSE:
+        case T::close:
             a->running = false;
-            return 0;
-        case WM_SIZE:
-            a->width = LOWORD(l);
-            a->height = HIWORD(l);
-            return 0;
-        case WM_ACTIVATEAPP:
-            a->active = w != 0;
+            return;
+        case T::resize:
+            a->width = e.a;
+            a->height = e.b;
+            return;
+        case T::focus:
+            a->active = e.a != 0;
             if (!a->active)
             {
                 std::ranges::fill(a->keys, false);
@@ -94,186 +76,88 @@ namespace
                 a->wheel = 0;
             }
             a->cursor(a->active && (a->loading || !a->menu) && !a->console);
-            return 0;
-        case WM_KEYDOWN:
-            if (a->console && w != VK_F1 && w != VK_ESCAPE && w != VK_OEM_3)
+            return;
+        case T::keyDown:
+            if (a->console && w != Key::f1 && w != Key::escape && w != Key::grave)
             {
                 switch (w)
                 {
-                case VK_UP:
+                case Key::up:
                     a->terminal.history(-1);
                     break;
-                case VK_DOWN:
+                case Key::down:
                     a->terminal.history(1);
                     break;
-                case VK_LEFT:
+                case Key::left:
                     a->terminal.move(-1);
                     break;
-                case VK_RIGHT:
+                case Key::right:
                     a->terminal.move(1);
                     break;
-                case VK_HOME:
+                case Key::home:
                     a->terminal.move(-160);
                     break;
-                case VK_END:
+                case Key::end:
                     a->terminal.move(160);
                     break;
-                case VK_DELETE:
+                case Key::del:
                     a->terminal.erase(false);
                     break;
-                case VK_BACK:
+                case Key::back:
                     a->terminal.erase(true);
                     break;
-                case VK_PRIOR:
+                case Key::pageUp:
                     a->terminal.scroll(6);
                     break;
-                case VK_NEXT:
+                case Key::pageDown:
                     a->terminal.scroll(-6);
                     break;
-                case VK_TAB:
+                case Key::tab:
                     a->terminal.complete();
                     break;
-                case VK_RETURN:
+                case Key::enter:
                     a->submissions.push_back(a->terminal.submit());
                     break;
                 }
-                return 0;
+                return;
             }
 
-            if (w < 256)
+            if (w > 0 && w < 256)
             {
                 if (!a->keys[w])
                     a->pressed[w] = true;
                 a->keys[w] = true;
             }
-            return 0;
-        case WM_KEYUP:
-            if (w < 256)
+            return;
+        case T::keyUp:
+            if (w > 0 && w < 256)
                 a->keys[w] = false;
-            return 0;
-        case WM_CHAR:
+            return;
+        case T::character:
             if (a->console && w != L'~' && w != L'`')
                 a->terminal.insert(static_cast<wchar_t>(w));
-            return 0;
-        case WM_MOUSEWHEEL:
+            return;
+        case T::wheel:
             if (a->console)
-                a->terminal.scroll(3 * GET_WHEEL_DELTA_WPARAM(w) / WHEEL_DELTA);
+                a->terminal.scroll(3 * e.a);
             else
-                a->wheel += GET_WHEEL_DELTA_WPARAM(w) / WHEEL_DELTA;
-            return 0;
-        case WM_MOUSEMOVE:
-            a->mouseX = static_cast<short>(LOWORD(l));
-            a->mouseY = static_cast<short>(HIWORD(l));
+                a->wheel += e.a;
+            return;
+        case T::mouseMove:
+            a->mouseX = e.a;
+            a->mouseY = e.b;
             a->pointerMoved = true;
-            return 0;
-        case WM_LBUTTONDOWN:
-            a->mouseX = static_cast<short>(LOWORD(l));
-            a->mouseY = static_cast<short>(HIWORD(l));
+            return;
+        case T::buttonDown:
+            a->mouseX = e.a;
+            a->mouseY = e.b;
             a->clicked = a->menu && !a->loading;
             a->firing = !a->menu && !a->loading && !a->console;
-            return 0;
-        case WM_LBUTTONUP:
+            return;
+        case T::buttonUp:
             a->firing = false;
-            return 0;
-        case WM_SETCURSOR:
-            if (a->cursorHidden)
-            {
-                SetCursor(nullptr);
-                return TRUE;
-            }
-            break;
+            return;
         }
-        return DefWindowProcW(window, msg, w, l);
-    }
-
-    struct Context
-    {
-        HWND window{};
-        HDC dc{};
-        HGLRC gl{};
-
-        explicit Context(HWND w, const bool vsync) : window(w), dc(GetDC(w))
-        {
-            PIXELFORMATDESCRIPTOR p{};
-            p.nSize = sizeof p;
-            p.nVersion = 1;
-            p.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-            p.iPixelType = PFD_TYPE_RGBA;
-            p.cColorBits = 32;
-            p.cDepthBits = 24;
-            p.cStencilBits = 8;
-            int format = ChoosePixelFormat(dc, &p);
-
-            if (!format || !SetPixelFormat(dc, format, &p))
-                throw std::runtime_error("Cannot select OpenGL pixel format");
-
-            HGLRC bootstrap = wglCreateContext(dc);
-
-            if (!bootstrap || !wglMakeCurrent(dc, bootstrap))
-                throw std::runtime_error("Cannot create OpenGL context");
-
-            using Create = HGLRC(WINAPI *)(HDC, HGLRC, const int *);
-            Create create = reinterpret_cast<Create>(wglGetProcAddress("wglCreateContextAttribsARB"));
-
-            if (create)
-            {
-                const int attributes[] = {0x2091, 3, 0x2092, 3, 0x9126, 1, 0};
-                gl = create(dc, nullptr, attributes);
-            }
-
-            wglMakeCurrent(nullptr, nullptr);
-            wglDeleteContext(bootstrap);
-
-            if (!gl || !wglMakeCurrent(dc, gl))
-                throw std::runtime_error("OpenGL 3.3 is required");
-
-            using Swap = BOOL(WINAPI *)(int);
-
-            if (auto swap = reinterpret_cast<Swap>(wglGetProcAddress("wglSwapIntervalEXT")))
-                swap(vsync ? 1 : 0);
-
-            glClearColor(0, 0, 0, 1);
-            glClear(GL_COLOR_BUFFER_BIT);
-            SwapBuffers(dc);
-        }
-
-        ~Context()
-        {
-            wglMakeCurrent(nullptr, nullptr);
-
-            if (gl)
-                wglDeleteContext(gl);
-
-            if (dc)
-                ReleaseDC(window, dc);
-        }
-    };
-
-    std::wstring wide(std::string_view s)
-    {
-        const int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), int(s.size()), nullptr, 0);
-        std::wstring r;
-
-        // The conversion writes straight into the string; what it could not convert is left out.
-        r.resize_and_overwrite(
-            n, [&](wchar_t *buffer, size_t size)
-            {
-                return MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), buffer, static_cast<int>(size));
-            });
-
-        return r;
-    }
-
-    std::string utf8(std::wstring_view s)
-    {
-        const int n = WideCharToMultiByte(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0, nullptr, nullptr);
-        std::string r;
-
-        r.resize_and_overwrite(n, [&](char *buffer, size_t size) {
-            return WideCharToMultiByte(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), buffer, static_cast<int>(size), nullptr, nullptr);
-        });
-
-        return r;
     }
 
     View camera(const World &w, Application &a, double dt)
@@ -506,7 +390,7 @@ namespace
     }
 }
 
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
+int main(int argc, char *argv[])
 {
     Application app;
     int code = 0;
@@ -521,21 +405,18 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     std::optional<Language> languageOverride;
     std::optional<Density> densityOverride;
     std::optional<int> qualityOverride;
-    wchar_t executable[32768]{};
-    GetModuleFileNameW(nullptr, executable, 32768);
-    auto exeDirectory = std::filesystem::path(executable).parent_path();
+    const auto exeDirectory = executable_directory();
     logPath = exeDirectory / "native.log";
-    int argc = 0;
-    auto argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     bool windowed = false;
+    // SDL hands over the command line as UTF-8 on every system.
     for (int i = 1; i < argc; i++)
     {
-        std::wstring arg = argv[i];
+        const std::wstring arg = wide(argv[i]);
         if (arg == L"--smoke")
             smoke = windowed = true;
         else if (arg == L"--visual-route")
         {
-            const std::wstring_view weather = i + 1 < argc ? argv[++i] : L"";
+            const std::wstring weather = i + 1 < argc ? wide(argv[++i]) : L"";
             if (weather == L"clear" || weather == L"rain")
                 visualRouteRain = weather == L"rain";
             else
@@ -547,7 +428,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             frameProfile = true;
         else if (arg == L"--scene-mode" && i + 1 < argc)
         {
-            std::wstring mode = argv[++i];
+            const std::wstring mode = wide(argv[++i]);
             if (mode == L"native")
                 modeOverride = SceneMode::original;
             else if (mode == L"quality")
@@ -559,40 +440,38 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
         }
         else if (arg == L"--smoke-size" && i + 2 < argc)
         {
-            captureWidth = _wtoi(argv[++i]);
-            captureHeight = _wtoi(argv[++i]);
+            captureWidth = std::atoi(argv[++i]);
+            captureHeight = std::atoi(argv[++i]);
             if (captureWidth < 320 || captureHeight < 200 || captureWidth > 8192 || captureHeight > 8192)
                 invalidDisplay = true;
         }
         else if (arg == L"--windowed")
             windowed = true;
         else if (arg == L"--frames" && i + 1 < argc)
-            smokeFrames = std::max(1, _wtoi(argv[++i]));
+            smokeFrames = std::max(1, std::atoi(argv[++i]));
         else if (arg == L"--screenshot" && i + 1 < argc)
-            screenshot = argv[++i];
+            screenshot = utf8_path(argv[++i]);
         else if (arg == L"--language" && i + 1 < argc)
-            languageOverride = languageFromCode(utf8(argv[++i]));
+            languageOverride = languageFromCode(argv[++i]);
         else if (arg == L"--density" && i + 1 < argc)
-            densityOverride = density_from_code(utf8(argv[++i]), Density::full);
+            densityOverride = density_from_code(argv[++i], Density::full);
         else if (arg == L"--quality" && i + 1 < argc)
-            qualityOverride = std::clamp(_wtoi(argv[++i]), 0, 2);
+            qualityOverride = std::clamp(std::atoi(argv[++i]), 0, 2);
         else if (arg == L"--content" && i + 1 < argc)
-            content = argv[++i];
+            content = utf8_path(argv[++i]);
         else if (arg == L"--import-save" && i + 1 < argc)
-            importFile = std::filesystem::absolute(argv[++i]);
+            importFile = std::filesystem::absolute(utf8_path(argv[++i]));
         else if (arg == L"--scenario" && i + 1 < argc)
-            scenario = argv[++i];
+            scenario = wide(argv[++i]);
         else if (arg == L"--smoke-output" && i + 1 < argc)
-            smokeOutput = argv[++i];
+            smokeOutput = utf8_path(argv[++i]);
     }
-    LocalFree(argv);
     const bool arrestScenario = scenario == L"arrest" || scenario == L"arrest-car";
     const bool recoveryScenario =
         scenario == L"recovery" || scenario == L"rollover" || scenario == L"tram-recovery";
     const bool passengerScenario = scenario == L"tram-ride" || scenario == L"trolley-ride";
     std::ofstream log;
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    SetProcessDPIAware();
+    std::optional<GameWindow> window;
     try
     {
         const bool yardCar = scenario == L"yard-car-day" || scenario == L"yard-car-evening";
@@ -625,21 +504,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             throw std::runtime_error("Unknown smoke scenario");
 
         if (content.empty())
-            content = std::filesystem::is_directory(exeDirectory / L"Content")
-                ? exeDirectory / L"Content"
-                : std::filesystem::path(PROMZONA_SOURCE_CONTENT);
+            content = std::filesystem::is_directory(exeDirectory / "Content")
+                ? exeDirectory / "Content"
+                : utf8_path(PROMZONA_SOURCE_CONTENT);
 
-        PWSTR local = nullptr;
-
-        if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &local)))
-        {
-            app.saveFile = std::filesystem::path(local) / "PromzonaCpp" / "save.json";
-            CoTaskMemFree(local);
-        }
-        else
-        {
-            app.saveFile = exeDirectory / "save.json";
-        }
+        app.saveFile = user_data_directory() / "save.json";
 
         if (smoke)
             app.saveFile = (smokeOutput.empty() ? exeDirectory : smokeOutput) / "smoke-save.json";
@@ -686,40 +555,27 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                                                       : "quality";
         };
 
-        WNDCLASSW wc{};
-        wc.style = CS_OWNDC;
-        wc.lpfnWndProc = windowProc;
-        wc.hInstance = instance;
-        wc.hIcon = LoadIconW(instance, MAKEINTRESOURCEW(101));
-        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-        wc.hbrBackground = static_cast<HBRUSH>(GetStockObject(BLACK_BRUSH));
-        wc.lpszClassName = L"PromzonaCppWindow";
-
-        if (!RegisterClassW(&wc))
-            throw std::runtime_error("Window class registration failed");
-
-        int width = windowed ? 1280 : GetSystemMetrics(SM_CXSCREEN),
-            height = windowed ? 720 : GetSystemMetrics(SM_CYSCREEN);
-        DWORD style = windowed ? WS_OVERLAPPEDWINDOW : WS_POPUP;
+        WindowOptions options;
+        options.title = "PROMZONA — C++23 migration";
+        options.fullscreen = !windowed;
+        options.background = smoke;
+        options.vsync = !profile;
         if (captureWidth)
         {
-            width = captureWidth;
-            height = captureHeight;
-            style = WS_POPUP;
+            options.width = captureWidth;
+            options.height = captureHeight;
+            options.borderless = true;
         }
-        app.window = CreateWindowExW(0, wc.lpszClassName, L"PROMZONA — C++23 migration", style, 0, 0, width,
-                                     height, nullptr, nullptr, instance, &app);
-        if (!app.window)
-            throw std::runtime_error("Window creation failed");
-        ShowWindow(app.window, smoke ? SW_SHOWNOACTIVATE : SW_SHOW);
-        UpdateWindow(app.window);
+        window.emplace(options);
+        app.window = &*window;
+        app.width = window->width();
+        app.height = window->height();
         {
             std::vector<std::pair<int, Vec2>> lineup;
             std::optional<View> reviewView;
             Vec2 reviewCrossing{}, reviewNormal{};
             double riderStartDistance{};
             int reviewRider = -1;
-            Context context(app.window, !profile);
             Renderer renderer(content);
             renderer.sceneMode(displayMode);
             const auto graphicsFile = app.saveFile.parent_path() / "graphics.txt";
@@ -728,15 +584,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                 graphics.quality = *qualityOverride;
             renderer.graphics(graphics);
             FrontEnd menus;
-            // The first run follows the Windows interface language, as the managed game did.
+            // The first run follows the system interface language, as the managed game did.
             const auto languageFile = app.saveFile.parent_path() / "language.txt";
-            const auto systemLanguage = PRIMARYLANGID(GetUserDefaultUILanguage());
-            menus.language =
-                languageOverride ? *languageOverride
-                : smoke          ? Language::russian
-                        : loadLanguage(languageFile, systemLanguage == LANG_RUSSIAN     ? Language::russian
-                                                     : systemLanguage == LANG_UKRAINIAN ? Language::ukrainian
-                                                                                        : Language::english);
+            menus.language = languageOverride ? *languageOverride
+                             : smoke          ? Language::russian
+                                              : loadLanguage(languageFile, system_language());
             renderer.language(menus.language);
             // New games start with the population the managed game keeps. Automated runs
             // keep the low one their scenarios were written for unless told otherwise;
@@ -897,13 +749,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
             while (app.running)
             {
                 frame_trace.enter(FrameTrace::messages);
-                MSG msg;
-                while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE))
+                for (const auto &event : window->poll())
+                    handle(&app, event);
+                while (!app.posted.empty())
                 {
-                    if (msg.message == WM_QUIT)
-                        app.running = false;
-                    TranslateMessage(&msg);
-                    DispatchMessageW(&msg);
+                    const InputEvent event = app.posted.front();
+                    app.posted.pop_front();
+                    handle(&app, event);
                 }
                 if (!app.running)
                     break;
@@ -959,8 +811,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                 {
                     auto key = [&](int vk)
                     {
-                        SendMessageW(app.window, WM_KEYDOWN, vk, 0);
-                        SendMessageW(app.window, WM_KEYUP, vk, 0);
+                        handle(&app, {InputEvent::Type::keyDown, vk});
+                        handle(&app, {InputEvent::Type::keyUp, vk});
                     };
                     auto click = [&](MenuItem target)
                     {
@@ -971,21 +823,21 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         MenuLayout layout(app.width, app.height, int(rows.size()));
                         int x = layout.x + layout.width * 3 / 4,
                             y = layout.y + (int(it - rows.begin()) * 2 + 1) * layout.step / 2;
-                        SendMessageW(app.window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
-                        SendMessageW(app.window, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+                        handle(&app, {InputEvent::Type::buttonDown, x, y});
+                        handle(&app, {InputEvent::Type::buttonUp, x, y});
                     };
                     if (scenario == L"settings")
                     {
                         switch (frames)
                         {
                         case 2:
-                            key(VK_ESCAPE);
+                            key(Key::escape);
                             break;
                         case 3:
                             click(MenuItem::settings);
                             break;
                         case 4:
-                            key(VK_RIGHT);
+                            key(Key::right);
                             break;
                         case 5:
                             click(MenuItem::quality);
@@ -1006,10 +858,10 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             click(MenuItem::radio);
                             break;
                         case 12:
-                            key(VK_ESCAPE);
+                            key(Key::escape);
                             break;
                         case 13:
-                            key(VK_ESCAPE);
+                            key(Key::escape);
                             break;
                         }
                     }
@@ -1019,7 +871,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         {
                         case 2:
                             world->money = 111;
-                            key(VK_ESCAPE);
+                            key(Key::escape);
                             break;
                         case 3:
                             key('2');
@@ -1045,16 +897,16 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         case 10:
                             world->money = 555;
                             menus.selected = 1; // Browsing slots must not change the quick-load target.
-                            key(VK_F9);
+                            key(Key::f9);
                             break;
                         case 12:
                             if (world->money != 444)
                                 throw std::runtime_error("Periodic autosave was not loaded");
                             world->money = 666;
-                            key(VK_F5);
+                            key(Key::f5);
                             break;
                         case 14:
-                            key(VK_ESCAPE);
+                            key(Key::escape);
                             break;
                         case 15:
                             key('3');
@@ -1069,7 +921,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         }
                     }
                 }
-                if ((app.pressed[VK_F1] || app.pressed[VK_OEM_3]) && world && !app.loading && !app.menu)
+                if ((app.pressed[Key::f1] || app.pressed[Key::grave]) && world && !app.loading && !app.menu)
                 {
                     app.console = !app.console;
                     app.jobsOpen = false;
@@ -1080,12 +932,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     for (std::wstring_view cmd : {L"money 35", L"weapon pistol 12", L"jobs"})
                     {
                         for (wchar_t c : cmd)
-                            SendMessageW(app.window, WM_CHAR, c, 0);
-                        SendMessageW(app.window, WM_KEYDOWN, VK_RETURN, 0);
+                            handle(&app, {InputEvent::Type::character, int(c)});
+                        handle(&app, {InputEvent::Type::keyDown, Key::enter});
                     }
                     for (wchar_t c : std::wstring_view(L"wan"))
-                        SendMessageW(app.window, WM_CHAR, c, 0);
-                    SendMessageW(app.window, WM_KEYDOWN, VK_TAB, 0);
+                        handle(&app, {InputEvent::Type::character, int(c)});
+                    handle(&app, {InputEvent::Type::keyDown, Key::tab});
                     consoleReviewed = true;
                 }
                 if (world && !app.submissions.empty())
@@ -1095,8 +947,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     app.submissions.clear();
                 }
                 if (smoke && scenario == L"job-board" && world && frames == 13)
-                    app.pressed[VK_ESCAPE] = true;
-                const bool closingOverlay = app.pressed[VK_ESCAPE] && !app.loading;
+                    app.pressed[Key::escape] = true;
+                const bool closingOverlay = app.pressed[Key::escape] && !app.loading;
                 if (closingOverlay)
                 {
                     if (app.console)
@@ -1134,7 +986,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     int hit = layout.hit(app.mouseX, app.mouseY, count);
                     if ((app.clicked || app.pointerMoved) && hit >= 0)
                         menus.focus = hit;
-                    const int travel = int(app.pressed[VK_DOWN]) - int(app.pressed[VK_UP]);
+                    const int travel = int(app.pressed[Key::down]) - int(app.pressed[Key::up]);
                     if (travel)
                         menus.focus = (menus.focus + travel + count) % count;
                     if (menus.page == MenuPage::home)
@@ -1142,13 +994,13 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                             if (app.pressed['0' + i])
                                 menus.selected = i;
                     auto item = rows.at(menus.focus).item;
-                    int dir = int(app.pressed[VK_RIGHT]) - int(app.pressed[VK_LEFT]);
-                    bool activate = app.pressed[VK_RETURN] || (app.clicked && hit >= 0);
+                    int dir = int(app.pressed[Key::right]) - int(app.pressed[Key::left]);
+                    bool activate = app.pressed[Key::enter] || (app.clicked && hit >= 0);
                     if (app.clicked && hit >= 0 && !rows[hit].value.empty())
                         dir = app.mouseX < layout.x + layout.width / 2 ? -1 : 1;
                     if (menus.page != MenuPage::confirmNew && menus.page != MenuPage::confirmSave)
                     {
-                        if (app.pressed[VK_F2])
+                        if (app.pressed[Key::f2])
                         {
                             item = MenuItem::display;
                             dir = 1;
@@ -2416,7 +2268,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         }
                         renderer.overlay(nullptr, app.width, app.height, fps, false, nullptr, L"", levels,
                                          .96f);
-                        SwapBuffers(context.dc);
+                        window->swap();
                         audio.clear();
                         renderer.prepare(*world);
                         app.jobsOpen = false;
@@ -2450,8 +2302,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         }
                         if (smoke && scenario == L"console")
                         {
-                            PostMessageW(app.window, WM_KEYDOWN, VK_F1, 0);
-                            PostMessageW(app.window, WM_KEYUP, VK_F1, 0);
+                            app.posted.push_back({InputEvent::Type::keyDown, Key::f1});
+                            app.posted.push_back({InputEvent::Type::keyUp, Key::f1});
                         }
                         accumulator = 0;
                         last = Timer::now();
@@ -2476,7 +2328,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                 if (app.menu || app.console || app.loading || !app.active)
                     app.mouseLookReady = false;
                 if (world && !app.loading && !app.menu && !app.console && !closingOverlay &&
-                    !app.jobsOpen && world->openMarket < 0 && app.pressed[VK_F9])
+                    !app.jobsOpen && world->openMarket < 0 && app.pressed[Key::f9])
                     begin(true, menus.active);
                 if (smoke && scenario == L"job-board" && world && frames == 14)
                 {
@@ -2588,42 +2440,41 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                         if (gameplayInput && app.pressed['L'])
                             world->toggleHelicopterLanding();
                         // The wheel and the bracket keys of the managed game both switch weapons.
-                        if (const int turn = (app.wheel > 0) - (app.wheel < 0) + int(app.pressed[VK_OEM_6]) -
-                                             int(app.pressed[VK_OEM_4]); turn && gameplayInput)
+                        if (const int turn = (app.wheel > 0) - (app.wheel < 0) + int(app.pressed[Key::rightBracket]) -
+                                             int(app.pressed[Key::leftBracket]); turn && gameplayInput)
                             world->inventory.cycle(turn > 0 ? 1 : -1);
                         // Developer preview keys kept from the managed game.
                         if (gameplayInput && app.pressed['N'])
                             world->clock.set_hour(world->clock.hour + 6);
                         if (gameplayInput && app.pressed['P'])
                             world->setRain(world->rainTarget <= .5);
-                        if (app.pressed[VK_F5])
+                        if (app.pressed[Key::f5])
                             saveGame(menus.active, true);
                         if (!gameplayInput)
                             app.firing = app.mouseLookReady = false;
                         if (!smoke && app.active && gameplayInput)
                         {
-                            POINT centre{app.width / 2, app.height / 2}, mouse;
-                            const bool centreValid = ClientToScreen(app.window, &centre) != FALSE;
-                            if (centreValid && app.mouseLookReady && GetCursorPos(&mouse) &&
-                                (world->controlledCar < 0 || world->transitPassenger() ||
-                                 world->cars[world->controlledCar].mountedGun()))
+                            // The pointer is captured while hidden; its raw motion turns the view.
+                            const auto [dx, dy] = window->takeMotion();
+                            if (app.mouseLookReady && (world->controlledCar < 0 || world->transitPassenger() ||
+                                                       world->cars[world->controlledCar].mountedGun()))
                             {
-                                app.look = wrap(app.look - (mouse.x - centre.x) * .003);
-                                app.lookPitch = clamp(app.lookPitch - (mouse.y - centre.y) * .003, -1.1, 1.1);
+                                app.look = wrap(app.look - dx * .003);
+                                app.lookPitch = clamp(app.lookPitch - dy * .003, -1.1, 1.1);
                             }
-                            app.mouseLookReady = centreValid && SetCursorPos(centre.x, centre.y);
+                            app.mouseLookReady = true;
                         }
                         PlayerInput input{};
                         if (gameplayInput)
                         {
                             input.car = {double(app.keys['W']) - double(app.keys['S']),
-                                         double(app.keys['A']) - double(app.keys['D']), false, app.keys[VK_SPACE]};
+                                         double(app.keys['A']) - double(app.keys['D']), false, app.keys[Key::space]};
                             auto f = forward(app.look);
                             input.walking = f * (double(app.keys['W']) - double(app.keys['S'])) +
                                             perpendicular(f) * (double(app.keys['D']) - double(app.keys['A']));
-                            input.collective = double(app.keys[VK_SPACE] || app.keys['Q']) -
-                                               double(app.keys[VK_CONTROL] || app.keys['Z']);
-                            input.running = app.keys[VK_SHIFT];
+                            input.collective = double(app.keys[Key::space] || app.keys['Q']) -
+                                               double(app.keys[Key::control] || app.keys['Z']);
+                            input.running = app.keys[Key::shift];
                             input.shooting = app.firing;
                         }
                         input.lookHeading = app.look;
@@ -2961,8 +2812,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     const MenuLayout layout(app.width, app.height, int(rows.size()));
                     const int x = layout.x + layout.width / 2,
                               y = layout.y + (int(row - rows.begin()) * 2 + 1) * layout.step / 2;
-                    PostMessageW(app.window, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
-                    PostMessageW(app.window, WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+                    app.posted.push_back({InputEvent::Type::buttonDown, x, y});
+                    app.posted.push_back({InputEvent::Type::buttonUp, x, y});
                 }
                 if (smoke && scenario == L"settings" && app.menu && frames == 11)
                     renderer.screenshot(smokeOutput / "settings.bmp", app.width, app.height);
@@ -3313,7 +3164,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
                     app.running = false;
                 }
                 frame_trace.enter(FrameTrace::swap);
-                SwapBuffers(context.dc);
+                window->swap();
                 frame_trace.enter(FrameTrace::other);
                 std::ranges::fill(app.pressed, false);
                 app.wheel = 0;
@@ -3328,12 +3179,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int)
     {
         log << "FATAL: " << e.what() << std::endl;
         if (!smoke)
-            MessageBoxW(app.window, wide(e.what()).c_str(), L"PROMZONA", MB_OK | MB_ICONERROR);
+            show_error(e.what());
         code = 1;
     }
     app.cursor(false);
-    if (app.window)
-        DestroyWindow(app.window);
-    CoUninitialize();
+    app.window = nullptr;
+    window.reset();
+    SDL_Quit();
     return code;
 }

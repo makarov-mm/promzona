@@ -4,7 +4,7 @@
 #include <deque>
 #include <mutex>
 #include <optional>
-#include <stop_token>
+#include "stop_thread.hpp"
 #include <thread>
 #include <exception>
 #include <memory>
@@ -70,14 +70,14 @@ namespace Promzona
       private:
         std::vector<DetailCell> cells_;
         mutable std::mutex mutex_;
-        std::condition_variable_any wake_; // the wait ends on a request to stop as well
+        std::condition_variable_any wake_; // the owner wakes it to stop as well
         std::vector<bool> wanted_;
         std::deque<size_t> jobs_;
         std::deque<std::unique_ptr<Packet>> ready_;
         std::optional<size_t> active_; // the cell in the making
         size_t readyBytes_{}, built_{}, discarded_{};
         std::exception_ptr error_;
-        std::jthread worker_;
-        void run(std::stop_token stop);
+        StopThread worker_;
+        void run(StopToken stop);
     };
 }

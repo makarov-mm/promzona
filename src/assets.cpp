@@ -3,11 +3,10 @@
 
 #include <fstream>
 #include <stdexcept>
-#include <wincodec.h>
-#include <windows.h>
-#include <wrl/client.h>
+#include "stb/stb_image.h"
 #include <cstring>
 #include <format>
+#include <memory>
 
 namespace Promzona
 {
@@ -229,40 +228,20 @@ Image load_image(const std::filesystem::path &file)
 }
 Image decode_image(std::span<const unsigned char> encoded)
 {
-    using Microsoft::WRL::ComPtr;
-    ComPtr<IWICImagingFactory> factory;
-    ComPtr<IWICBitmapDecoder> decoder;
-    ComPtr<IWICBitmapFrameDecode> frame;
-    ComPtr<IWICFormatConverter> converter;
-    ComPtr<IWICStream> stream;
-    auto check = [&](HRESULT h, const char *stage)
-    {
-        if (FAILED(h))
-            throw std::runtime_error(
-                std::format("{} (HRESULT={:#010x})", stage, static_cast<unsigned long>(h)));
-    };
-    check(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)),
-          "WIC factory");
     if (encoded.empty() || encoded.size() > 512 * 1024 * 1024)
         throw std::runtime_error("Encoded image size out of bounds");
-    check(factory->CreateStream(&stream), "WIC stream");
-    check(
-        stream->InitializeFromMemory(const_cast<BYTE *>(encoded.data()), static_cast<DWORD>(encoded.size())),
-        "WIC memory");
-    check(factory->CreateDecoderFromStream(stream.Get(), nullptr, WICDecodeMetadataCacheOnDemand, &decoder),
-          "WIC decoder");
-    check(decoder->GetFrame(0, &frame), "WIC frame");
-    Image im;
-    check(frame->GetSize(&im.width, &im.height), "WIC dimensions");
-    if (!im.width || !im.height || im.width > 8192 || im.height > 8192)
+    int width = 0, height = 0, channels = 0;
+    if (!stbi_info_from_memory(encoded.data(), int(encoded.size()), &width, &height, &channels))
+        throw std::runtime_error(std::format("Image decoder: {}", stbi_failure_reason()));
+    // Checked before decoding, so an oversized picture never allocates its pixels.
+    if (width <= 0 || height <= 0 || width > 8192 || height > 8192)
         throw std::runtime_error("Image exceeds texture budget");
-    check(factory->CreateFormatConverter(&converter), "WIC converter");
-    check(converter->Initialize(frame.Get(), GUID_WICPixelFormat32bppRGBA, WICBitmapDitherTypeNone, nullptr,
-                                0, WICBitmapPaletteTypeMedianCut),
-          "WIC RGBA conversion");
-    im.rgba.resize(size_t(im.width) * im.height * 4);
-    check(converter->CopyPixels(nullptr, im.width * 4, static_cast<UINT>(im.rgba.size()), im.rgba.data()),
-          "WIC pixel read");
+    std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> pixels(
+        stbi_load_from_memory(encoded.data(), int(encoded.size()), &width, &height, &channels, 4), &stbi_image_free);
+    if (!pixels)
+        throw std::runtime_error(std::format("Image decoder: {}", stbi_failure_reason()));
+    Image im{unsigned(width), unsigned(height), {}};
+    im.rgba.assign(pixels.get(), pixels.get() + size_t(width) * size_t(height) * 4);
     return im;
 }
 } // namespace Promzona

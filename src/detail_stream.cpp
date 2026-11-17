@@ -77,13 +77,18 @@ DetailStream::DetailStream(const World &world)
         cells_.push_back({(low + high) * .5f, (high - low).length() * .5f, std::move(plans)});
     }
     wanted_.resize(cells_.size());
-    worker_ = std::jthread([this](std::stop_token stop) { run(std::move(stop)); });
+    worker_ = StopThread([this](StopToken stop) { run(std::move(stop)); });
 }
 DetailStream::~DetailStream()
 {
     // The worker uses every other member, so it is stopped here and not by the order in
     // which the members happen to be declared.
     worker_.request_stop();
+    {
+        // Taking the lock once orders the request before the worker's next look at it.
+        std::scoped_lock lock(mutex_);
+    }
+    wake_.notify_all();
     worker_.join();
 }
 void DetailStream::request(std::span<const size_t> ids)
@@ -142,7 +147,7 @@ DetailStream::Stats DetailStream::stats() const
             .discarded = discarded_,
             .busy = active_.has_value()};
 }
-void DetailStream::run(std::stop_token stop)
+void DetailStream::run(StopToken stop)
 {
     try
     {
@@ -151,7 +156,7 @@ void DetailStream::run(std::stop_token stop)
             size_t id;
             {
                 std::unique_lock lock(mutex_);
-                wake_.wait(lock, stop, [&] { return !jobs_.empty() && ready_.size() < maxReady; });
+                wake_.wait(lock, [&] { return stop.stop_requested() || (!jobs_.empty() && ready_.size() < maxReady); });
                 if (stop.stop_requested())
                     return;
                 id = jobs_.front();

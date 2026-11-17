@@ -1,6 +1,10 @@
 #pragma once
-#include <windows.h>
-#include <GL/gl.h>
+// SDL's copy of the OpenGL 1.1 header is the same on Windows, Linux and macOS; newer entry
+// points are looked up at run time below.
+#define GL_SILENCE_DEPRECATION
+#include <SDL3/SDL_opengl.h>
+#include <SDL3/SDL_video.h>
+#include <cstddef>
 #include <cstdint>
 #include <stdexcept>
 
@@ -58,15 +62,15 @@ namespace Promzona::gl
     X(GetQueryObjectiv, void, GLuint, GLenum, GLint *) \
     X(GetQueryObjectui64v, void, GLuint, GLenum, std::uint64_t *) \
     X(GenerateMipmap, void, GLenum)
-#define PZ_GL_DECLARE(name, ret, ...) inline ret(APIENTRY *name)(__VA_ARGS__) = nullptr;
+#define PZ_GL_DECLARE(name, ret, ...) inline ret(GLAPIENTRY *name)(__VA_ARGS__) = nullptr;
 PZ_GL_FUNCTIONS(PZ_GL_DECLARE)
 #undef PZ_GL_DECLARE
 // clang-format on
 inline void load()
 {
 #define PZ_GL_LOAD(name, ret, ...)                                                                           \
-    name = reinterpret_cast<decltype(name)>(wglGetProcAddress("gl" #name));                                  \
-    if (!name || reinterpret_cast<std::uintptr_t>(name) <= 3 || reinterpret_cast<std::intptr_t>(name) == -1) \
+    name = reinterpret_cast<decltype(name)>(SDL_GL_GetProcAddress("gl" #name)); \
+    if (!name)                                                                  \
         throw std::runtime_error("OpenGL function unavailable: " #name);
     PZ_GL_FUNCTIONS(PZ_GL_LOAD)
 #undef PZ_GL_LOAD

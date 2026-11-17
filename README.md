@@ -1,14 +1,16 @@
 # PROMZONA
 
-PROMZONA is an open-world game for Windows set in a procedurally generated industrial city. Walk from the apartment blocks to the waterfront, catch a tram across town, or take a courier job and find your own way through traffic.
+PROMZONA is an open-world game for Windows, Linux, and macOS set in a procedurally generated industrial city. Walk from the apartment blocks to the waterfront, catch a tram across town, or take a courier job and find your own way through traffic.
 
 ![A bus crossing a city street at night, with headlights reflected on the wet asphalt](promzona-night-crossing.jpg)
 
 ## Build and run
 
-You'll need Windows x64, a graphics driver with OpenGL 3.3 support, and Visual Studio with the **Desktop development with C++** workload, the Windows SDK, and **C++ CMake tools for Windows**.
+You'll need a graphics driver with OpenGL 3.3 support and git. The first CMake configure downloads and builds [SDL3](https://github.com/libsdl-org/SDL), which provides the window, input, and audio on every system.
 
-To build the game and launch it, run this from the repository root in PowerShell:
+### Windows
+
+You'll need Windows x64 and Visual Studio with the **Desktop development with C++** workload, the Windows SDK, and **C++ CMake tools for Windows**. To build the game and launch it, run this from the repository root in PowerShell:
 
 ```powershell
 .\build.ps1 -Configuration Debug -Run
@@ -22,6 +24,24 @@ To package a release:
 ```
 
 The build script finds MSVC, compiles the game, runs CTest, and verifies the native x64 executable. To share a build, copy the entire `artifacts/Release` directory. The game loads models, shaders, textures, and audio from the `Content` folder next to the executable.
+
+### Linux and macOS
+
+You'll need CMake 3.25 or newer and a C++23 compiler: GCC 14 or newer, Clang 18 or newer, or Xcode 16 or newer on macOS. Ninja is used when installed. On Linux, SDL3 needs the X11 or Wayland and audio development packages, for example on Ubuntu:
+
+```bash
+sudo apt install build-essential cmake ninja-build libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxkbcommon-dev libwayland-dev libegl-dev libgl-dev libasound2-dev libpulse-dev
+```
+
+To build, test, and launch the game:
+
+```bash
+./build.sh Debug --run
+./build.sh Release --package
+./artifacts/Release/Promzona
+```
+
+The `release` and `debug` CMake presets do the same without the script (`cmake --preset release`, `cmake --build --preset release`, `ctest --preset release`). To build against an SDL3 that is already installed, configure with `-DPROMZONA_SYSTEM_SDL3=ON`.
 
 ## Around the city
 
@@ -75,7 +95,7 @@ Some keys have different functions on foot, in a vehicle, and in menus.
 
 ## Saves, population, and language
 
-The game keeps three save slots in `%LOCALAPPDATA%\PromzonaCpp`: `save.json`, `save-2.json`, and `save-3.json`. It autosaves to the active slot every two minutes of play, on pause, and on exit. Use the menu to save a copy in another slot.
+The game keeps three save slots in `%LOCALAPPDATA%\PromzonaCpp` on Windows, `~/Library/Application Support/PromzonaCpp` on macOS, and `~/.local/share/PromzonaCpp` on Linux: `save.json`, `save-2.json`, and `save-3.json`. It autosaves to the active slot every two minutes of play, on pause, and on exit. Use the menu to save a copy in another slot.
 
 Choose a population level in **Settings** when starting a city. A saved city keeps its own density when loaded.
 
@@ -86,7 +106,7 @@ Choose a population level in **Settings** when starting a city. A saved city kee
 | High | 1,080 | 3,240 |
 | Full (default) | 1,485 | 5,265 |
 
-The interface supports English, Russian, and Ukrainian. On first launch, the game uses the Windows language when available. Change it in **Settings**. Language and population preferences are stored in `language.txt` and `density.txt` alongside the saves. For a single launch, pass `--language en`, `ru`, or `uk`, and `--density low`, `medium`, `high`, or `full`.
+The interface supports English, Russian, and Ukrainian. On first launch, the game uses the system language when available. Change it in **Settings**. Language and population preferences are stored in `language.txt` and `density.txt` alongside the saves. For a single launch, pass `--language en`, `ru`, or `uk`, and `--density low`, `medium`, `high`, or `full`.
 
 ```powershell
 .\artifacts\Release\Promzona.exe --language en --density medium
@@ -108,7 +128,9 @@ For technical details, see [city geometry and streaming](docs/ARCHITECTURE.md) a
 
 ## Development
 
-The game uses C++23, Win32, OpenGL, WIC, and WinMM. Open [Promzona.slnx](Promzona.slnx) in Visual Studio 2026, select **Debug | x64** or **Release | x64**, and press **F5** for a windowed debugging session. The project uses the v145 toolset and reads assets directly from the repository's `Content` directory.
+The game uses C++23, OpenGL 3.3, and SDL3 for the window, input, and audio. Images are decoded with stb_image and the HUD text is drawn with stb_truetype. On Windows the HUD uses the system's Segoe UI and Arial; elsewhere it uses the bundled Liberation Sans from `Content/Fonts`. Code specific to the operating system lives in `src/platform_sdl.cpp`.
+
+Open [Promzona.slnx](Promzona.slnx) in Visual Studio 2026, select **Debug | x64** or **Release | x64**, and press **F5** for a windowed debugging session. The project uses the v145 toolset and reads assets directly from the repository's `Content` directory. It takes SDL3 from [vcpkg.json](vcpkg.json) through Visual Studio's vcpkg integration (run `vcpkg integrate install` once if it is not enabled).
 
 To generate a Visual Studio solution that also includes the libraries and tests, use CMake 4.2 or newer:
 

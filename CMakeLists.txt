@@ -20,13 +20,17 @@ endif()
 if(WIN32)
   add_compile_definitions(NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
 endif()
-add_library(promzona_core src/core.cpp src/physics.cpp src/layout.cpp src/minimap.cpp src/control_hints.cpp src/road_levels.cpp src/surfaces.cpp src/architecture.cpp src/detail_stream.cpp src/sector_stream.cpp src/vegetation.cpp src/city_mesh.cpp src/world.cpp src/vehicle_entry.cpp src/vehicle_recovery.cpp src/traffic_lanes.cpp src/street_life.cpp src/street_fixtures.cpp src/surface_effects.cpp src/wildlife.cpp src/social.cpp src/emergency.cpp src/drone.cpp src/pursuit.cpp src/arrest.cpp src/jobs.cpp src/game_console.cpp src/front_end.cpp src/shops.cpp src/peace_jobs.cpp src/passenger_jobs.cpp src/civilian_combat.cpp src/civilian_cover.cpp src/transit.cpp src/combat.cpp src/animation.cpp src/save.cpp src/audio.cpp src/localization.cpp src/names.cpp src/consequences.cpp src/managed_import.cpp src/renewal.cpp src/roles.cpp src/appearance.cpp)
+if(APPLE)
+  # OpenGL is deprecated on macOS but still provides the 4.1 core profile the game needs.
+  add_compile_definitions(GL_SILENCE_DEPRECATION)
+endif()
+add_library(promzona_core src/text.cpp src/core.cpp src/physics.cpp src/layout.cpp src/minimap.cpp src/control_hints.cpp src/road_levels.cpp src/surfaces.cpp src/architecture.cpp src/detail_stream.cpp src/sector_stream.cpp src/vegetation.cpp src/city_mesh.cpp src/world.cpp src/vehicle_entry.cpp src/vehicle_recovery.cpp src/traffic_lanes.cpp src/street_life.cpp src/street_fixtures.cpp src/surface_effects.cpp src/wildlife.cpp src/social.cpp src/emergency.cpp src/drone.cpp src/pursuit.cpp src/arrest.cpp src/jobs.cpp src/game_console.cpp src/front_end.cpp src/shops.cpp src/peace_jobs.cpp src/passenger_jobs.cpp src/civilian_combat.cpp src/civilian_cover.cpp src/transit.cpp src/combat.cpp src/animation.cpp src/save.cpp src/audio.cpp src/localization.cpp src/names.cpp src/consequences.cpp src/managed_import.cpp src/renewal.cpp src/roles.cpp src/appearance.cpp)
 target_sources(promzona_core PRIVATE
   include/promzona/animation.hpp include/promzona/appearance.hpp include/promzona/audio.hpp include/promzona/architecture.hpp include/promzona/detail_stream.hpp include/promzona/sector_stream.hpp include/promzona/visibility.hpp include/promzona/surface_effects.hpp include/promzona/vegetation.hpp include/promzona/sun_shadow.hpp include/promzona/atmosphere.hpp include/promzona/reflection_probe.hpp
   include/promzona/city_mesh.hpp include/promzona/combat.hpp
   include/promzona/core.hpp include/promzona/layout.hpp include/promzona/minimap.hpp include/promzona/control_hints.hpp include/promzona/hud_damage.hpp include/promzona/road_levels.hpp
   include/promzona/math.hpp include/promzona/physics.hpp include/promzona/world.hpp include/promzona/fleet.hpp include/promzona/jobs.hpp include/promzona/game_console.hpp include/promzona/front_end.hpp include/promzona/transit.hpp
-  include/promzona/localization.hpp include/promzona/names.hpp src/localization_phrases.inc)
+  include/promzona/localization.hpp include/promzona/names.hpp include/promzona/text.hpp src/localization_phrases.inc)
 set_property(TARGET promzona_core PROPERTY FOLDER Libraries)
 target_include_directories(promzona_core PUBLIC include PRIVATE third_party)
 option(BUILD_TESTING "Build PROMZONA native tests" ON)
@@ -115,23 +119,58 @@ if(BUILD_TESTING)
   set_target_properties(promzona_consequences_tests promzona_import_tests promzona_renewal_tests promzona_density_tests promzona_people_tests promzona_flow_tests promzona_bus_tests promzona_localization_tests promzona_front_end_tests promzona_emergency_tests promzona_street_tests promzona_drone_tests promzona_transit_tests promzona_pursuit_tests promzona_jobs_tests promzona_streaming_tests promzona_environment_tests promzona_architecture_tests promzona_level_tests promzona_tests promzona_traffic_tests promzona_layout_tests promzona_combat_tests
     PROPERTIES FOLDER Tests VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 endif()
-if(WIN32)
-  enable_language(RC)
-  add_library(promzona_assets src/assets.cpp)
-  target_sources(promzona_assets PRIVATE include/promzona/assets.hpp)
-  set_property(TARGET promzona_assets PROPERTY FOLDER Libraries)
-  target_include_directories(promzona_assets PUBLIC include PRIVATE third_party)
-  target_link_libraries(promzona_assets PUBLIC windowscodecs ole32)
-  if(BUILD_TESTING)
-    add_executable(promzona_asset_tests tests/assets.cpp)
-    target_link_libraries(promzona_asset_tests PRIVATE promzona_assets promzona_core)
-    add_test(NAME native_assets COMMAND promzona_asset_tests "${CMAKE_SOURCE_DIR}/Content")
-    set_target_properties(promzona_asset_tests PROPERTIES
-      FOLDER Tests
-      VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-      VS_DEBUGGER_COMMAND_ARGUMENTS "\"${CMAKE_SOURCE_DIR}/Content\"")
+# Image decoding (stb_image) and model loading work the same on every system.
+add_library(promzona_assets src/assets.cpp src/stb_image.cpp)
+target_sources(promzona_assets PRIVATE include/promzona/assets.hpp third_party/stb/stb_image.h)
+set_property(TARGET promzona_assets PROPERTY FOLDER Libraries)
+target_include_directories(promzona_assets PUBLIC include PRIVATE third_party)
+if(BUILD_TESTING)
+  add_executable(promzona_asset_tests tests/assets.cpp)
+  target_link_libraries(promzona_asset_tests PRIVATE promzona_assets promzona_core)
+  add_test(NAME native_assets COMMAND promzona_asset_tests "${CMAKE_SOURCE_DIR}/Content")
+  set_target_properties(promzona_asset_tests PROPERTIES
+    FOLDER Tests
+    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    VS_DEBUGGER_COMMAND_ARGUMENTS "\"${CMAKE_SOURCE_DIR}/Content\"")
+endif()
+
+# The game: SDL3 provides the window, input, OpenGL context and audio on Windows, Linux and macOS.
+option(PROMZONA_BUILD_GAME "Build the game executable (needs SDL3 and OpenGL)" ON)
+option(PROMZONA_SYSTEM_SDL3 "Use an installed SDL3 instead of downloading it" OFF)
+set(PROMZONA_SDL3_TAG "release-3.4.20" CACHE STRING "SDL3 release fetched when PROMZONA_SYSTEM_SDL3 is OFF")
+if(PROMZONA_BUILD_GAME)
+  if(PROMZONA_SYSTEM_SDL3)
+    find_package(SDL3 3.2 REQUIRED CONFIG COMPONENTS SDL3)
+  else()
+    include(FetchContent)
+    # A static SDL keeps the game a single executable next to its Content folder.
+    set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+    set(SDL_STATIC ON CACHE BOOL "" FORCE)
+    set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+    set(SDL_TESTS OFF CACHE BOOL "" FORCE)
+    set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(SDL_INSTALL OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(SDL3
+      GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
+      GIT_TAG ${PROMZONA_SDL3_TAG}
+      GIT_SHALLOW TRUE
+      EXCLUDE_FROM_ALL)
+    FetchContent_MakeAvailable(SDL3)
+    if(TARGET SDL3-static)
+      set_property(TARGET SDL3-static PROPERTY FOLDER ThirdParty)
+    endif()
   endif()
-  add_executable(Promzona WIN32 src/main.cpp src/renderer.cpp src/effect_batch.cpp src/effect_batch.hpp src/headlights.hpp src/leaf_mask.hpp src/street_lighting.hpp src/cloud_map.hpp src/frame_trace.hpp src/post_processing.cpp src/post_processing.hpp src/audio_device.cpp src/promzona.rc src/app.manifest)
+  find_package(OpenGL REQUIRED)
+
+  set(promzona_game_sources
+    src/main.cpp src/platform.hpp src/platform_sdl.cpp src/renderer.cpp src/effect_batch.cpp src/effect_batch.hpp
+    src/ui_canvas.cpp src/ui_canvas.hpp src/headlights.hpp src/leaf_mask.hpp src/street_lighting.hpp
+    src/cloud_map.hpp src/frame_trace.hpp src/post_processing.cpp src/post_processing.hpp src/audio_device.cpp)
+  if(WIN32)
+    enable_language(RC)
+    list(APPEND promzona_game_sources src/promzona.rc src/app.manifest)
+  endif()
+  add_executable(Promzona WIN32 ${promzona_game_sources})
   set(native_shaders
     Content/Shaders/Native/scene.vert Content/Shaders/Native/scene.frag
     Content/Shaders/Native/fullscreen.vert Content/Shaders/Native/resolve.frag Content/Shaders/Native/glow.frag
@@ -140,17 +179,20 @@ if(WIN32)
     Content/Shaders/Native/sky.vert Content/Shaders/Native/sky.frag
     Content/Shaders/Native/ui.vert Content/Shaders/Native/ui.frag
     Content/Shaders/Native/effects.vert Content/Shaders/Native/effects.frag)
-  # GLSL is loaded by the game; listing it here is for editing, not MSBuild compilation.
+  # GLSL is loaded by the game; listing it here is for editing, not compilation.
   set_source_files_properties(${native_shaders} PROPERTIES HEADER_FILE_ONLY TRUE)
   target_sources(Promzona PRIVATE include/promzona/renderer.hpp include/promzona/gl.hpp
-    ${native_shaders} Content/PROMZONA.ico)
-  target_include_directories(Promzona PRIVATE third_party)
-  target_link_libraries(Promzona PRIVATE promzona_core promzona_assets opengl32 shell32 winmm)
-  if(MINGW)
-    # wWinMain entry point and no dependency on the MinGW runtime DLLs.
-    target_link_options(Promzona PRIVATE -municode -static)
+    third_party/stb/stb_truetype.h ${native_shaders})
+  if(WIN32)
+    target_sources(Promzona PRIVATE Content/PROMZONA.ico)
   endif()
-  target_compile_definitions(Promzona PRIVATE PROMZONA_SOURCE_CONTENT=L"${CMAKE_SOURCE_DIR}/Content")
+  target_include_directories(Promzona PRIVATE third_party)
+  target_link_libraries(Promzona PRIVATE promzona_core promzona_assets SDL3::SDL3 OpenGL::GL)
+  if(MINGW)
+    # No dependency on the MinGW runtime DLLs.
+    target_link_options(Promzona PRIVATE -static)
+  endif()
+  target_compile_definitions(Promzona PRIVATE PROMZONA_SOURCE_CONTENT="${CMAKE_SOURCE_DIR}/Content")
   set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT Promzona)
   set_target_properties(Promzona PROPERTIES
     FOLDER Game

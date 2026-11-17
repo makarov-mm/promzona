@@ -4,6 +4,8 @@
 #include <bit>
 #include <sstream>
 #include <charconv>
+#include <locale>
+#include <type_traits>
 #include <cctype>
 #include <stdexcept>
 #include <ranges>
@@ -1563,8 +1565,24 @@ namespace Promzona
     template <class T> T consoleNumber(std::string_view arg, T low, T high, const char *usage)
     {
         T number{};
-        auto [end, error] = std::from_chars(arg.data(), arg.data() + arg.size(), number);
-        if (error != std::errc{} || end != arg.data() + arg.size() || !(number >= low && number <= high))
+        bool parsed = false;
+        if constexpr (std::is_floating_point_v<T>)
+        {
+            // Xcode's standard library has no from_chars for floating point; the classic
+            // locale keeps the decimal point a dot whatever the system language.
+            if (!arg.empty() && arg.front() != '+' && !std::isspace(static_cast<unsigned char>(arg.front())))
+            {
+                std::istringstream in{std::string(arg)};
+                in.imbue(std::locale::classic());
+                parsed = static_cast<bool>(in >> number) && in.peek() == std::char_traits<char>::eof();
+            }
+        }
+        else
+        {
+            auto [end, error] = std::from_chars(arg.data(), arg.data() + arg.size(), number);
+            parsed = error == std::errc{} && end == arg.data() + arg.size();
+        }
+        if (!parsed || !(number >= low && number <= high))
             throw std::invalid_argument(usage);
         return number;
     }

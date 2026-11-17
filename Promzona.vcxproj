@@ -10,6 +10,12 @@
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
     <PreferredToolArchitecture>x64</PreferredToolArchitecture>
   </PropertyGroup>
+  <PropertyGroup Label="Vcpkg">
+    <!-- SDL3 comes from vcpkg.json; the CMake build fetches it by itself instead. -->
+    <VcpkgEnableManifest>true</VcpkgEnableManifest>
+    <VcpkgUseStatic>true</VcpkgUseStatic>
+    <VcpkgTriplet>x64-windows-static</VcpkgTriplet>
+  </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
@@ -30,7 +36,7 @@
   <ItemDefinitionGroup>
     <ClCompile>
       <AdditionalIncludeDirectories>$(ProjectDir)include;$(ProjectDir)third_party;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <PreprocessorDefinitions>_WINDOWS;WIN32_LEAN_AND_MEAN;NOMINMAX;PROMZONA_SOURCE_CONTENT=L"$(MSBuildProjectDirectory.Replace('\','/'))/Content";%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WINDOWS;WIN32_LEAN_AND_MEAN;NOMINMAX;PROMZONA_SOURCE_CONTENT="$(MSBuildProjectDirectory.Replace('\','/'))/Content";%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <LanguageStandard>stdcpplatest</LanguageStandard>
       <ConformanceMode>true</ConformanceMode>
       <ExceptionHandling>Sync</ExceptionHandling>
@@ -46,7 +52,7 @@
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>opengl32.lib;windowscodecs.lib;ole32.lib;winmm.lib;shell32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>opengl32.lib;user32.lib;gdi32.lib;winmm.lib;imm32.lib;ole32.lib;oleaut32.lib;version.lib;uuid.lib;advapi32.lib;setupapi.lib;shell32.lib;cfgmgr32.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)' == 'Debug'">
@@ -115,6 +121,7 @@
     <ClInclude Include="include/promzona\road_levels.hpp" />
     <ClInclude Include="include/promzona\sun_shadow.hpp" />
     <ClInclude Include="include/promzona\surface_effects.hpp" />
+    <ClInclude Include="include/promzona\text.hpp" />
     <ClInclude Include="include/promzona\transit.hpp" />
     <ClInclude Include="include/promzona\vegetation.hpp" />
     <ClInclude Include="include/promzona\visibility.hpp" />
@@ -126,6 +133,10 @@
     <ClInclude Include="src\cloud_map.hpp" />
     <ClInclude Include="src\frame_trace.hpp" />
     <ClInclude Include="src\post_processing.hpp" />
+    <ClInclude Include="src\platform.hpp" />
+    <ClInclude Include="src\ui_canvas.hpp" />
+    <ClInclude Include="third_party\stb\stb_image.h" />
+    <ClInclude Include="third_party\stb\stb_truetype.h" />
     <ClInclude Include="third_party\json.hpp" />
   </ItemGroup>
   <ItemGroup>
@@ -164,6 +175,7 @@
     <ClCompile Include="src\passenger_jobs.cpp" />
     <ClCompile Include="src\peace_jobs.cpp" />
     <ClCompile Include="src\physics.cpp" />
+    <ClCompile Include="src\platform_sdl.cpp" />
     <ClCompile Include="src\pursuit.cpp" />
     <ClCompile Include="src\arrest.cpp" />
     <ClCompile Include="src\renderer.cpp" />
@@ -172,11 +184,14 @@
     <ClCompile Include="src\roles.cpp" />
     <ClCompile Include="src\save.cpp" />
     <ClCompile Include="src\social.cpp" />
+    <ClCompile Include="src\stb_image.cpp" />
     <ClCompile Include="src\street_fixtures.cpp" />
     <ClCompile Include="src\street_life.cpp" />
     <ClCompile Include="src\surface_effects.cpp" />
     <ClCompile Include="src\surfaces.cpp" />
+    <ClCompile Include="src\text.cpp" />
     <ClCompile Include="src\transit.cpp" />
+    <ClCompile Include="src\ui_canvas.cpp" />
     <ClCompile Include="src\vegetation.cpp" />
     <ClCompile Include="src\wildlife.cpp" />
     <ClCompile Include="src\world.cpp" />

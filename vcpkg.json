@@ -1,0 +1,8 @@
+{
+  "name": "promzona",
+  "version-string": "0.1.0",
+  "description": "SDL3 for the hand-written Visual Studio project (Promzona.vcxproj). The CMake build fetches SDL3 itself.",
+  "dependencies": [
+    "sdl3"
+  ]
+}

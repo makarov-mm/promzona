@@ -1,91 +1,61 @@
 #include "promzona/audio.hpp"
-#include <windows.h>
-#include <mmsystem.h>
-#include <thread>
+#include <SDL3/SDL.h>
+#include <array>
 #include <format>
 
 namespace Promzona
 {
 struct AudioDevice::Impl
 {
-    HWAVEOUT output{};
-    HANDLE ready{};
-    std::jthread thread;
-    struct Buffer
-    {
-        WAVEHDR header{};
-        std::array<short, 1024> data{};
-        bool prepared{};
-    };
-    std::array<Buffer, 4> buffers;
+    AudioMixer &mixer;
+    SDL_AudioStream *stream{};
+    bool initialized{};
+    std::array<float, 1024> mixed{};
     std::string failure;
-    explicit Impl(AudioMixer &mixer)
+
+    explicit Impl(AudioMixer &m) : mixer(m)
     {
-        ready = CreateEventW(nullptr, FALSE, FALSE, nullptr);
-        if (!ready)
+        if (!SDL_InitSubSystem(SDL_INIT_AUDIO))
         {
-            failure = "Cannot create audio event";
+            failure = std::format("No audio: {}", SDL_GetError());
             return;
         }
-        WAVEFORMATEX format{WAVE_FORMAT_PCM, 2, AudioMixer::sampleRate, AudioMixer::sampleRate * 4, 4, 16, 0};
-        auto result =
-            waveOutOpen(&output, WAVE_MAPPER, &format, reinterpret_cast<DWORD_PTR>(ready), 0, CALLBACK_EVENT);
-        if (result != MMSYSERR_NOERROR)
+        initialized = true;
+        const SDL_AudioSpec spec{SDL_AUDIO_F32, 2, AudioMixer::sampleRate};
+        stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, &Impl::feed, this);
+        if (!stream)
         {
-            output = nullptr;
-            failure = std::format("No stereo audio output: {}", result);
+            failure = std::format("No stereo audio output: {}", SDL_GetError());
             return;
         }
-        for (auto &b : buffers)
-        {
-            b.header.lpData = reinterpret_cast<char *>(b.data.data());
-            b.header.dwBufferLength = DWORD(sizeof(b.data));
-            if (waveOutPrepareHeader(output, &b.header, sizeof(WAVEHDR)) != MMSYSERR_NOERROR)
-            {
-                failure = "Cannot prepare audio buffers";
-                return;
-            }
-            b.prepared = true;
-        }
-        thread = std::jthread(
-            [&, this](std::stop_token stop)
-            {
-                std::array<float, 1024> mixed{};
-                while (!stop.stop_requested())
-                {
-                    for (auto &b : buffers)
-                        if (!(b.header.dwFlags & WHDR_INQUEUE))
-                        {
-                            mixer.mix(mixed);
-                            for (size_t i = 0; i < mixed.size(); i++)
-                                b.data[i] = short(clamp(mixed[i], -1.f, 1.f) * 32767);
-                            if (waveOutWrite(output, &b.header, sizeof(WAVEHDR)) != MMSYSERR_NOERROR)
-                                return;
-                        }
-                    WaitForSingleObject(ready, 10);
-                }
-            });
+        SDL_ResumeAudioStreamDevice(stream);
     }
+
     ~Impl()
     {
-        if (thread.joinable())
+        // Destroying the stream stops the callback before the mixer goes away.
+        if (stream)
+            SDL_DestroyAudioStream(stream);
+        if (initialized)
+            SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    }
+
+    // Runs on the audio thread whenever the device needs more interleaved stereo samples.
+    static void SDLCALL feed(void *self, SDL_AudioStream *stream, int needed, int)
+    {
+        auto &impl = *static_cast<Impl *>(self);
+        while (needed > 0)
         {
-            thread.request_stop();
-            SetEvent(ready);
-            thread.join();
+            impl.mixer.mix(impl.mixed);
+            for (float &sample : impl.mixed)
+                sample = clamp(sample, -1.f, 1.f);
+            const int bytes = int(sizeof(impl.mixed));
+            SDL_PutAudioStreamData(stream, impl.mixed.data(), bytes);
+            needed -= bytes;
         }
-        if (output)
-        {
-            waveOutReset(output);
-            for (auto &b : buffers)
-                if (b.prepared)
-                    waveOutUnprepareHeader(output, &b.header, sizeof(WAVEHDR));
-            waveOutClose(output);
-        }
-        if (ready)
-            CloseHandle(ready);
     }
 };
+
 AudioDevice::AudioDevice(AudioMixer &mixer) : impl_(std::make_unique<Impl>(mixer)) {}
 AudioDevice::~AudioDevice() = default;
 const std::string &AudioDevice::error() const

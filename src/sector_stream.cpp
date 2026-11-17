@@ -51,7 +51,7 @@ namespace Promzona
                 });
 
         wanted_.resize(sectors_.size());
-        worker_ = std::jthread([this](std::stop_token stop) { run(std::move(stop)); });
+        worker_ = StopThread([this](StopToken stop) { run(std::move(stop)); });
     }
 
     SectorStream::~SectorStream()
@@ -59,6 +59,11 @@ namespace Promzona
         // The worker uses every other member, so it is stopped here and not by the order
         // in which the members happen to be declared.
         worker_.request_stop();
+        {
+            // Taking the lock once orders the request before the worker's next look at it.
+            std::scoped_lock lock(mutex_);
+        }
+        wake_.notify_all();
         worker_.join();
     }
 
@@ -207,7 +212,7 @@ namespace Promzona
         };
     }
 
-    void SectorStream::run(std::stop_token stop)
+    void SectorStream::run(StopToken stop)
     {
         try
         {
@@ -216,7 +221,7 @@ namespace Promzona
                 size_t id;
                 {
                     std::unique_lock lock(mutex_);
-                    wake_.wait(lock, stop, [&] { return !jobs_.empty() && ready_.size() < maxReady; });
+                    wake_.wait(lock, [&] { return stop.stop_requested() || (!jobs_.empty() && ready_.size() < maxReady); });
                     if (stop.stop_requested())
                         return;
                     id = jobs_.front();

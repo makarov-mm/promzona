@@ -84,7 +84,7 @@ void worker()
     // The worker must use its immutable snapshot even if the owner starts a new city.
     world.buildings.clear();
     std::vector<size_t> ids(cells.size());
-    std::ranges::iota(ids, 0uz);
+    std::iota(ids.begin(), ids.end(), 0uz);
     stream.request(ids);
     until([&] { return stream.stats().ready == DetailStream::maxReady; });
     auto stats = stream.stats();
