@@ -690,7 +690,7 @@ struct Renderer::Impl
     std::array<uint32_t, Minimap::size * Minimap::size> mapPixels{};
     int width{}, height{};
     HudCanvas hud;
-    std::optional<Font> font, large, letteringFont;
+    std::optional<Font> font, large, letteringFont, huge;
     // Every caller names its uniform with a string literal, so the address of the name
     // finds its location without comparing text.
     std::unordered_map<const char *, GLint> locations;
@@ -893,6 +893,7 @@ struct Renderer::Impl
         marker.upload(arrow);
         font.emplace(ui_font_file(root, false), 21);
         large.emplace(ui_font_file(root, true), 55);
+        huge.emplace(ui_font_file(root, true), 104);
         for (int i = 0; i < 2; i++)
         {
             auto name = i ? "woman" : "man";
@@ -3700,6 +3701,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     r.effects.draw(r.effectShader, world, view, vp, r.graphics.effects);
     r.timer.mark(SceneTimer::post);
     frame_trace.enter(FrameTrace::post);
+    r.post.mourning(float(world.screenDrain()), float(world.screenDarkness()));
     if (post)
         // Contact shading follows the quality setting, as in the managed game: none at
         // the lowest, eight samples at the middle one and twelve at the highest.
@@ -3767,7 +3769,25 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         r.menuText(x + 8, bottom + 22, width - 16, 30, L"↑↓ Выбор     ←→ Изменить     Enter ОК     Esc Назад",
                    rgb(190, 197, 177));
     }
-    if (world && !menu && progress < 0)
+    // While the hero lies dead, and until the clinic has faded in, the HUD stands aside for the
+    // caption: nothing to steer and nothing to read over a darkening picture.
+    const bool mourning = world && (world->dying() || world->screenDarkness() > .35);
+    if (world && !menu && progress < 0 && world->dying())
+    {
+        const double t = world->deathSince();
+        // The caption comes in a moment after the fall and leaves as the picture goes black.
+        if (t > .45 && world->screenDarkness() < .85)
+        {
+            const std::wstring caption = localize(L"УБИТ", r.language);
+            const int width = r.huge->width(caption), x = (w - width) / 2, y = h / 2 - r.huge->height() / 2 - h / 10;
+            r.hudDamage.touch(x - 6, y - 4, width + 12, r.huge->height() + 10);
+            // A dark rim keeps the letters readable over sky and over asphalt alike.
+            for (auto [dx, dy] : {std::pair{-3, 0}, {3, 0}, {0, -3}, {0, 3}, {3, 3}})
+                r.hud.text(*r.huge, x + dx, y + dy, caption, rgb(26, 4, 3));
+            r.hud.text(*r.huge, x, y, caption, rgb(196, 28, 22));
+        }
+    }
+    if (world && !menu && progress < 0 && !mourning)
     {
         // The person and the driven vehicle have separate meters, as in the managed game:
         // pills and food heal the person, a garage repairs the car.
@@ -4119,6 +4139,18 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         Uniform3f(transform, std::min(1.f, aspect / r.menuAspect), std::min(1.f, r.menuAspect / aspect), .7f);
         glBindTexture(GL_TEXTURE_2D, r.menuArt);
         r.uiQuad.draw();
+    }
+    // Without post-processing there is no resolve pass to darken the death and the clinic's
+    // fade-in, so the picture is dimmed here before the HUD goes on top of it.
+    if (const double dark = world && !menu && r.mode == SceneMode::original ? world->screenDarkness() : 0; dark > 0)
+    {
+        const float keep = float(1 - dark);
+        BlendColor(keep, keep, keep, 1);
+        glBlendFunc(GL_ZERO, 0x8001 /* GL_CONSTANT_COLOR */);
+        Uniform3f(transform, 1, 1, 1);
+        glBindTexture(GL_TEXTURE_2D, r.white);
+        r.uiQuad.draw();
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     }
     Uniform3f(transform, 1, 1, 1);
     r.uploadHud();

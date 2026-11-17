@@ -832,9 +832,20 @@ void shoreEntry()
     w.player.height = w.terrain.height(canal) + .85;
     w.wanted = 2.;
     w.step({}, 1. / 120);
-    check((w.position() - canal).length() > 5 && w.wanted == 0 && !w.ripples.empty() &&
-              (w.ripples.back().centre - canal).length() < .1,
-          "deep water sends the player to the clinic and leaves a splash at the point of entry");
+    check(w.dying() && w.wanted == 0 && !w.ripples.empty() && (w.ripples.back().centre - canal).length() < .1,
+          "deep water kills the player and leaves a splash at the point of entry");
+    check(w.screenDarkness() < .01, "the picture stays visible while the hero has just died");
+    w.time += World::deathSeconds - World::deathFadeSeconds / 2;
+    w.step({}, 1. / 120);
+    check(w.dying() && w.screenDarkness() > .3 && w.screenDarkness() < .7 && w.screenDrain() == 1,
+          "the drained picture fades to black near the end of the death");
+    w.time += World::deathFadeSeconds;
+    w.step({}, 1. / 120);
+    check(!w.dying() && (w.position() - canal).length() > 5 && w.health > .99 && w.screenDarkness() > .9,
+          "after the death the player wakes at the clinic in the dark");
+    w.time += World::respawnFadeSeconds;
+    w.step({}, 1. / 120);
+    check(w.screenDarkness() == 0, "the clinic fades in from black");
     w.time += WaterRipple::lifetime + .1;
     w.step({}, 1. / 120);
     check(w.ripples.empty(), "expired water rings are removed");

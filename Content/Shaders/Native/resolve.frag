@@ -9,6 +9,7 @@ uniform bool enableBloom;
 uniform bool enableOcclusion;
 uniform vec2 clip; // near and far plane of the scene
 uniform vec3 conditions; // daylight, rain, low sun
+uniform vec2 mourning; // colour drained out, darkness: the hero's death and the fade back in
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
 vec3 smoothEdge(vec2 stepUV) {
@@ -55,5 +56,9 @@ void main() {
     c += c * (1.0 - c) * (vec3(.07, .005, -.075) * warm + .09 * night + .05 * conditions.y);
     vec3 halo = enableBloom ? texture(glowImage, uv).rgb : vec3(0.0);
     c += (1.0 - c) * halo * (.065 + .20 * night + .07 * conditions.y);
+    // Dying, the city loses its colour and dims towards a faint sepia, then goes black.
+    vec3 grey = vec3(luma(c)) * vec3(1.0, .93, .86);
+    c = mix(c, grey * .82, mourning.x);
+    c *= 1.0 - mourning.y;
     color = vec4(clamp(c,0.,1.), 1);
 }

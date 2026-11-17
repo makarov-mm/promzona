@@ -19,7 +19,8 @@ namespace Promzona
         GLuint sceneCopy_{}, effectsFb_{}, vao_{}, glow_{}, resolve_{}, occlusion_{}, depth_{};
         // The scene, two quarter-size targets of the glow, and the half-size contact shading.
         std::array<GLuint, 4> fb_{}, color_{};
-        GLint pass_{}, threshold_{}, conditions_{}, bloom_{}, lens_{}, samples_{}, clip_{}, shaded_{};
+        GLint pass_{}, threshold_{}, conditions_{}, bloom_{}, lens_{}, samples_{}, clip_{}, shaded_{}, mourning_{};
+        float drain_{}, darkness_{};
         int w_{}, h_{}, glowW_{}, glowH_{};
 
     public:
@@ -29,6 +30,13 @@ namespace Promzona
         void beginEffects(unsigned depthUnit, bool reflectPuddles);
         GLuint sceneTarget() const { return fb_[0]; }
         void present(int width, int height, float day, float rain, float sunHeight, bool bloom, const ContactShading &contact);
+        // The colour drained out of the picture (0..1) and how dark it is (0 clear .. 1 black),
+        // for the hero's death and the fade back in at the clinic.
+        void mourning(float drain, float darkness)
+        {
+            drain_ = drain;
+            darkness_ = darkness;
+        }
         ~PostProcessing();
     };
 

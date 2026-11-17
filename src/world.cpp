@@ -678,6 +678,12 @@ namespace Promzona
         rain += (rainTarget - rain) * (1 - std::exp(-dt * .16));
         wetness += (rainTarget - wetness) * (1 - std::exp(-dt * (rainTarget > 0 ? .05 : .006)));
         firing = false;
+        if (dying())
+        {
+            // The dead do not walk, drive or shoot.
+            input = {};
+            input.lookHeading = -player.angle;
+        }
         step_entry(input, dt);
         if (drone.active)
         {
@@ -1531,28 +1537,17 @@ namespace Promzona
                          terrain.bed_height(position().x, position().z) < CityLayout::waterLevel - dangerDepth;
         if (submerged)
             splash(position(), controlledCar >= 0 ? 2.5 : .8);
-        if (health <= 0 || submerged || std::max(std::abs(position().x), std::abs(position().z)) > landEdge ||
-            (controlledCar >= 0 && cars[controlledCar].destroyed))
+        const bool fatal = health <= 0 || submerged ||
+                           std::max(std::abs(position().x), std::abs(position().z)) > landEdge ||
+                           (controlledCar >= 0 && cars[controlledCar].destroyed);
+        if (!dying() && fatal)
+            beginDeath();
+        if (dying())
         {
-            auto fallen = position();
-            if (controlledCar >= 0 && !transitPassenger())
-                cars[controlledCar].driverless = true;
-            controlledCar = -1;
-            playerTransitSeat = -1;
-            transitExitRequested = false;
-            clinicRespawn(fallen);
-            player.roadLevel = 0;
-            player.verticalSpeed = 0;
-            player.height = terrain.height(player.p) + .85;
-            health = 1;
-            wanted = 0;
-            dispatchAt = 0;
-            for (auto &c : cars)
-                standDown(c);
-            playerBurnUntil = playerKnockedUntil = 0;
-            rockets.clear();
-            inventory.clear();
-            physics.clear();
+            // The street goes on round the body; nobody comes to arrest it.
+            servicesStep(dt);
+            if (deathSince() >= deathSeconds)
+                finishDeath();
         }
         else
         {
@@ -1560,6 +1555,76 @@ namespace Promzona
             arrestStep(dt);
         }
     }
+    void World::beginDeath()
+    {
+        deathAt = time;
+        health = 0;
+        vehicleEntry = {};
+        conversation = {};
+        openMarket = -1;
+        releaseScooter(playerScooter, {});
+        if (drone.active)
+            stop_drone(L"Связь с дроном прервана", 20);
+        // Killed at the wheel or in a wreck: the body ends up beside the vehicle.
+        if (controlledCar >= 0)
+        {
+            auto &car = cars[controlledCar];
+            if (!transitPassenger())
+                car.driverless = true;
+            const Vec2 door = transitPassenger() ? car.body.p : driver_door(car, -1);
+            player.p = clearEntrance(door).value_or(door);
+            player.roadLevel = car.body.roadLevel;
+            player.height = surface(player.p, player.roadLevel) + .85;
+            player.angle = -car.heading();
+        }
+        controlledCar = -1;
+        playerTransitSeat = -1;
+        transitExitRequested = false;
+        player.v = {};
+        player.w = 0;
+        deathPlace = player.p;
+        deathHeight = player.height;
+        // Lying still until the clinic takes over.
+        playerKnockedUntil = time + deathSeconds + 1;
+        // The pursuit ends with the suspect.
+        wanted = 0;
+        dispatchAt = 0;
+        for (auto &c : cars)
+            standDown(c);
+        rockets.clear();
+        sounds.push_back({"impact", player.p, .9, true});
+    }
+
+    void World::finishDeath()
+    {
+        const Vec2 fallen = deathPlace;
+        deathAt = -1;
+        respawnedAt = time;
+        clinicRespawn(fallen);
+        player.roadLevel = 0;
+        player.verticalSpeed = 0;
+        player.height = terrain.height(player.p) + .85;
+        health = 1;
+        wanted = 0;
+        dispatchAt = 0;
+        playerBurnUntil = playerKnockedUntil = 0;
+        inventory.clear();
+        physics.clear();
+    }
+
+    double World::screenDarkness() const
+    {
+        auto smooth = [](double x) { x = std::clamp(x, 0., 1.); return x * x * (3 - 2 * x); };
+        if (dying())
+            return smooth((deathSince() - (deathSeconds - deathFadeSeconds)) / deathFadeSeconds);
+        return 1 - smooth((time - respawnedAt) / respawnFadeSeconds);
+    }
+
+    double World::screenDrain() const
+    {
+        return dying() ? std::clamp(deathSince() / .8, 0., 1.) : 0.;
+    }
+
     namespace
     {
     template <class T> T consoleNumber(std::string_view arg, T low, T high, const char *usage)

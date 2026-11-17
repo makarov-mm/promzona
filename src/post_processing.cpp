@@ -30,6 +30,7 @@ void PostProcessing::initialize(GLuint glowProgram, GLuint resolveProgram, GLuin
     shaded_ = GetUniformLocation(resolve_, "enableOcclusion");
     clip_ = GetUniformLocation(resolve_, "clip");
     conditions_ = GetUniformLocation(resolve_, "conditions");
+    mourning_ = GetUniformLocation(resolve_, "mourning");
     UseProgram(0);
 }
 void PostProcessing::resize(int w, int h)
@@ -163,6 +164,7 @@ void PostProcessing::present(int width, int height, float day, float rain, float
     Uniform2f(clip_, contact.nearPlane, contact.farPlane);
     float lowSun = (sunHeight - .15f) * 4.f;
     Uniform3f(conditions_, day, rain, std::exp(-lowSun * lowSun) * day);
+    Uniform2f(mourning_, drain_, darkness_);
     const GLuint images[] = {color_[0], color_[1], depth_, color_[3]};
     for (unsigned unit = std::size(images); unit-- > 0;)
     {

@@ -162,6 +162,18 @@ namespace
 
     View camera(const World &w, Application &a, double dt)
     {
+        if (w.dying())
+        {
+            // Over the body: the camera rises slowly and circles a quarter turn while the
+            // caption stands and the picture drains.
+            const double t = w.deathSince(), turn = a.cameraYaw + .9 + t * .14;
+            const double radius = 3.5 + t * 1.1, rise = 2.6 + t * 2.4;
+            View v;
+            v.target = {float(w.deathPlace.x), float(w.deathHeight - .55), float(w.deathPlace.z)};
+            v.eye = v.target + Vec3{float(std::sin(turn) * radius), float(rise), float(std::cos(turn) * radius)};
+            v.heading = turn + pi;
+            return v;
+        }
         if (w.drone.active)
         {
             const auto &d = w.drone;
@@ -500,7 +512,7 @@ int main(int argc, char *argv[])
             scenario != L"console" && scenario != L"street-hail" && scenario != L"estate" &&
             scenario != L"courtyard" && scenario != L"cottages" && scenario != L"centre" &&
             scenario != L"garages" && scenario != L"rail-yard" && scenario != L"cloud-coast" && scenario != L"seafront" &&
-            scenario != L"canal-mouth" && scenario != L"crowd" && scenario != L"aerial")
+            scenario != L"canal-mouth" && scenario != L"crowd" && scenario != L"aerial" && scenario != L"death")
             throw std::runtime_error("Unknown smoke scenario");
 
         if (content.empty())
@@ -2516,6 +2528,10 @@ int main(int argc, char *argv[])
                             input.car = {.85, 0, false, false};
                         if (smoke && scenario == L"tank")
                             input.shooting = frames >= 150;
+                        // The hero dies at frame 30: the caption and the hovering camera, then
+                        // the clinic out of the black six seconds later.
+                        if (smoke && scenario == L"death" && frames == 30)
+                            world->health = 0;
                         if (smoke && scenario == L"aerial" && world->controlledCar >= 0)
                         {
                             // Held at 110 m over the street, so that every frame is the same view.
@@ -2868,6 +2884,10 @@ int main(int argc, char *argv[])
                         crewCaptured = true;
                     }
                 }
+                // The death in pictures: the caption over the body, the black, the clinic fading in.
+                if (smoke && scenario == L"death" && world && !app.loading &&
+                    (frames == 150 || frames == 380 || frames == 420 || frames == 470))
+                    renderer.screenshot(smokeOutput / std::format("death-{:04}.bmp", frames), app.width, app.height);
                 if (smoke && arrestScenario && world && !officerCaptured && world->patrol.hold > .15)
                 {
                     renderer.screenshot(smokeOutput / "officer.bmp", app.width, app.height);

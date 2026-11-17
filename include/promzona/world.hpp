@@ -483,6 +483,24 @@ struct World
     // Console cheat of the managed game: the player and the driven vehicle take no damage.
     bool godMode{};
     double playerKnockedUntil{};
+    // Death is not a cut: the hero lies where he fell for a few seconds under a hovering
+    // camera and a caption, the picture goes dark, and the clinic fades in out of the black.
+    static constexpr double deathSeconds = 6, deathFadeSeconds = 1.4, respawnFadeSeconds = 1.8;
+    double deathAt{-1}, respawnedAt{-1e9};
+    Vec2 deathPlace{};
+    double deathHeight{};
+    bool dying() const
+    {
+        return deathAt >= 0;
+    }
+    // Seconds since the hero died, or a negative number while he lives.
+    double deathSince() const
+    {
+        return dying() ? time - deathAt : -1;
+    }
+    // How dark the picture is (0 clear .. 1 black) and how drained of colour (0 .. 1).
+    double screenDarkness() const;
+    double screenDrain() const;
     double lastCrimeAt{-100}, lastPoliceSightAt{-100}, policeSightCheckAt{};
     int pedestrianImpacts{};
     static constexpr double fatalImpactSpeed = 5.5;
@@ -674,6 +692,8 @@ struct World
     Vec2 jobTarget() const;
     void servicesStep(double dt);
     void clinicRespawn(Vec2 fallen);
+    void beginDeath();
+    void finishDeath();
     void notify(std::wstring text);
     bool validJob() const;
     // Ordinary traffic occupies the first slots of `cars`; response and summoned vehicles follow.

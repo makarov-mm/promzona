@@ -32,6 +32,7 @@ namespace Promzona::gl
     X(Uniform1f, void, GLint, GLfloat) \
     X(Uniform2f, void, GLint, GLfloat, GLfloat) \
     X(Uniform3f, void, GLint, GLfloat, GLfloat, GLfloat) \
+    X(BlendColor, void, GLfloat, GLfloat, GLfloat, GLfloat) \
     X(Uniform3fv, void, GLint, GLsizei, const GLfloat *) \
     X(Uniform4f, void, GLint, GLfloat, GLfloat, GLfloat, GLfloat) \
     X(GenBuffers, void, GLsizei, GLuint *) \
