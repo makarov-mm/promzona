@@ -1,415 +1,415 @@
-# Состояние переноса PROMZONA на C++23
+# State of the PROMZONA port to C++23
 
-Базовая версия: PROMZONA **0.44.1** из `Apps/Promzona` репозитория makarov-physics2.
-Дата проверки: 2026-11-13. Новый проект находится отдельно от solution Suites.
+Base version: PROMZONA **0.44.1** from `Apps/Promzona` of the makarov-physics2 repository.
+Checked on: 2026-11-13. The new project lives separately from the Suites solution.
 
-## Граница готовности
+## Readiness boundary
 
-Нативный EXE собирается и работает самостоятельно. Полная функциональная и
-визуальная эквивалентность исходной игре ещё **не достигнута**. Удалять исходную
-PROMZONA из Suites на основании этого билда пока рано.
+The native EXE builds and runs on its own. Full functional and
+visual equivalence with the original game has **not yet been reached**. It is still too early to remove the original
+PROMZONA from Suites on the basis of this build.
 
-Вместе с ресурсами сохранена исходная зависимая часть кода: 11 проектов,
-581 уникальный файл C#/F#, всего 1946 извлечённых файлов. Manifest содержит SHA-256.
-Копия в reference предназначена для продолжения переноса и сравнения поведения;
-она не компилируется как часть C++ проекта. Старые csproj оставлены как описание
-связей, самостоятельная сборка этой архивной C# копии не обещается.
+The original dependent part of the code is kept together with the assets: 11 projects,
+581 unique C#/F# files, 1946 extracted files in total. The manifest contains SHA-256 hashes.
+The copy in reference is meant for continuing the port and comparing behaviour;
+it is not compiled as part of the C++ project. The old csproj files are kept as a description
+of the dependencies; building this archived C# copy on its own is not promised.
 
-## Уже перенесено и проверено
+## Already ported and verified
 
-| Подсистема | Реализация и предел проверки |
+| Subsystem | Implementation and extent of verification |
 |---|---|
-| Автомобильная динамика | C++ перенос VehicleDynamics: руление, продольное движение, тормоз, ручник, боковое сцепление. 60 C# эталонов, 120 шагов каждый; допуск 1e-9 для скоростей/угловой скорости, 1e-12 для руления. Эталоны используют плоскую поверхность. |
-| Планировка | Новые игры используют ревизию 4. Перенесены шесть районов, планировки жилых кварталов, грузовая ветка промзоны и пляжи у морского берега. Старые сохранения используют ревизию 0, для которой топология и размеры участков сверены с 12 эталонами C#. |
-| Пути | Прямые и кубические кривые, таблица длины, выбор точки по расстоянию, разворот. Соединение улиц и перекрёстков по графу без скачка позиции, развороты в тупиках. Проверены 1000 переходов маршрута, все тупики контрольного города и четыре минуты локального движения AI. На четырёхполосных улицах водители занимают обе полосы своего направления и могут плавно объехать медленную машину или затор. Проверяются интервал спереди, приближение сзади, пешеходы и высота дороги. Выбранная полоса и текущий манёвр сохраняются при загрузке игры. |
-| Рельеф и каналы | Перенесены формулы естественного рельефа с двумя каналами и выравниванием площадок зданий. Дно и поверхность моста разделены; опора и дорожная сетка используют одну функцию высоты. Попадания в воду и падение уличных предметов создают брызги и расходящиеся круги. В воде предметы замедляются. Отдельно проверяются края настила, отсутствие разметки на воде и мостов без дорожного соединения. |
-| Эстакады и тоннели | Пять эстакад и четыре тоннеля для новой карты, двусторонние маршруты AI, единый профиль высоты для геометрии и опоры, стены/опоры/балки, вырезы в земле и потолок тоннеля. Машина сохраняет свой уровень, падение сохраняет мировую высоту; выход из машины внутри тоннеля не переносит на поверхность. Проверены три seed и физические проезды AI в обе стороны. Это адаптация для текущего нативного генератора, а не побитовое совпадение с ревизией 4 C# города. |
-| Контакты | Локальная сетка, окружности/прямоугольники, SAT, импульсы и трение, угловая скорость, сон, фильтрация по высоте. Добавлены контакты стен и опор новых дорожных уровней. Продольная опора — профиль дороги с гравитацией при отрыве, а не универсальный 3D rigid-body движок. |
-| Обломки машин | Конечная масса после разрушения, падение и реакция на импульсы. Сбитый полицейский вертолёт теряет подъёмную силу, падает и остаётся физическим объектом. Перенос `WreckAfterContacts` и `WreckVerticalStep`: обломок, в который врезались, гремит, подпрыгивает (до 1,5 м/с) и роняет шесть осколков; упавший со скоростью больше 2 м/с ударяется со звуком, поднимает дым и подскакивает ещё раз (12 % скорости падения). Машина на колёсах после прыжка подскакивает на 22 % скорости приземления (`AfterContacts`). |
-| Инвентарь | Четыре определения оружия, выдача боеприпасов, выбор и переключение, автоматический переход при исчерпании патронов. Базука получает 20 зарядов. |
-| Бой и урон | Кулаки, пистолет, автомат, летящие ракеты и огнемёт; ближайшее попадание по объёмам с учётом высоты, препятствий и рельефа. Взрывы передают импульс, повреждают соседние машины, могут вызывать цепную реакцию. Урон контактов зависит от изменения скорости, а не просто от скорости машины. Там, где пуля остановилась раньше своей дальности, вылетают три искры; попадание в игрока пешком и несмертельное попадание в прохожего слышны (`impact`), как и удар кулаком по машине или стене. |
-| Огонь | Огнемёт не поражает стрелка напрямую; огонь с горящей машины может перекинуться на него. Горение игрока ограничено по времени, у NPC обычно смертельно; горение машины игрока может прекратиться после безопасной езды. Отдельно проверены критический урон и переход в подвижный обломок. Горящая машина слышна каждые три секунды, над ней пламя и столб дыма; машина с прочностью ниже 60 % дымит из-под капота тем гуще, чем сильнее повреждена (`VehicleLife`, `AfterContacts`). |
-| Розыск | Шесть порогов. За игроком последовательно приезжают милиция, подкрепление, Росгвардия, ФСБ и БТР. На шестом уровне появляется стреляющий вертолёт. Перенос движения экипажей из `CityTraffic.Pursuit.cs` (13.11.2026): на вызове экипаж не стоит в очереди и не ждёт ни светофора, ни очереди на перекрёстке. По улице он объезжает тех, кто впереди, смещаясь из полосы туда, где свободно (в пределах проезжей части), и тормозит только перед тем, кто прямо перед бампером: до 4 м/с перед машиной и до 5 м/с перед пешеходом; встречных учитывает с запасом на полторы секунды сближения. На дальней модели выезжает на 2,8 м к оси улицы и едет мимо не быстрее 12 м/с (`PoliceRuleStep`). В прямой погоне, когда нарушитель виден, подруливает от препятствий, как `PolicePursuit`. После снятия розыска экипаж, съехавший с улицы или вставший поперёк, сам возвращается на дорогу (`RejoinRoad`). Отличия от C#: по улице объезд сделан смещением полосы, а не подруливанием от линии капота (с подруливанием машина за двумя стоящими автомобилями выезжала, теряла их из виду и возвращалась им в бампер); возврат на дорогу ведёт в ближайшую попутную полосу и к её стоп-линии по дуге, а не к ближайшей стоп-линии по прямой (пять экипажей, оставшихся на перекрёстке, выбирали одну и ту же стоп-линию с обратной стороны и запирали перекрёсток); скорости экипажей нативные — до 13 м/с по улице и 12 + уровень в прямой погоне (в C# 23 и до 26 м/с). К пешему нарушителю экипаж не едет: увидев его ближе 19 м, останавливается, как в C#, а подъезжает со скоростью, с которой успеет остановиться. Так же он подъезжает к стоящим впереди: правило C# «1,8 м/с на каждый метр до препятствия» с полной скорости невыполнимо, и экипажи въезжали друг в друга. Скорая по пути к пострадавшему не ждёт красного сигнала (`IsResponding`), но пропускает тех, кто уже на перекрёстке, и не въезжает, если за перекрёстком нет места. Рядом с пострадавшим, возле которого негде встать (он на мосту над улицей или за стеной), скорая больше не кружит до конца вызова: пока она едет мимо, время вызова идёт в девять раз быстрее, и к такому пострадавшему её снова вызовут через четыре минуты. |
-| Анимация людей | CityPersonMotion и кадры CSK1, переходы между состояниями, ходьба/бег с прицеливанием, поза павшего персонажа. |
-| Часы | Нелинейный суточный цикл с удлинёнными утром и вечером, старт в 07:00. |
-| Звук | WAV PCM, нативный стереомикшер, пространственное затухание и панорама по камере, до 32 голосов эффектов. Слышны двигатели, сирены, выстрелы, дождь, шины, лужи и реплики прохожих. События звука сверены с C# по местам вызова `Sound`: добавлены удар по обломку и его падение, треск горящей машины, попадание в игрока и в прохожего, удар кулаком по металлу, наезд на животное. Громкости, заданные в нативной версии раньше (реплики, крылья, выстрелы игрока), не менялись. Событие `pickup` при съёмке дроном в C# беззвучно (такого файла нет); здесь звучат `energy` и `cash`. «Радио Пустырь» проигрывает два трека. Громкость игры и радио сохраняется между запусками. |
-| Ресурсы | GLB, встроенные изображения, WIC для PNG/JPEG, CSK1. Все файлы этих типов из Content проходят загрузку. Нормализованные игровые модели поддержаны; это не универсальный импортёр всех расширений glTF. |
-| Здания | Детерминированный план фасада, метрический масштаб текстур, normal/ORM mapping, окна с глубиной комнат и шторами, медленное изменение света, балконы, подъезды, кондиционеры. Единый план для дальнего и ближнего представления; детали исчезают на 135–185 м. Это адаптация части исходного оформления, не полный перенос всех типов зданий. |
-| Растительность | Берёзы, липы, ели; безопасное размещение на рельефе, коллайдеры стволов, общие instanced-модели, два LOD, ветер. Это адаптация для нативного генератора; исходные модели всех деревьев ещё не перенесены. |
-| Солнечные тени | Локальная depth map 2048×2048, texel snapping, PCF 3×3, тени от зданий, машин, анимированных людей и alpha-tested листвы. Проход отключён ночью; дальние и точечные тени пока отсутствуют. |
-| Наезды и розыск | Перенесены правила C#: порог 1,1 м/с и движение машины в сторону человека, падение и хромота выжившего, смертельный наезд от 5,5 м/с, удар по пешему игроку, начисление розыска только при свидетелях для убийства, спад розыска с ускорением вне поля зрения милиции. Состояние сбитого сохраняется. До переноса машина только толкала прохожих. |
-| Локализация | Русский, английский и украинский. Текст игры пишется по-русски и переводится при выводе по таблице фраз (перенос алгоритма `Ukrainian.Translate`: самая длинная фраза, границы слов). Тест требует перевод для каждой русской строки исходников. 49 улиц и 49 проспектов из `CityNames` на трёх языках. |
-| Импорт сохранений C# | `--import-save`: форматы 1–3, те же проверки, что в `GameSession.ReadSave`. Переносятся seed, время, погода, деньги, здоровье и оружие, а из состояния `CityTraffic` (`World.Clock`) — розыск, счётчики заказов и серий, заработок, действие энергетика. Игрок, сохранённый за рулём, получает машину того же вида с её повреждениями и цветом (трамвай и троллейбус — нет); сохранённый пешком стоит рядом с машиной, в которой начинается новая игра. Положение — только для ревизии 0 на сетке 49×49, план улиц которой нативный генератор повторяет: там машина игрока или он сам стоят на прежнем месте, машины обычного потока (легковые, фургоны, грузовики, автобусы, газовая служба) встают на свои улицы в свои полосы, прохожие — на свои тротуары. Нативный состав города при этом не меняется: сохранённая машина занимает нативную того же вида, прохожий — обычного нативного прохожего; маршруты, компании, роли, животные, предметы, подбираемое и службы не переносятся. Машина, сохранённая на перекрёстке, ставится у ближнего конца своей улицы: нативные маршруты идут от девяти метров за перекрёстком до стоп-линии. В проверочном городе с полным населением на место вернулись 1195 из 1320 обычных машин и 3206 из 5151 прохожих. Город заселяется с населением, выбранным для новой игры (до 12.11.2026 — всегда с низким). Проверено на файлах, составленных по коду C# (`CityState.Capture`, имена полей и `<Имя>k__BackingField` автосвойств), а не на сохранении из настоящей игры. |
-| Ночной свет | Фонари вычисляются в шейдере по карте высот светильников (перенос `LocalLighting.glsl`), плюс фары четырёх ближайших машин и до четырёх маячков. В крытой части тоннеля небо и солнце отключены, работают потолочные светильники через девять метров. Теней от этих источников нет и в C#; SSAO и отражения — в своих строках ниже. |
-| Обновление города | Правила `LifeAfterContacts` и `VehicleLifeAfter`: тело без помощи через 180 с, обломок через 6 с и брошенная машина заменяются новым прохожим и обычной машиной дальше 245 м от игрока. В C# акторы удаляются и создаются заново; в нативной версии обновляется сам слот, поэтому население сохраняет размер. Место под активным дроном считается видимым. Время гибели сохраняется. |
-| Вода | Машина на глубине больше 0,85 м тонет (флаг `falling` раньше нигде не выставлялся) и через три секунды возвращается в трафик. Прохожий на глубине больше 1,15 м тонет без происшествия. Вода глубже 0,35 м гасит горящих. Животное на земле гибнет на глубине больше 0,75 м. Тело утонувшего держится в полуметре под поверхностью и опускается на дно со скоростью 0,6 м/с, как в `WaterStep`. |
-| Ямы | Генератор `CityRoadDetail.Holes` с той же последовательностью xorshift; значения сверены с независимым переносом. Толчок и качание кузова на скорости больше 4 м/с. Фотографии `Textures/Road/pothole_*.png` рисуются декалями с растворением края. Ямы на мостах, съездах и у порталов пропускаются. |
-| Интерфейс | Панель оружия со значками `Textures/Hud`, раздельные индикаторы здоровья и машины, район и улица над миникартой. |
-| Население | Четыре уровня: 260/720, 540/1800, 1080/3240 и 1485/5265 машин и жителей. Третий — первое заполнение города в C# (`CityTraffic.cs`). Четвёртый («полное») — население, которое C# держит в игре (`CityTraffic.Population.cs`): `ExpandPopulation` добавляет половину легковых и доводит число жителей до 4860, `ReplenishPopulation` раз в 0,4 с пополняет город до целей — на десятую больше машин каждого рода и 5265 жителей. В C# город добирает это за первые три минуты игры, здесь создаётся таким сразу; убыль в обеих версиях восполняется вне поля зрения (строка «Обновление города»), поэтому пределы C# (6165 жителей, 2200 машин) не нужны. Состав потока на всех уровнях один (`streetModel`): на полном уровне легковых 892 — столько же, сколько цель C#; автобусов и машин газовой службы по 90 против примерно 74 в C#, скорых 40 против 74. Животных на полном уровне столько же, сколько в C# (`ResetLife`): 120 стай голубей и 160 кошек, собак и птиц; на остальных уровнях — 354, как в прежних сохранениях. Уровень выбирается для новой игры, записывается в сохранение и не меняется при загрузке; сохранения без него открываются с низким. Низкий уровень сохраняет прежнюю последовательность генератора, поэтому старые города не меняются. |
-| Одежда и телосложение | Палитра `Actor.frag`: 19 вариантов одежды, шесть тонов кожи, цвет волос, длинные или короткие рукава и брюки; рост, ширина и глубина фигуры по номеру жителя. Форма милиции, Росгвардии, ФСБ, армии и скорой с фуражками, сумки у пенсионеров, мешок у бездомного. Раскраска выполняется в шейдере сцены по высоте вершины в стоячей позе, а не по отдельным текстурам. |
-| Роли жителей | Перенос `RolesStep`: отдыхающие на пляже группами у полотенец, ночные работницы у обочин с 21:00 до 05:00, бездомные на своём месте, смена состава только вне поля зрения, конец дежурства для экипажей после погони. Походки: пенсионеры, пьяные, бездомные, служащие. Роль сохраняется. |
-| Пешеходы | Перенос `ChooseWalk`: житель идёт от угла к углу перекрёстка — через одну из двух улиц или вдоль квартала до соседнего перекрёстка, по обоим тротуарам каждой улицы и через все четыре перехода. Назад сразу не поворачивают. Переход со светофором выбирается, только пока сигнал разрешает (в C# нужно четыре секунды запаса, здесь девять с половиной: улицы шире); кому нельзя перейти, идёт дальше по кварталу, а не ждёт. Так сигналы соблюдаются во всём городе, а не только рядом с игроком. Путь прогнут вправо, как в C#; вдоль квартала уступает только тот, у кого справа бордюр, потому что фасады стоят вплотную к линии. Стороны для новых жителей берутся из отдельной последовательности: город прежних сохранений не меняется. Сохранения без углов открываются, жители идут к ближайшему углу. У бордюра ждут, пока поперечный поток едет или поедет в ближайшие восемь секунд; застигнутые на дороге торопятся. Прохожий смотрит, где будет каждая движущаяся машина в ближайшие две секунды. Встречных и стоящих обходят (в C# — взаимное отталкивание; здесь шаг в сторону), стоящую машину обходят вокруг ближнего конца, компания пропускает ведущего и строится за ним. Кто идёт и не продвигается, обходит препятствие — со стороны, дальней от проезжей части, пока там есть проход; лёгкий мусор отодвигается с места, а мимо задетого столба или стены житель скользит без трения. Ожидание у бордюра и спешка на переходе действуют во всём городе: кто входит в поле зрения, стоит у бордюра, а не перед машинами, которым горит зелёный. Взгляд на машины, обход встречных и препятствий действуют в 90 м от игрока — там, где у жителей есть физическое тело; в C# граница та же (`PhysicsRadius`). Ночные работницы стоят на любом из двух тротуаров в средней трети квартала: раньше место отмерялось вдоль прежнего маршрута с переходом и могло прийтись на угол перекрёстка. |
-| Перекрёстки | Одна машина на перекрёстке (перенос резервирования `CityTraffic.Enter`), въезд только при свободном месте за перекрёстком, длинные машины стоят дальше от стоп-линии. В повороте водитель следит за кривой, а не за направлением капота; на прямой — за маршрутом, с коротким контролем перед бампером. Путь бампера считается с учётом руления: в повороте он идёт по кривой, а у машины, вставшей наискось, возвращается к полосе. Трамвай и троллейбус, готовые ехать на зелёный, занимают перекрёсток следующими, по одному: второй ждёт перед ним, пока первый не проедет. Стоящего впереди они видят и на крутой улице (`World::onSameSurface`, то же правило, что у машин). Рядом с игроком они тормозят перед теми, кто находится на рельсах впереди, в том числе за поворотом, и перед пешим игроком. На эстакаде и в тоннеле того, кто стоит на своей встречной полосе, проезжают, хотя на изгибе у въезда он оказывается перед капотом. Скорость машины вдали от игрока равна пройденному за шаг пути: ждущая перед стоп-линией длинная машина стоит и для тех, кто на неё смотрит. Поворот, начатый в дальней модели, в ней и заканчивается. Рядом с игроком водитель, который стоит не на маршруте или поперёк него и которому мешает то, что впереди, сдаёт назад и пробует снова (перенос `Stuck` и `ReverseFor`). Назад сдаёт и водитель, который 3,5 с давит на газ и стоит: он упёрся в столб или дерево, которых не видит перед бампером. Машины служб в погоне сдают назад по правилу `CityTraffic.Pursuit.cs`: если цель позади больше чем на три метра, а машина почти стоит, или если она 1,8 с не может тронуться, — 1,1 с назад с вывернутыми колёсами; если сзади машина или человек, стоит на тормозе. Машина, простоявшая две минуты вне поля зрения, заменяется (`jamSeconds`); в проверочных прогонах после исправлений до этого не доходило. |
-| Автобусы и газовая служба | Виды 5 и 8 из `MakeCar`: один автобус и одна машина газовой службы на шестнадцать машин потока, размеры и масса как в C#. Обе машины собираются из коробок, как в C# (моделей для них нет); надпись на фургоне переводится вместе с интерфейсом. Автобус держится крайней полосы и не перестраивается, идущие следом объезжают его сразу. Остановки — перенос `CityAmenities.BuildStops`: павильон `outdated_soviet_bus_stop` со стенкой и скамьёй, 94 на контрольном городе. В C# место под павильон резервирует генератор; здесь остановка, которая задела бы дом, дерево или уличный предмет, пропускается. Автобус стоит у павильона 4–7 секунд и не раньше чем через 38 секунд после прошлой остановки (`BusStop`). Вне C#: автобус не сворачивает в тупик, а у тяжёлых машин есть пониженная передача — на улицах с уклоном один к четырём автобус и МАЗ рядом с игроком иначе не трогались. Посадки пассажиров в автобус нет и в C#. Рейс такси заканчивается у остановки автобуса в 160–520 м от пассажира (`TaxiDestination`); какая именно — определяет номер пассажира, а не случай. Раньше такси ехало к остановке трамвая или троллейбуса; сохранения с таким рейсом открываются как прежде. Такси ловят у остановки автобуса в 45–210 м от игрока, у бордюра между павильоном и дорогой (`MaintainHailers`). В C# для этого создаётся новый житель; здесь население постоянно, и к остановке подходит прохожий с её квартала. Если у остановок поблизости никого нет, голосует прохожий у обочины, как раньше. Места мирных заданий выбираются среди остановок и киосков в 700 м, ближайшие первыми, не ближе ста метров друг к другу (`CityTraffic.PeaceJobs`); рядом с каждым местом берётся первая свободная точка тротуара на трёх кольцах по восемь точек (2,8, 4,0 и 5,2 м), как в C#: не на проезжей части, не у съезда эстакады или тоннеля, не в воде, не в павильоне, машине или прохожем. Место без такой точки пропускается. Маршрут из сохранения, сделанного до этого, указывает на сами остановки и входы киосков, как раньше. |
-| Видимость | Шесть плоскостей камеры и дистанция отсекают меши и акторов. Ближние фасадные детали (ячейки 72 м) строятся в фоне, загружаются порциями на GPU и выгружаются при удалении. |
-| Потоковая загрузка города | Перенос поведения `CityDistricts` для базовой геометрии: секторы 144 м в пределах дальности прорисовки строит рабочий поток со своей копией мира, ближние первыми; сектор передаётся на GPU порциями (2 МиБ или 1,5 мс за кадр) и освобождается за 40 м после выхода из дальности. При загрузке игры секторы вокруг игрока строятся сразу. Сектор ближе 60 м от камеры строится немедленно. Упрощённые дальние уровни районов (LOD 2 и 3) не перенесены. Тесты: план секторов, совпадение геометрии, отмена, очереди, завершение; сценарий `streaming`. |
-| Небо и дымка | Перенос `CityAtmosphere` и `Sky/Weather.frag`: цвета горизонта и зенита, золотой и сумеречный оттенки, солнце, луна, облака, звёзды; слоистая дымка для сцены и эффектов. Тесты сверяют цвета и плотность для ясного полудня, дождя, ночи и низкого солнца. Вид неба оценивался только по кадрам. |
-| Отражения | Перенос `CityReflections` и `Reflections.glsl`: локальная кубическая карта 128 пикселей на грань, грань за кадр, правила пересъёмки C# (22 м, четверть часа, дождь, 12 секунд), параллакс и расчётное окружение вдали. Отражают окна, вода, лужи, мокрый асфальт, стёкла, хром и лак машин. Тесты: расписание пересъёмки и ориентация граней. |
-| SSAO | Перенос `PostProcess/Occlusion.frag` и затенения из `Compose.frag`: половинное разрешение, 8 или 12 выборок по качеству, размытие с учётом глубины. Проверено по кадрам. |
-| Мокрые улицы и погода | `Wetness` из `CityModel`: улица намокает за полминуты и сохнет минуты; от неё зависят сцепление, мокрые следы и брызги. Ливень 45–135 секунд, сухо 2–6 минут; длительность зависит только от seed и момента. Сохраняется; старые сохранения мокры настолько, насколько шёл дождь. |
-| Частицы и следы столкновений | Перенос `CityParticle` и `CityTraffic.Emit`: искры, дым, осколки, вода, огонь, песок и языки огнемёта — у каждого вида свои срок жизни, размер, цвет и движение (дым поднимается, расширяется и сносится; остальное падает и отскакивает от земли). Так выбрасываются: столкновение машин (18 искр, 8 осколков; при ударе, который почти добивает машину, — вспышка огня), взрыв машины и ракеты, след ракеты, горящие машина и человек, дым повреждённого двигателя, сбитый уличный предмет (у гидранта — вода), всплеск, занос (дым) и езда по песку (пыль), попадание пули. После столкновения на бортах машины 100 секунд видны тёмные полосы, на стене дома рядом — пятно на 90 секунд (метки `CarId` и фасада из `AfterContacts`). Эффекты берут случайные числа из своей последовательности (`Noise` в C#) и не меняют ход симуляции; раньше искры и взрывы расходовали общую. Отличия: кадр здесь 8-битный, поэтому цвета ярче единицы (огонь в C# — 3,0 по красному) умножаются на прозрачность до обрезки, а не после: пламя и искры остаются яркими, пока гаснут, как в кадре C# с плавающей точкой. Дым, осколки и песок темнеют ночью; трассы пуль остались прежними частицами. Тесты: параметры каждого вида, движение, события; сценарий `wreckage`. |
+| Vehicle dynamics | C++ port of VehicleDynamics: steering, longitudinal motion, brake, handbrake, lateral grip. 60 C# references, 120 steps each; tolerance 1e-9 for velocities/angular velocity, 1e-12 for steering. The references use a flat surface. |
+| Layout | New games use revision 4. Six districts, residential block layouts, the industrial zone freight branch and seaside beaches have been ported. Old saves use revision 0, whose topology and plot sizes have been checked against 12 C# references. |
+| Paths | Straight lines and cubic curves, length table, point lookup by distance, reversal. Streets and intersections are connected through a graph without position jumps; U-turns in dead ends. Verified: 1000 route transitions, all dead ends of the reference city and four minutes of local AI traffic. On four-lane streets drivers use both lanes of their direction and can smoothly overtake a slow car or a jam. Headway ahead, vehicles approaching from behind, pedestrians and road height are checked. The chosen lane and the current manoeuvre are kept when a game is loaded. |
+| Terrain and canals | The natural terrain formulas with two canals and levelled building plots have been ported. The bed and the bridge surface are separate; the support and the road grid use one height function. Hits on water and falling street objects create splashes and spreading rings. Objects slow down in water. Deck edges, the absence of markings on water and bridges without road connection are checked separately. |
+| Overpasses and tunnels | Five overpasses and four tunnels for the new map, two-way AI routes, a single height profile for geometry and support, walls/pillars/girders, cut-outs in the ground and the tunnel ceiling. A car keeps its level, a fall keeps the world height; leaving a car inside a tunnel does not move the player to the surface. Three seeds and physical AI runs in both directions are verified. This is an adaptation for the current native generator, not a bit-exact match with the revision 4 C# city. |
+| Contacts | Local grid, circles/rectangles, SAT, impulses and friction, angular velocity, sleeping, filtering by height. Contacts with walls and pillars of the new road levels are added. Longitudinal support is the road profile with gravity on lift-off, not a general-purpose 3D rigid-body engine. |
+| Car wrecks | Finite mass after destruction, falling and response to impulses. A downed police helicopter loses lift, falls and remains a physical object. Port of `WreckAfterContacts` and `WreckVerticalStep`: a wreck that is hit clatters, bounces (up to 1.5 m/s) and drops six fragments; one that falls faster than 2 m/s lands with a sound, raises smoke and bounces once more (12 % of the fall speed). A car on its wheels bounces after a jump at 22 % of its landing speed (`AfterContacts`). |
+| Inventory | Four weapon definitions, ammunition issue, selection and switching, automatic switch when ammunition runs out. The bazooka gets 20 rounds. |
+| Combat and damage | Fists, pistol, assault rifle, flying rockets and flamethrower; nearest hit by volumes taking height, obstacles and terrain into account. Explosions transfer impulse, damage nearby cars and can cause chain reactions. Contact damage depends on the change in velocity, not just on the car's speed. Where a bullet stopped short of its range, three sparks fly; a hit on the player on foot and a non-fatal hit on a passer-by are audible (`impact`), as is a punch against a car or a wall. |
+| Fire | The flamethrower does not hit the shooter directly; fire from a burning car can spread to them. The player's burning is time-limited, an NPC's is usually fatal; the fire of the player's car can stop after safe driving. Critical damage and the transition to a movable wreck are checked separately. A burning car is heard every three seconds, with flames and a column of smoke above it; a car below 60 % durability smokes from under the bonnet, the thicker the more damaged it is (`VehicleLife`, `AfterContacts`). |
+| Wanted level | Six thresholds. Militia, reinforcements, Rosgvardia, the FSB and an APC come for the player in turn. At the sixth level a shooting helicopter appears. Port of crew movement from `CityTraffic.Pursuit.cs` (13.11.2026): when responding, a crew does not queue and waits neither for a traffic light nor for the queue at an intersection. On a street it goes around those ahead by shifting out of its lane to where there is room (within the carriageway), and brakes only for whoever is right in front of its bumper: down to 4 m/s behind a car and 5 m/s behind a pedestrian; oncoming traffic is accounted for with a margin of one and a half seconds of closing. In the distant model it moves 2.8 m towards the street axis and passes at no more than 12 m/s (`PoliceRuleStep`). In a direct chase, when the offender is visible, it steers away from obstacles like `PolicePursuit`. After the wanted level is cleared, a crew that left the street or stopped across it returns to the road on its own (`RejoinRoad`). Differences from C#: on a street, overtaking is done by shifting the lane rather than steering away from the bonnet line (with steering a car behind two stationary cars pulled out, lost sight of them and came back into their bumper); returning to the road leads along an arc to the nearest lane in the travel direction and its stop line, rather than in a straight line to the nearest stop line (five crews left at an intersection chose the same stop line on the opposite side and blocked the intersection); crew speeds are native — up to 13 m/s on a street and 12 + level in a direct chase (23 and up to 26 m/s in C#). A crew does not drive up to an offender on foot: seeing them closer than 19 m it stops, as in C#, and it approaches at a speed at which it can still stop. It approaches stationary vehicles ahead the same way: the C# rule "1.8 m/s for each metre to the obstacle" cannot be met from full speed, and crews ran into each other. An ambulance on its way to a victim does not wait at a red light (`IsResponding`), but gives way to those already in the intersection and does not enter if there is no room beyond it. Next to a victim with nowhere to stop (on a bridge above the street or behind a wall), an ambulance no longer circles until the end of the call: while it drives past, the call time runs nine times faster, and it will be sent to such a victim again after four minutes. |
+| People animation | CityPersonMotion and CSK1 frames, state transitions, walking/running while aiming, the fallen pose. |
+| Clock | Non-linear day cycle with longer mornings and evenings, start at 07:00. |
+| Sound | WAV PCM, native stereo mixer, spatial attenuation and panning by camera, up to 32 effect voices. Engines, sirens, shots, rain, tyres, puddles and passers-by's remarks can be heard. Sound events are checked against C# by the call sites of `Sound`: added are a hit on a wreck and its fall, the crackle of a burning car, a hit on the player and on a passer-by, a punch on metal, running over an animal. Volumes set earlier in the native version (remarks, wings, the player's shots) are unchanged. The `pickup` event when filming with the drone is silent in C# (there is no such file); here `energy` and `cash` play. "Radio Pustyr" plays two tracks. Game and radio volume are kept between launches. |
+| Assets | GLB, embedded images, WIC for PNG/JPEG, CSK1. All files of these types in Content load. Normalized game models are supported; this is not a universal importer for all glTF extensions. |
+| Buildings | Deterministic facade plan, metric texture scale, normal/ORM mapping, windows with room depth and curtains, slowly changing lights, balconies, entrances, air conditioners. A single plan for the distant and near representation; details fade out at 135–185 m. This is an adaptation of part of the original decoration, not a full port of all building types. |
+| Vegetation | Birches, lindens, spruces; safe placement on the terrain, trunk colliders, shared instanced models, two LODs, wind. This is an adaptation for the native generator; the original models of all trees have not been ported yet. |
+| Sun shadows | Local 2048×2048 depth map, texel snapping, 3×3 PCF, shadows of buildings, cars, animated people and alpha-tested foliage. The pass is disabled at night; distant and point-light shadows are not implemented yet. |
+| Run-overs and wanted level | The C# rules are ported: a 1.1 m/s threshold with the car moving towards the person, the survivor falling and limping, a fatal hit from 5.5 m/s, a hit on the player on foot, wanted level for a killing only with witnesses, wanted level decaying faster out of the militia's sight. The knocked-down state is saved. Before the port a car only pushed passers-by. |
+| Localization | Russian, English and Ukrainian. Game text is written in Russian and translated on output using a phrase table (a port of the `Ukrainian.Translate` algorithm: longest phrase, word boundaries). A test requires a translation for every Russian string in the sources. 49 streets and 49 avenues from `CityNames` in three languages. |
+| Importing C# saves | `--import-save`: formats 1–3, with the same checks as `GameSession.ReadSave`. Imported are the seed, time, weather, money, health and weapons, and from the `CityTraffic` state (`World.Clock`) the wanted level, job and series counters, earnings and the energy drink effect. A player saved behind the wheel gets a car of the same kind with its damage and color (not a tram or trolleybus); one saved on foot stands next to the car in which a new game starts. Position is restored only for revision 0 on the 49×49 grid, whose street plan the native generator reproduces: there the player's car or the player stands in the same place, ordinary traffic (cars, vans, trucks, buses, gas service) is put on its streets in its lanes, and passers-by on their sidewalks. The native composition of the city does not change: a saved car takes a native car of the same kind, a passer-by takes an ordinary native passer-by; routes, groups, roles, animals, items, pickups and services are not imported. A car saved in an intersection is placed at the near end of its street: native routes run from nine metres past the intersection to the stop line. In the test city at full population 1195 of 1320 ordinary cars and 3206 of 5151 passers-by returned to their places. The city is populated with the population chosen for a new game (before 12.11.2026 — always low). Verified on files composed from the C# code (`CityState.Capture`, field names and `<Name>k__BackingField` of auto-properties), not on a save from the real game. |
+| Night lighting | Street lamps are computed in the shader from a height map of light fixtures (a port of `LocalLighting.glsl`), plus the headlights of the four nearest cars and up to four beacons. In the covered part of a tunnel the sky and sun are disabled and ceiling lights every nine metres are used. These sources cast no shadows in C# either; SSAO and reflections have their own rows below. |
+| City renewal | The `LifeAfterContacts` and `VehicleLifeAfter` rules: a body left without help after 180 s, a wreck after 6 s and an abandoned car are replaced by a new passer-by and an ordinary car more than 245 m from the player. In C# actors are removed and created anew; in the native version the slot itself is renewed, so the population keeps its size. The area under an active drone counts as visible. The time of death is saved. |
+| Water | A car deeper than 0.85 m sinks (the `falling` flag was previously never set) and returns to traffic after three seconds. A passer-by deeper than 1.15 m drowns without an incident. Water deeper than 0.35 m puts out burning people. An animal on the ground dies deeper than 0.75 m. A drowned body floats half a metre below the surface and sinks to the bottom at 0.6 m/s, as in `WaterStep`. |
+| Potholes | The `CityRoadDetail.Holes` generator with the same xorshift sequence; values checked against an independent port. A jolt and body sway above 4 m/s. The `Textures/Road/pothole_*.png` photos are drawn as decals with dissolved edges. Potholes on bridges, ramps and at portals are skipped. |
+| Interface | Weapon panel with `Textures/Hud` icons, separate health and car meters, district and street above the minimap. |
+| Population | Four levels: 260/720, 540/1800, 1080/3240 and 1485/5265 cars and residents. The third is the initial population of the city in C# (`CityTraffic.cs`). The fourth ("full") is the population C# keeps in the game (`CityTraffic.Population.cs`): `ExpandPopulation` adds half again as many cars and brings the residents up to 4860, `ReplenishPopulation` tops the city up to its targets every 0.4 s — a tenth more cars of each kind and 5265 residents. In C# the city reaches this during the first three minutes of play; here it is created that way at once. Losses in both versions are replenished out of sight (the "City renewal" row), so the C# limits (6165 residents, 2200 cars) are not needed. The traffic mix is the same at all levels (`streetModel`): at the full level there are 892 cars — as many as the C# target; 90 buses and 90 gas service vans versus about 74 in C#, 40 ambulances versus 74. There are as many animals at the full level as in C# (`ResetLife`): 120 flocks of pigeons and 160 cats, dogs and birds; at the other levels 354, as in earlier saves. The level is chosen for a new game, written to the save and not changed on loading; saves without it open with low. The low level keeps the old generator sequence, so old cities do not change. |
+| Clothing and build | The `Actor.frag` palette: 19 clothing variants, six skin tones, hair color, long or short sleeves and trousers; height, width and depth of the figure by resident number. Uniforms of the militia, Rosgvardia, FSB, army and ambulance with caps, bags for pensioners, a sack for the homeless. Coloring is done in the scene shader by vertex height in the standing pose, not with separate textures. |
+| Resident roles | Port of `RolesStep`: beachgoers in groups at their towels, night workers at the kerbs from 21:00 to 05:00, homeless people at their spot, changes of cast only out of sight, end of duty for crews after a chase. Gaits: pensioners, drunks, homeless, office workers. The role is saved. |
+| Pedestrians | Port of `ChooseWalk`: a resident walks from corner to corner of an intersection — across one of the two streets or along the block to the next intersection, on both sidewalks of each street and through all four crossings. They do not turn back immediately. A crossing with a traffic light is chosen only while the signal allows it (C# needs four seconds of margin, here nine and a half: the streets are wider); those who cannot cross walk on along the block instead of waiting. This way signals are obeyed throughout the city, not only near the player. The path bends to the right, as in C#; along the block only the one with the kerb on their right gives way, because facades stand right on the building line. Sides for new residents are taken from a separate sequence: the city of earlier saves does not change. Saves without corners open, and residents walk to the nearest corner. At the kerb they wait while cross traffic is moving or will move within the next eight seconds; those caught on the road hurry. A passer-by looks at where each moving car will be in the next two seconds. Oncoming and standing people are walked around (in C# — mutual repulsion; here a step aside), a stationary car is walked around its near end, a group lets the leader pass and lines up behind them. Someone who walks without making progress goes around the obstacle — on the side away from the carriageway while there is a way through; light litter is pushed aside, and the resident slides past a lamppost or wall without friction. Waiting at the kerb and hurrying on a crossing apply throughout the city: whoever comes into view is standing at the kerb rather than in front of cars that have a green light. Looking at cars and avoiding oncoming people and obstacles apply within 90 m of the player — where residents have a physical body; the C# boundary is the same (`PhysicsRadius`). Night workers stand on either of the two sidewalks in the middle third of a block: previously the spot was measured along the old route with a crossing and could fall on the corner of an intersection. |
+| Intersections | One car per intersection (a port of the `CityTraffic.Enter` reservation), entry only when there is room beyond the intersection, long vehicles stop further from the stop line. In a turn the driver follows the curve rather than the direction of the bonnet; on a straight, the route, with a short check in front of the bumper. The bumper path is computed taking steering into account: in a turn it follows the curve, and for a car standing at an angle it returns to the lane. A tram and a trolleybus ready to go on green take the intersection next, one at a time: the second waits in front of it until the first has passed. They see a vehicle standing ahead even on a steep street (`World::onSameSurface`, the same rule as for cars). Near the player they brake for those on the rails ahead, including around a bend, and for the player on foot. On an overpass and in a tunnel they pass someone standing in their own oncoming lane, even though on the bend at the entrance that one ends up in front of the bonnet. The speed of a car far from the player equals the distance covered per step: a long car waiting at the stop line is stationary for those looking at it too. A turn started in the distant model is finished in it. Near the player, a driver who is off the route or across it and is blocked by what is ahead reverses and tries again (a port of `Stuck` and `ReverseFor`). A driver who has been pressing the throttle for 3.5 s while standing still also reverses: they have run into a post or tree they cannot see in front of the bumper. Service vehicles in a chase reverse by the `CityTraffic.Pursuit.cs` rule: if the target is more than three metres behind and the car is almost stationary, or if it cannot move off for 1.8 s, it reverses for 1.1 s with the wheels turned; if there is a car or a person behind, it holds the brake. A car that has stood for two minutes out of sight is replaced (`jamSeconds`); in test runs after the fixes this never happened. |
+| Buses and gas service | Kinds 5 and 8 from `MakeCar`: one bus and one gas service van per sixteen traffic cars, with size and mass as in C#. Both vehicles are assembled from boxes, as in C# (there are no models for them); the lettering on the van is translated together with the interface. A bus keeps to the outer lane and does not change lanes; those following overtake it at once. Stops are a port of `CityAmenities.BuildStops`: an `outdated_soviet_bus_stop` shelter with a back wall and a bench, 94 in the reference city. In C# the generator reserves space for the shelter; here a stop that would touch a building, tree or street object is skipped. A bus stands at the shelter for 4–7 seconds and no earlier than 38 seconds after the previous stop (`BusStop`). Beyond C#: a bus does not turn into a dead end, and heavy vehicles have a low gear — otherwise the bus and the MAZ near the player could not move off on streets with a one-in-four gradient. Passengers do not board buses in C# either. A taxi ride ends at a bus stop 160–520 m from the passenger (`TaxiDestination`); which one is determined by the passenger's number, not by chance. Previously the taxi drove to a tram or trolleybus stop; saves with such a ride open as before. Taxis are hailed at a bus stop 45–210 m from the player, at the kerb between the shelter and the road (`MaintainHailers`). C# creates a new resident for this; here the population is constant, and a passer-by from the stop's block walks up to it. If there is nobody at the nearby stops, a passer-by at the roadside hails, as before. Locations of peaceful jobs are chosen among stops and kiosks within 700 m, nearest first, no closer than a hundred metres to each other (`CityTraffic.PeaceJobs`); near each location the first free sidewalk point is taken on three rings of eight points (2.8, 4.0 and 5.2 m), as in C#: not on the carriageway, not at an overpass or tunnel ramp, not in water, not in a shelter, car or passer-by. A location without such a point is skipped. A route from a save made before this points to the stops and kiosk entrances themselves, as before. |
+| Visibility | Six camera planes and distance cull meshes and actors. Near facade details (72 m cells) are built in the background, uploaded to the GPU in portions and unloaded when far away. |
+| City streaming | A port of the `CityDistricts` behaviour for base geometry: 144 m sectors within the draw distance are built by a worker thread with its own copy of the world, nearest first; a sector is uploaded to the GPU in portions (2 MiB or 1.5 ms per frame) and released 40 m after leaving the range. When a game is loaded, the sectors around the player are built at once. A sector closer than 60 m to the camera is built immediately. The simplified distant district levels (LOD 2 and 3) have not been ported. Tests: sector plan, geometry match, cancellation, queues, completion; the `streaming` scenario. |
+| Sky and haze | A port of `CityAtmosphere` and `Sky/Weather.frag`: horizon and zenith colors, golden and twilight tints, sun, moon, clouds, stars; layered haze for the scene and effects. Tests compare colors and density for a clear noon, rain, night and a low sun. The look of the sky was judged from frames only. |
+| Reflections | A port of `CityReflections` and `Reflections.glsl`: a local cube map of 128 pixels per face, one face per frame, the C# recapture rules (22 m, a quarter of an hour, rain, 12 seconds), parallax and a computed environment in the distance. Windows, water, puddles, wet asphalt, glass, chrome and car paint reflect. Tests: recapture schedule and face orientation. |
+| SSAO | A port of `PostProcess/Occlusion.frag` and the occlusion from `Compose.frag`: half resolution, 8 or 12 samples depending on quality, depth-aware blur. Verified from frames. |
+| Wet streets and weather | `Wetness` from `CityModel`: a street gets wet within half a minute and dries over minutes; grip, wet tracks and spray depend on it. A downpour lasts 45–135 seconds, dry spells 2–6 minutes; durations depend only on the seed and the moment. Saved; old saves are as wet as the rain had made them. |
+| Particles and collision marks | A port of `CityParticle` and `CityTraffic.Emit`: sparks, smoke, debris, water, fire, sand and flamethrower tongues — each kind has its own lifetime, size, color and motion (smoke rises, expands and drifts; the rest falls and bounces off the ground). They are emitted by: car collisions (18 sparks, 8 fragments; a flash of fire for a hit that almost finishes the car off), car and rocket explosions, a rocket trail, a burning car and person, smoke from a damaged engine, a knocked-down street object (water from a hydrant), a splash, a skid (smoke) and driving on sand (dust), a bullet hit. After a collision dark streaks are visible on the car's sides for 100 seconds and a stain on the wall of a nearby building for 90 seconds (the `CarId` and facade marks from `AfterContacts`). Effects take random numbers from their own sequence (`Noise` in C#) and do not change the course of the simulation; previously sparks and explosions consumed the shared one. Differences: the frame here is 8-bit, so colors brighter than one (fire in C# is 3.0 in red) are multiplied by opacity before clamping rather than after: flames and sparks stay bright while fading, as in the C# floating-point frame. Smoke, debris and sand darken at night; bullet tracers remain the old particles. Tests: parameters of each kind, motion, events; the `wreckage` scenario. |
 
-## Транспорт и задания
+## Transport and jobs
 
-- Около десяти процентов горожан вооружены. После наезда или убийства на их глазах вооружённые очевидцы могут прицелиться и открыть огонь. Пистолет стреляет одиночными, автомат — очередями по три. После гибели оружие можно подобрать. Линия огня учитывает людей, транспорт, здания и уровни дорог.
-- Из Content подключены 19 вариантов автомобильных моделей; автобус и машина газовой службы строятся без модели. У БТР и танка есть управляемая башня, у вертолёта — полёт и посадка.
-- Четыре городских маршрута обслуживают трамваи и троллейбусы. В мире отображаются рельсы и контактная сеть. Пассажиры занимают места и выходят на остановках. Прохожие ждут у остановки и подходят к двери. Игрок садится пассажиром клавишей B, может осматриваться и заказывать выход на следующей остановке. Поездка и ожидающие пассажиры сохраняются. Клавиша F с улицы позволяет перехватить управление. Трамвай движется в обе стороны по пути. Троллейбус под управлением игрока теряет тягу дальше трёх метров от своей линии (`TrolleyPower`); тормоза и руль работают. В отличие от C#, водителю об этом сообщается.
-- Работают семь заданий. Сверка с `CityTraffic.Contracts.cs` и `Jobs.cs` (13.11.2026): машина для перегона стоит без водителя, как в C# (раньше её водителя высаживали, и это считалось угоном); цель контракта не ловит такси и не уезжает на трамвае, пока контракт действует; поездка заканчивается в 11 м от адреса после 0,8 с стоянки (было 9 м и секунда); каждые следующие 12 % повреждений пугают пассажира ещё раз, так что один сильный удар считается дважды. Тарифы, сроки, штраф за опоздание, серия из трёх контрактов и её премия совпадали и раньше. Сообщения, которые в C# были, а здесь нет, добавлены с текстами оригинала на трёх языках: «Опаздываем — заплатят половину» в момент опоздания, причины срыва («Заказ сорван», «Высадили без оплаты», «Пассажир не дождался и ушёл») вместо общего «Заказ закрыт без оплаты», «Лечение платное — без денег лечат медленно» раз в шесть секунд в поликлинике. Остальные тексты уведомлений нативные и с оригиналом дословно не совпадают. Такси и медицинский рейс используют пешеходов города. Пассажир подходит к двери, садится, выходит и продолжает путь. Доставка пациента в поликлинику восстанавливает его здоровье. У посылки есть отправитель и получатель, для перегона нужна указанная машина минимум с 50% здоровья. У двух гражданских заданий есть отдельные условия завершения и фаза ухода от погони. Устранение проверяет личность цели.
-- По вызовам к пострадавшим выезжают до двух бригад скорой. Фельдшер выходит из автомобиля, подходит к пациенту, оказывает помощь и возвращается в машину. Назначение бригады, маршрут и ход лечения сохраняются при загрузке игры.
-- Разведка использует отдельное состояние управления и камеру. Игрок на земле остаётся уязвим. У дрона есть заряд, предел дальности и три цели для съёмки.
-- У рыночных прилавков продаются оружие с патронами, отдельные патроны, таблетки и энергетики. Мастерские ремонтируют технику и перекрашивают разыскиваемую машину. Игрок может купить гараж на три машины. При загрузке сохраняются владельческий статус, положение и цвет каждой машины.
-- Автоматы и киоски продают еду, поликлиники лечат и служат точками возрождения. Энергетики временно ускоряют движение пешком.
-- По тротуарам ходят компании до трёх человек и доставщики с рюкзаками. Курьеры встречаются и на самокатах. После падения самокат становится отдельным физическим объектом. Владелец может вернуться за ним, а игрок — подобрать и уехать.
-- Очевидцы реагируют на угрозу, разбегаются, затем могут остановиться на расстоянии от места происшествия и позже возвращаются к маршруту. Вооружённые жители используют углы зданий и стоящие машины, выходят из укрытия для стрельбы и реагируют на отъезд прикрывавшей машины.
-- Пешком можно обратиться к прохожему клавишей F. Жители подсказывают направление до ближайшего киоска, рынка или поликлиники, просят мелочь или предлагают подвезти. Если согласиться, пассажиром становится именно этот человек.
-- В парках собираются стаи по 6–10 голубей. При испуге стая перелетает в другой парк. Как в C#, часть животных живёт на тротуарах: кошки и собаки ходят от угла к углу квартала, 22 % стай садятся у улиц в две шеренги вдоль бордюра, одиночные птицы — на тротуар. Вид и стая каждого животного те же, что в прежних сохранениях; место берётся из отдельной последовательности. Машина, которая сближается с животным быстрее 1,1 м/с, отбрасывает его и оглушает на три секунды; гибнет оно при сближении быстрее 4 м/с (`LifeBeforeContacts`). Раньше любая машина быстрее 5 м/с убивала на месте. Кошки реагируют на собак и прохожих, птицы реагируют на людей, транспорт и других животных. Вдали от игрока обновляется перемещение, вблизи — также восприятие угроз и столкновения.
-- Все 12 видов переносимых и сбиваемых уличных предметов имеют собственные размеры и массу. В городе есть урны, гидранты, баки, скамейки, таксофоны, автоматы газировки, почтовые ящики, пакеты, бутылки, пачки сигарет, жестяные банки и мешки с мусором. Ветер подхватывает пакеты, на уклоне могут катиться бутылки и банки. Удар машиной сдвигает или опрокидывает их. Из сорванного гидранта 16 секунд бьёт вода. Если игрок уехал и от упавшего предмета, и от его исходной точки, предмет восстанавливается. Сохранение запоминает положение сбитых предметов и время работы фонтана.
-- Сохранения версии 7 хранят животных в полёте, владельцев и пассажиров самокатов, интерес свидетелей, укрытия и этапы заказов. При загрузке версий 5 и 6 население дополняется новыми ролями.
+- About ten percent of citizens are armed. After a run-over or a killing in front of them, armed witnesses may take aim and open fire. The pistol fires single shots, the assault rifle bursts of three. After death the weapon can be picked up. The line of fire takes people, vehicles, buildings and road levels into account.
+- 19 car model variants from Content are used; the bus and the gas service van are built without a model. The APC and the tank have a controllable turret, the helicopter can fly and land.
+- Four city routes are served by trams and trolleybuses. Rails and overhead wires are shown in the world. Passengers take seats and get off at stops. Passers-by wait at a stop and walk to the door. The player boards as a passenger with the B key, can look around and request a stop at the next station. The ride and the waiting passengers are saved. The F key from the street lets the player take over control. A tram runs in both directions along its track. A trolleybus driven by the player loses traction more than three metres from its line (`TrolleyPower`); brakes and steering work. Unlike in C#, the driver is told about this.
+- Seven jobs work. Checked against `CityTraffic.Contracts.cs` and `Jobs.cs` (13.11.2026): the car to be moved stands without a driver, as in C# (previously its driver was pulled out, and this counted as a carjacking); the contract target does not hail a taxi or leave on a tram while the contract is active; a ride ends 11 m from the address after standing for 0.8 s (was 9 m and one second); each further 12 % of damage frightens the passenger again, so one heavy hit counts twice. Fares, deadlines, the late penalty, the series of three contracts and its bonus already matched. Messages that existed in C# but not here have been added with the original texts in three languages: "We're late — they'll pay half" at the moment of being late, reasons for failure ("Job failed", "Dropped off without payment", "The passenger got tired of waiting and left") instead of the generic "Job closed without payment", and "Treatment is paid — without money it is slow" every six seconds at the clinic. The remaining notification texts are native and do not match the original word for word. Taxi and medical rides use the city's pedestrians. The passenger walks to the door, gets in, gets out and continues on their way. Delivering a patient to the clinic restores their health. A parcel has a sender and a recipient; moving a car requires the specified car with at least 50% health. The two civilian jobs have separate completion conditions and an escape-the-chase phase. Elimination checks the target's identity.
+- Up to two ambulance crews respond to calls to victims. The paramedic gets out of the vehicle, walks to the patient, provides help and returns to the vehicle. Crew assignment, route and treatment progress are kept when a game is loaded.
+- Reconnaissance uses a separate control state and camera. The player on the ground remains vulnerable. The drone has a battery, a range limit and three targets to film.
+- Market stalls sell weapons with ammunition, separate ammunition, pills and energy drinks. Workshops repair vehicles and repaint a wanted car. The player can buy a garage for three cars. Ownership, position and color of each car are kept when a game is loaded.
+- Vending machines and kiosks sell food; clinics heal and serve as respawn points. Energy drinks temporarily speed up movement on foot.
+- Groups of up to three people and delivery workers with backpacks walk the sidewalks. Couriers also ride scooters. After a fall the scooter becomes a separate physical object. The owner may come back for it, and the player can pick it up and ride away.
+- Witnesses react to a threat, scatter, may then stop at a distance from the incident and later return to their route. Armed residents use building corners and parked cars as cover, step out of cover to shoot and react when the car covering them drives off.
+- On foot, the player can talk to a passer-by with the F key. Residents give directions to the nearest kiosk, market or clinic, ask for change or offer a ride. If the player agrees, that very person becomes the passenger.
+- Flocks of 6–10 pigeons gather in parks. When frightened, a flock flies to another park. As in C#, some animals live on the sidewalks: cats and dogs walk from corner to corner of a block, 22 % of flocks settle by the streets in two rows along the kerb, single birds on the sidewalk. The kind and flock of each animal are the same as in earlier saves; the place is taken from a separate sequence. A car closing on an animal faster than 1.1 m/s throws it aside and stuns it for three seconds; it dies when closing faster than 4 m/s (`LifeBeforeContacts`). Previously any car faster than 5 m/s killed it on the spot. Cats react to dogs and passers-by; birds react to people, vehicles and other animals. Far from the player only movement is updated; nearby, threat perception and collisions too.
+- All 12 kinds of carryable and knock-down street objects have their own size and mass. The city has bins, hydrants, tanks, benches, payphones, soda machines, mailboxes, bags, bottles, cigarette packs, tin cans and garbage bags. Wind picks up bags; bottles and cans can roll down a slope. A hit by a car moves or tips them over. Water gushes from a broken hydrant for 16 seconds. If the player has driven away from both the fallen object and its original spot, the object is restored. The save remembers the position of knocked-down objects and how long the fountain has been running.
+- Version 7 saves store animals in flight, scooter owners and riders, witnesses' interest, cover and job stages. When loading versions 5 and 6 the population is supplemented with the new roles.
 
-Миникарта запекает неподвижные объекты при загрузке города. Метки транспорта, цели и направление игрока выводятся поверх карты. При изменении интерфейса обновляются только занятые им полосы экрана. Подсказки клавиш переключаются при смене транспорта или доступного действия.
+The minimap bakes static objects when the city loads. Vehicle markers, targets and the player's heading are drawn on top of the map. When the interface changes, only the screen strips it occupies are updated. Key hints switch when the vehicle or the available action changes.
 
-Пешком нажмите F у остановившейся машины. Персонаж подойдёт к свободной передней двери. Повторное F, ходьба или выстрел прерывают посадку. При угоне экипаж выходит на улицу. Брошенный транспорт остаётся без водителя. Для поездки пассажиром в общественном транспорте используется B.
+On foot, press F at a stopped car. The character walks to a free front door. Pressing F again, walking or shooting interrupts boarding. In a carjacking the crew gets out onto the street. An abandoned vehicle is left without a driver. B is used to ride public transport as a passenger.
 
-На почти остановившейся машине клавиша R вызывает эвакуацию на ближайшую свободную полосу, у трамвая и троллейбуса — на собственный маршрут. Повторная эвакуация доступна через восемь секунд. Боковые удары раскачивают кузов. Если машина игрока лежит на крыше четыре секунды, она приподнимается и встаёт на колёса. Когда у стоящей машины заблокированы двери, F ищет свободное место на том же уровне дороги.
+In an almost stationary car the R key tows it to the nearest free lane; for a tram and trolleybus, to their own route. Towing can be repeated after eight seconds. Side impacts rock the body. If the player's car lies on its roof for four seconds, it lifts itself and lands on its wheels. When the doors of a stationary car are blocked, F looks for a free spot on the same road level.
 
-На первых трёх уровнях розыска патруль может задержать игрока. Сотрудник выходит из машины и подходит к пешему игроку или к двери остановленного автомобиля. После задержания игрок выходит пешком у отделения милиции. Игра учитывает штраф, прошедшие часы, конфискацию оружия и сброс розыска. Незавершённое задержание сохраняется вместе с миром.
+At the first three wanted levels a patrol can arrest the player. An officer gets out of the car and walks up to the player on foot or to the door of the stopped car. After the arrest the player comes out on foot at a militia station. The game applies a fine, elapsed hours, confiscation of weapons and a reset of the wanted level. An unfinished arrest is saved together with the world.
 
-В журнале работают повторяемые серии из трёх контрактов. Прохожие могут вызвать такси у обочины, а оплата рейса учитывает время прибытия, аварии и преступления в пути. Игра сохраняет этап серии, заработок и состояние пассажира. Консоль F1 поддерживает историю, редактирование и дополнение команд. Команда help показывает доступные команды.
+The job log offers repeatable series of three contracts. Passers-by can hail a taxi at the roadside, and the fare takes into account the arrival time, accidents and crimes on the way. The game saves the series stage, earnings and the passenger's state. The F1 console supports history, editing and command completion. The help command shows the available commands.
 
-Меню и пауза поддерживают три слота, запись снимка мира в фоне, автосохранение и выбор настроек мышью или клавиатурой. Параметры дальности, детализации, частиц, свечения, разрешения и звука применяются в текущей игре.
+The menu and pause support three slots, writing a world snapshot in the background, autosave and choosing settings with the mouse or keyboard. Draw distance, detail, particles, glow, resolution and sound settings apply in the current game.
 
-## Что остаётся до соответствия C# 0.44.1
+## What remains to match C# 0.44.1
 
-1. Население и службы. Животные на тротуарах, задний ход машин служб, сигнал пешеходам во всём
-   городе и движение экипажей на вызове перенесены 13.11.2026 (см. таблицу и «Проверка»).
-   Не перенесён выход экипажей из машин (`DeployCrew` в `ServicesStep`): в C# машина милиции
-   останавливается в 19 м от пешего игрока, экипаж выходит, держится в 11 м и стреляет или
-   задерживает сдавшегося. Здесь на уровнях 1–3 из ближайшей машины выходит один сотрудник и
-   задерживает, остальные экипажи ждут; на уровнях 4–5 машины милиции встают в 19 м от
-   пешего игрока и перекрывают улицу, а стреляют только с машин: ФСБ, БТР и вертолёт. Машина
-   остаётся с экипажем и после снятия розыска уезжает сама (в C# она брошена, экипаж уходит
-   пешком). После боя обломки на перекрёстке держат
-   движение вокруг, пока игрок рядом: водители не объезжают обломок в повороте, а обломки и
-   застрявшие машины убираются только вне поля зрения, как в C#. Там, где рядом с игроком
-   съезд или портал, экипажи его не видят и кружат по кварталу. После долгой блокировки
-   перекрёстков на трамвайной улице возможен замкнутый затор: трамвай, въехавший на
-   перекрёсток вслед за другим, ждёт; машины, едущие прямо вдоль путей, ждут любой трамвай на
-   перекрёстке, даже встречный; дальние трамваи не проверяют место за перекрёстком. Найдено в
-   прогоне до правок погони и не исправлялось; в обычном потоке такого затора нет. При полном
-   населении ночь, дождь и езда по времени кадра не замерялись.
-2. Изображение. Не перенесены упрощённые дальние уровни районов (в C# район дальше 198 м
-   строится без мелких частей, дальше 350 м — группами по четыре квартала; здесь загруженный
-   сектор полон). Освещение сцены своё (GGX в линейном свете), а не шейдеры C#: перенесены небо,
-   дымка, отражения, фонари и частицы, остальной свет с оригиналом попиксельно не сверялся. Кадр
-   8-битный; огонь и искры, которые в C# ярче белого, сохраняют яркость при угасании за счёт
-   смешивания с предумножением (`effects.frag`), но общий «плечевой» компрессор кадра C#
-   (`Compose.frag`) не перенесён — у нативной сцены своя цветокоррекция и свечение.
-3. Игровые сценарии. Команды консоли сверены: все команды C# есть (`money`, `health`, `repair`,
+1. Population and services. Animals on the sidewalks, reversing of service vehicles, pedestrian signals throughout the
+   city and crew movement when responding were ported on 13.11.2026 (see the table and "Verification").
+   Crews getting out of their cars (`DeployCrew` in `ServicesStep`) is not ported: in C# a militia car
+   stops 19 m from the player on foot, the crew gets out, keeps 11 m away and shoots or
+   arrests one who has surrendered. Here at levels 1–3 a single officer gets out of the nearest car and
+   makes the arrest while the other crews wait; at levels 4–5 militia cars stop 19 m from
+   the player on foot and block the street, and shooting is done only from vehicles: the FSB, the APC and the helicopter. The car
+   keeps its crew and drives off on its own after the wanted level is cleared (in C# it is abandoned and the crew leaves
+   on foot). After a fight, wrecks at an intersection hold up
+   the traffic around it while the player is near: drivers do not go around a wreck in a turn, and wrecks and
+   stuck cars are removed only out of sight, as in C#. Where there is a ramp or a portal next to the player,
+   crews do not see them and circle the block. After a long blockage of
+   intersections on a tram street a gridlock is possible: a tram that entered the
+   intersection after another one waits; cars going straight along the tracks wait for any tram in the
+   intersection, even an oncoming one; distant trams do not check for room beyond the intersection. Found in
+   a run before the chase changes and not fixed; in normal traffic there is no such gridlock. At full
+   population, night, rain and driving have not been measured for frame time.
+2. Graphics. The simplified distant district levels are not ported (in C# a district beyond 198 m
+   is built without small parts, beyond 350 m in groups of four blocks; here a loaded
+   sector is complete). Scene lighting is native (GGX in linear light), not the C# shaders: the sky,
+   haze, reflections, street lamps and particles are ported; the rest of the lighting has not been compared with the original pixel by pixel. The frame
+   is 8-bit; fire and sparks, which are brighter than white in C#, keep their brightness while fading thanks to
+   premultiplied blending (`effects.frag`), but the overall "shoulder" compressor of the C# frame
+   (`Compose.frag`) has not been ported — the native scene has its own color grading and glow.
+3. Gameplay. Console commands have been compared: all C# commands are present (`money`, `health`, `repair`,
    `god`, `wanted`, `weapon`, `spawn`, `hour`, `rain`, `cycle`, `speed`, `help`, `clear`),
-   нативные `weapons`, `recover`, `jobs`, `spawn van/truck` — сверх них. Контракты и рейсы
-   сверены (см. «Транспорт и задания»). События, о которых игра сообщает, сверены по вызовам
-   `Message`; сами тексты уведомлений и подсказок нативные, дословно с C# не сверялись.
-4. Проверка. Сравнение длительных сессий и одинаковых сцен с оригиналом по поведению,
-   изображению, времени кадра и памяти. Импорт сохранений не проверен на файле настоящей игры.
+   with the native `weapons`, `recover`, `jobs`, `spawn van/truck` on top. Contracts and rides
+   have been compared (see "Transport and jobs"). The events the game reports have been compared by calls to
+   `Message`; the notification and hint texts themselves are native and have not been compared with C# word for word.
+4. Verification. Comparing long sessions and identical scenes with the original in behaviour,
+   graphics, frame time and memory. Save import has not been verified on a file from the real game.
 
-## Проверка
+## Verification
 
-24 группы CTest охватывают расчёты, ассеты, город, бои, транспорт, преследование, задания, наезды, обновление города, локализацию, импорт сохранений, плотность населения, жителей, дорожное движение и автобусы. Для графической проверки в Windows служит `tools/smoke.ps1`. В набор входят задержание пешком и в машине, все шесть районов, пляж, устье канала, стриминг, тоннель, ночной дождь, торможение на мокром асфальте, погоню, танк, трамвай, такси, выдачу посылки, покупку у прилавка и перекраску машины в купленном гараже, листовки, дрон, поездку на самокате, курьера с рюкзаком, взлёт стаи, помощь пострадавшему, наезд на гидрант, взрыв, горящую и дымящую машины (`wreckage`), таксофон, автомат газировки и проезд по луже в сухую погоду. Отдельные сценарии проверяют меню радио, стрельбу с набережной в канал и перестроение машины NPC для объезда препятствия. Изображения и журналы сохраняются в `build/smoke`. Эталонные численные тесты и короткие игровые прогоны дополняют друг друга. Отдельный прогон с трамваем прошёл 36 000 кадров (600 секунд симуляции), включая сохранение и загрузку игры. Сопоставимого длительного бенчмарка обеих версий пока нет.
+24 CTest groups cover calculations, assets, the city, combat, transport, pursuit, jobs, run-overs, city renewal, localization, save import, population density, residents, road traffic and buses. `tools/smoke.ps1` is used for graphical checks on Windows. The set includes arrest on foot and in a car, all six districts, the beach, the canal mouth, streaming, a tunnel, night rain, braking on wet asphalt, a chase, the tank, a tram, a taxi, delivering a parcel, buying at a stall and repainting a car in a bought garage, leaflets, the drone, a scooter ride, a courier with a backpack, a flock taking off, helping a victim, hitting a hydrant, an explosion, a burning and smoking car (`wreckage`), a payphone, a soda machine and driving through a puddle in dry weather. Separate scenarios check the radio menu, shooting from the embankment into the canal and an NPC car changing lanes to get around an obstacle. Images and logs are saved to `build/smoke`. Numeric reference tests and short gameplay runs complement each other. A separate tram run went through 36,000 frames (600 seconds of simulation), including saving and loading the game. There is no comparable long benchmark of both versions yet.
 
-Изменения от 11.11.2026 проверялись в два этапа. Первый этап (наезды и розыск, локализация,
-импорт сохранений, ночной свет, управление, форматирование): игровой EXE собран MSVC через
-`Promzona.vcxproj` в Debug и Release без ошибок, журналы в `build/msbuild/x64/*/obj/Promzona.log`.
-Второй этап (обновление города, вода, ямы, свет в тоннелях, панель оружия) и тестовые проекты
-CMake обоих этапов MSVC не собирались. Весь код проверен GCC 13 на Linux (19 из 20 групп CTest:
-`native_assets` собирается только в Windows и не запускалась), синтаксическим проходом Clang 18
-и сборкой MinGW-w64; этот EXE прошёл под Wine с программным
-OpenGL (Mesa llvmpipe) 59 из 61 сценария `smoke.ps1`.
-`tram-ride` и `trolley-ride` (по 4200 кадров) не запускались. Программный рендер проверяет
-логику сценариев и компиляцию шейдеров, но не производительность и не поведение драйверов
-видеокарт. Импорт сохранений проверен на файлах, составленных по формату C#, а не на
-сохранении из реальной игры.
+The changes of 11.11.2026 were checked in two stages. First stage (run-overs and wanted level, localization,
+save import, night lighting, controls, formatting): the game EXE was built with MSVC through
+`Promzona.vcxproj` in Debug and Release without errors, logs in `build/msbuild/x64/*/obj/Promzona.log`.
+The second stage (city renewal, water, potholes, tunnel lights, weapon panel) and the CMake test projects
+of both stages were not built with MSVC. All the code was checked with GCC 13 on Linux (19 of 20 CTest groups:
+`native_assets` builds only on Windows and was not run), a Clang 18 syntax pass
+and a MinGW-w64 build; this EXE passed 59 of 61 `smoke.ps1` scenarios under Wine with software
+OpenGL (Mesa llvmpipe).
+`tram-ride` and `trolley-ride` (4200 frames each) were not run. The software renderer checks
+scenario logic and shader compilation, but not performance or the behaviour of graphics card
+drivers. Save import was verified on files composed according to the C# format, not on a
+save from the real game.
 
-Изменения от 12.11.2026 (население, одежда и роли, сигналы пешеходам, правила движения) MSVC не
-собирались: компьютер с Visual Studio во время работы был недоступен. Проверено GCC 13 на Linux
-(22 из 23 групп CTest, без `native_assets`), форматированием clang-format 18, синтаксическим
-проходом Clang 18 по файлам Windows и сборкой MinGW-w64 без предупреждений.
+The changes of 12.11.2026 (population, clothing and roles, pedestrian signals, traffic rules) were not built
+with MSVC: the computer with Visual Studio was unavailable during the work. Checked with GCC 13 on Linux
+(22 of 23 CTest groups, without `native_assets`), clang-format 18 formatting, a Clang 18 syntax
+pass over the Windows files and a MinGW-w64 build without warnings.
 
-До этих правок движение в городе останавливалось само: в сборке от 11.11.2026 через 30 минут
-модельного времени стояли 117 из 204 обычных машин, а при 1080 машинах весь город вставал за
-25 минут. Причины найдены по одной и исправлены: грузовики в соседних полосах держали друг друга;
-машина в повороте принимала за препятствие стоящих у встречной стоп-линии, приехавших с эстакады
-и трамвай у края перекрёстка; на крутых улицах на перекрёсток въезжали две машины; машины
-въезжали, не имея места за перекрёстком; трамваи вставали поперёк перекрёстка, а у оживлённых
-перекрёстков не могли выехать вовсе; встречные полосы на диагональных участках эстакад и тоннелей
-шли в 2,6 м друг от друга; высокие машины упирались в балку под настилом; ведущий компании и её
-участники толкали друг друга; ожидающие трамвая на остановке в повороте стояли на проезжей части.
-После исправлений два города (seed 20261105 и 7) с высокой плотностью прошли по 30 минут без
-единой машины, простоявшей 100 секунд, и без замены застрявших. Первый город прошёл также 60
-минут на высокой плотности и по 30 минут на средней и низкой: на отметках через каждые пять минут
-не было машин, стоящих дольше минуты, и замен застрявших. Средняя скорость потока 3,1–3,2 м/с на
-высокой плотности и 3,3–3,4 м/с на низкой. Наезды машин NPC на прохожих считались в прогонах до
-последних правок: от нуля до двух за 30 минут на высокой плотности, без погибших.
-Это проверка модели без игрока за рулём, с одного места наблюдения. Время кадра на видеокарте
-при высокой плотности измерено позже, см. ниже.
+Before these changes traffic in the city came to a halt by itself: in the build of 11.11.2026, after 30 minutes
+of simulated time 117 of 204 ordinary cars were standing, and with 1080 cars the whole city stopped within
+25 minutes. The causes were found one by one and fixed: trucks in adjacent lanes held each other up;
+a car in a turn took vehicles standing at the oncoming stop line, those arriving from an overpass
+and a tram at the edge of the intersection for obstacles; on steep streets two cars entered the intersection; cars
+entered without room beyond the intersection; trams stopped across the intersection and at busy
+intersections could not get out at all; oncoming lanes on diagonal sections of overpasses and tunnels
+ran 2.6 m apart; tall vehicles ran into the girder under the deck; the leader of a group and its
+members pushed each other; people waiting for a tram at a stop on a bend stood on the carriageway.
+After the fixes two cities (seed 20261105 and 7) at high density ran for 30 minutes each without
+a single car standing for 100 seconds and without replacing stuck ones. The first city also ran 60
+minutes at high density and 30 minutes each at medium and low: at the checkpoints every five minutes
+there were no cars standing longer than a minute and no replacements of stuck ones. Average traffic speed was 3.1–3.2 m/s at
+high density and 3.3–3.4 m/s at low. NPC cars hitting pedestrians were counted in runs before
+the last changes: from zero to two in 30 minutes at high density, with no deaths.
+This is a check of the model without the player at the wheel, from a single observation point. GPU frame time
+at high density was measured later, see below.
 
-Автобусы, машины газовой службы и остановки (12.11.2026, вторая часть) MSVC тоже не собирались.
-Проверено GCC 13 на Linux (23 из 24 групп CTest, без `native_assets`), clang-format 18, проходом
-предупреждений GCC и Clang 18 и сборкой MinGW-w64 без предупреждений. Под Wine пройдены `bus`
-(на русском и английском), `day`, `drive`, `traffic-lanes`, `transit`, `people`, `night` и
-`day --density high`; остальные сценарии `smoke.ps1` после этих правок не запускались.
+Buses, gas service vans and stops (12.11.2026, second part) were not built with MSVC either.
+Checked with GCC 13 on Linux (23 of 24 CTest groups, without `native_assets`), clang-format 18, a GCC and Clang 18
+warnings pass and a MinGW-w64 build without warnings. Under Wine `bus`
+(in Russian and English), `day`, `drive`, `traffic-lanes`, `transit`, `people`, `night` and
+`day --density high` passed; the other `smoke.ps1` scenarios were not run after these changes.
 
-С автобусами в потоке те же прогоны нашли ещё четыре причины остановки движения рядом с игроком:
-автобус разворачивался в тупике; прохожий, остановившийся вплотную к пачке сигарет, не мог её
-сдвинуть, а грузовик ждал его у поворота; прохожий упирался в фонарный столб, и автобус в повороте
-ждал, пока он отойдёт; грузовик на выходе из левого поворота принимал за препятствие грузовик на
-встречной полосе. После исправлений два города (seed 20261105 и 7) на высокой плотности и первый
-город на средней и низкой прошли по 30 минут без машины, простоявшей 100 секунд, и без замены
-застрявших. Наездов машин NPC на прохожих за 30 минут на высокой плотности (seed 20261105) был
-один, пострадавший выжил.
+With buses in the traffic, the same runs found four more causes of traffic stopping near the player:
+a bus turned around in a dead end; a passer-by who stopped right next to a cigarette pack could not
+push it aside, and a truck waited for him at the turn; a passer-by ran into a lamppost, and a bus in the turn
+waited for him to step away; a truck coming out of a left turn took a truck in the
+oncoming lane for an obstacle. After the fixes two cities (seed 20261105 and 7) at high density and the first
+city at medium and low ran for 30 minutes each without a car standing for 100 seconds and without replacing
+stuck ones. There was one NPC car hitting a pedestrian in 30 minutes at high density (seed 20261105);
+the victim survived.
 
-Известное ограничение. Рядом с игроком машины ведёт физическая модель, которая рулит на точку
-впереди на маршруте (как `DriveRoute` в C#, где эта точка ещё дальше: 2,8 м + 0,55 с пути против
-0,35 с здесь). При правом повороте из крайней полосы машина срезает угол тротуара: на пустом
-перекрёстке легковая заходит на него примерно на 0,5 м, грузовик и автобус — на 1,2 м; кривая
-поворота из крайней полосы круче, чем позволяет руль длинных машин. Отсюда редкие наезды на
-стоящих у самого угла. В C# это не измерялось.
+Known limitation. Near the player cars are driven by a physical model that steers towards a point
+ahead on the route (like `DriveRoute` in C#, where this point is even farther: 2.8 m + 0.55 s of travel versus
+0.35 s here). When turning right from the outer lane, a car cuts the corner of the sidewalk: at an empty
+intersection a passenger car goes about 0.5 m onto it, a truck and a bus 1.2 m; the turning curve
+from the outer lane is sharper than the steering of long vehicles allows. Hence the rare hits on
+people standing right at the corner. This was not measured in C#.
 
-Сборка MSVC. 12.11.2026 в 14:47 всё перечисленное выше как не собранное MSVC собрано на
-компьютере автора (`build.ps1`, каталог `build/native-Release`): CTest — 24 группы из 24, включая
-`native_assets`. Предупреждения компилятора не просматривались. Полный `tools/smoke.ps1` на
-Windows после правок 12.11.2026 не запускался.
+MSVC build. On 12.11.2026 at 14:47 everything listed above as not built with MSVC was built on
+the author's computer (`build.ps1`, directory `build/native-Release`): CTest — 24 groups of 24, including
+`native_assets`. Compiler warnings were not reviewed. The full `tools/smoke.ps1` on
+Windows was not run after the changes of 12.11.2026.
 
-Пешеходы на углах перекрёстков (12.11.2026, после сборки MSVC) этой сборкой не покрыты.
-Проверено GCC 13 на Linux (23 из 24 групп CTest), clang-format 18, проходом предупреждений GCC и
-Clang 18 и сборкой MinGW-w64 без предупреждений; под Wine пройдены `people`, `taxi`, `street-hail`,
-`transit`, `walk`, `day`, `night`, `bus`, `courier` и `delivery-rider`. Прогоны потока с новой
-ходьбой: seed 20261105 и 7 на высокой плотности, seed 20261105 на средней и низкой и ночью (23:00,
-высокая плотность, ночные работницы на местах) — по 30 минут без машины, простоявшей 100 секунд,
-и без замены застрявших. Наездов машин NPC на прохожих за 30 минут на высокой плотности не было.
-Около трети выбранных отрезков пути — переходы. Голосующие у остановок добавлены после этих
-прогонов: они появляются, только когда игрок за рулём, а прогоны идут без него. Для них повторены
-CTest, сборка MinGW-w64 и сценарии `street-hail`, `taxi` и `day` под Wine; для мирных заданий у
-остановок — `leaflets`, `job-board` и `contract-series`.
+Pedestrians at intersection corners (12.11.2026, after the MSVC build) are not covered by that build.
+Checked with GCC 13 on Linux (23 of 24 CTest groups), clang-format 18, a GCC and
+Clang 18 warnings pass and a MinGW-w64 build without warnings; under Wine `people`, `taxi`, `street-hail`,
+`transit`, `walk`, `day`, `night`, `bus`, `courier` and `delivery-rider` passed. Traffic runs with the new
+walking: seed 20261105 and 7 at high density, seed 20261105 at medium and low and at night (23:00,
+high density, night workers at their spots) — 30 minutes each without a car standing for 100 seconds
+and without replacing stuck ones. There were no NPC cars hitting pedestrians in 30 minutes at high density.
+About a third of the chosen path segments are crossings. People hailing at stops were added after these
+runs: they appear only when the player is driving, and the runs go without the player. For them CTest,
+the MinGW-w64 build and the `street-hail`, `taxi` and `day` scenarios under Wine were repeated; for peaceful jobs at
+stops, `leaflets`, `job-board` and `contract-series`.
 
-Полное население (12.11.2026, вечер) до сборки MSVC проверено GCC 13 на Linux (23 из 24
-групп CTest), clang-format 18, проходом предупреждений GCC и Clang 18 и сборкой MinGW-w64 без
-предупреждений. Под Wine окончательным EXE пройдены новый сценарий `crowd` — сценарий `day` в
-городе с полным населением (1485 машин, 5265 жителей, сохранение и загрузка такого города), а
-также `day`, `transit`, `traffic-lanes`, `people`, `bus` и `tram-recovery`; более ранней сборкой
-этого этапа, только с первым из перечисленных ниже исправлений, — импорт сохранения C# с ключом
-`--density full`, `overpass`, `underpass`, `portal`, `tunnel`, `tunnel-exit` и `bridge`. Сценарии
-`tram-ride` и `trolley-ride` под Wine не запускались. Шаг модели на полном уровне примерно в
-полтора раза дольше, чем на высоком (3,5 против 2,4 мс на проверочной машине).
+The full population (12.11.2026, evening) was checked before the MSVC build with GCC 13 on Linux (23 of 24
+CTest groups), clang-format 18, a GCC and Clang 18 warnings pass and a MinGW-w64 build without
+warnings. Under Wine the final EXE passed the new `crowd` scenario — the `day` scenario in a
+city with full population (1485 cars, 5265 residents, saving and loading such a city), as
+well as `day`, `transit`, `traffic-lanes`, `people`, `bus` and `tram-recovery`; an earlier build of
+this stage, with only the first of the fixes listed below, passed the C# save import with
+`--density full`, `overpass`, `underpass`, `portal`, `tunnel`, `tunnel-exit` and `bridge`. The
+`tram-ride` and `trolley-ride` scenarios were not run under Wine. A model step at the full level takes about
+one and a half times longer than at high (3.5 versus 2.4 ms on the test machine).
 
-Прогоны потока на полном уровне и в третьем городе (seed 99) нашли четыре остановки движения
-(пункты 1–3; у четвёртой две причины, пункты 6 и 7), ошибку, из-за которой первое исправление не
-действовало бы на длинные машины (пункт 4), и причину наездов (пункт 5). От числа машин они не
-зависят: вторая остановка повторяется на низкой плотности на одиннадцатой минуте.
+Traffic runs at the full level and in a third city (seed 99) found four traffic stoppages
+(items 1–3; the fourth had two causes, items 6 and 7), a bug that would have kept the first fix from
+working for long vehicles (item 4), and the cause of run-overs (item 5). They do not
+depend on the number of cars: the second stoppage reproduces at low density in the eleventh minute.
 
-1. У концов эстакад и тоннелей дорога уходит в сторону, и фургон, только что въехавший на неё,
-   принимал за препятствие грузовик, стоявший в очереди на встречной полосе; машина за фургоном
-   оставалась на перекрёстке, а очередь ждала, пока перекрёсток освободится. Теперь того, кто
-   стоит на своей встречной полосе, проезжают; тому, кто по ней едет, по-прежнему уступают изгиб.
-2. Трамвай и троллейбус разных маршрутов подходили к перекрёстку рядом: трамвай поворачивал
-   направо из средней полосы, троллейбус — налево от обочины. Оба запрашивали перекрёсток,
-   въезжали и вставали нос к носу. Теперь трамваи и троллейбусы занимают перекрёсток по одному.
-3. На крутой улице трамвай не видел стоящий впереди трамвай, пока разница высот между ними была
-   больше двух метров, и останавливался уже внутри него; тронуться после этого не могли оба.
-   Теперь «та же улица» для трамваев и троллейбусов определяется так же, как для машин.
-4. Длинная машина, которая вдали от игрока ждёт перед стоп-линией, числилась едущей со скоростью
-   потока. Правила, которые смотрят на скорость стоящего впереди (место за перекрёстком, очередь
-   на встречной полосе), принимали её за движущуюся. Теперь скорость равна пройденному за шаг.
-5. Рядом с игроком трамвай смотрел на людей только вдоль кузова. Поворачивая на улицу, он задевал
-   углом тех, кто шёл по её переходу: в третьем городе за 30 минут было два таких наезда, один
-   смертельный. Теперь трамвай и троллейбус смотрят вдоль рельсов, в том числе за поворот, и
-   учитывают, где прохожий будет через секунду; пешего игрока они видят так же, как прохожих
-   (раньше не видели вовсе).
-6. Грузовик, начавший поворот в дальней модели (по путям, 7 м/с), посреди поворота переходил под
-   собственное руление: перекрёсток был в 104 м от игрока, граница моделей — в 110 м. На такой
-   скорости он выходил из поворота широко, носом к фургону у встречной стоп-линии. Теперь поворот,
-   начатый в дальней модели, в ней и заканчивается.
-7. После этого грузовик и фургон стояли нос к носу: каждый останавливался перед тем, что у него
-   перед бампером, и другого выхода у водителя не было. В C# он есть: водитель, которого вытолкнуло
-   с маршрута, сдаёт назад и пробует снова (`Stuck` и `ReverseFor` в `CityTraffic.Physics.cs`).
-   Перенесено: рядом с игроком водитель, который стоит не на маршруте или поперёк него и которому
-   мешает то, что впереди, через 3,5 с сдаёт назад на 1,7 с, если сзади никого нет.
+1. At the ends of overpasses and tunnels the road curves sideways, and a van that had just entered it
+   took a truck queuing in the oncoming lane for an obstacle; the car behind the van
+   stayed in the intersection, and the queue waited for the intersection to clear. Now someone
+   standing in their own oncoming lane is passed; someone driving in it is still given the bend.
+2. A tram and a trolleybus of different routes approached an intersection side by side: the tram turned
+   right from the middle lane, the trolleybus left from the kerb. Both requested the intersection,
+   entered and stopped nose to nose. Now trams and trolleybuses take the intersection one at a time.
+3. On a steep street a tram did not see a tram standing ahead while the height difference between them was
+   more than two metres, and stopped already inside it; after that neither could move off.
+   Now "the same street" for trams and trolleybuses is determined the same way as for cars.
+4. A long vehicle waiting at the stop line far from the player was counted as moving at traffic
+   speed. Rules that look at the speed of the vehicle ahead (room beyond the intersection, the queue
+   in the oncoming lane) took it for a moving one. Now its speed equals the distance covered per step.
+5. Near the player a tram looked for people only along its body. When turning into a street it hit
+   with its corner those walking across that street's crossing: in the third city there were two such hits in 30 minutes, one
+   fatal. Now trams and trolleybuses look along the rails, including around a bend, and
+   take into account where a passer-by will be in a second; they see the player on foot the same way as passers-by
+   (previously they did not see the player at all).
+6. A truck that started a turn in the distant model (along the paths, 7 m/s) switched to its
+   own steering in the middle of the turn: the intersection was 104 m from the player, the model boundary at 110 m. At that
+   speed it came out of the turn wide, nose towards a van at the oncoming stop line. Now a turn
+   started in the distant model is finished in it.
+7. After that the truck and the van stood nose to nose: each stopped in front of what was in front of its
+   bumper, and the driver had no other way out. In C# there is one: a driver pushed off
+   the route reverses and tries again (`Stuck` and `ReverseFor` in `CityTraffic.Physics.cs`).
+   Ported: near the player, a driver who is off the route or across it and is blocked by
+   what is ahead reverses for 1.7 s after 3.5 s if there is no one behind.
 
-Проверки добавлены в `native_flow` и `native_transit`; без своего исправления каждая не проходит.
+Checks were added to `native_flow` and `native_transit`; each of them fails without its fix.
 
-С этого этапа прогон считает затором машину, простоявшую 300 секунд, а ожидания от 100 секунд —
-отдельно: в одном из промежуточных прогонов фургон 100 секунд ждал поворота на улицу, где перед
-следующим светофором по очереди стояли троллейбусы двух маршрутов и автобус, и после этого уехал.
-После исправлений прошли: полный уровень — seed 20261105 (60 минут), 7, 99 и ночь (23:00, seed
-20261105) по 30 минут; высокий — seed 20261105, 7 и 99; средний — seed 20261105; низкий — seed
-20261105 и 99. Ни в одном прогоне ни одна машина не простояла 300 секунд, замен застрявших не было,
-никто не погиб. Ожидание дольше 100 секунд было одно: автобус на полном уровне простоял 106 секунд
-и поехал дальше. Средняя скорость потока 3,1 м/с на полном уровне, 3,2 на высоком, 3,3 на среднем
-и 3,4 на низком. Наезды машин NPC на прохожих: на полном уровне ни одного за 60 минут в первом
-городе, три во втором и один в третьем за 30 минут, ночью ни одного; на остальных уровнях ни
-одного. Два из трёх наездов во втором городе — автобус в правом повороте задевает бортом того,
-кто ждёт у угла тротуара (срезание угла, см. выше); пострадавшие выжили.
+From this stage on a run counts a car standing for 300 seconds as a jam, and waits of 100 seconds or more
+separately: in one of the intermediate runs a van waited 100 seconds to turn into a street where, in front of
+the next traffic light, trolleybuses of two routes and a bus were queuing, and then drove off.
+After the fixes the following passed: full level — seed 20261105 (60 minutes), 7, 99 and night (23:00, seed
+20261105), 30 minutes each; high — seed 20261105, 7 and 99; medium — seed 20261105; low — seed
+20261105 and 99. In no run did any car stand for 300 seconds, there were no replacements of stuck ones,
+nobody died. There was one wait longer than 100 seconds: a bus at the full level stood for 106 seconds
+and drove on. Average traffic speed was 3.1 m/s at the full level, 3.2 at high, 3.3 at medium
+and 3.4 at low. NPC cars hitting pedestrians: at the full level none in 60 minutes in the first
+city, three in the second and one in the third in 30 minutes, none at night; none at the other levels.
+Two of the three hits in the second city were a bus in a right turn catching with its side someone
+waiting at the corner of the sidewalk (corner cutting, see above); the victims survived.
 
-Известное ограничение. На изгибах у концов эстакад и тоннелей длинным машинам тесно: по путям
-встречные автобус и грузовик перекрываются углами до 0,4 м, два грузовика — до 0,2 м; легковая с
-грузовиком расходятся с запасом 0,5 м, две легковые — 1,3 м. Вдали от игрока машины идут по путям
-и столкновений между ними нет; рядом с игроком их разводит физика. Профиль дороги перенесён из
+Known limitation. On the bends at the ends of overpasses and tunnels long vehicles are cramped: along the paths
+an oncoming bus and truck overlap at the corners by up to 0.4 m, two trucks by up to 0.2 m; a car and a
+truck pass with a margin of 0.5 m, two cars with 1.3 m. Far from the player cars follow the paths
+and do not collide with each other; near the player physics keeps them apart. The road profile is ported from
 `CityRoadLevel`.
 
-Сборка MSVC этапов 6–8. 12.11.2026 в 23:38 ходьба от угла к углу, остановки в заданиях и полное
-население со всеми исправлениями собраны на компьютере автора (`build.ps1`, каталог
-`build/native-Release`): CTest — 24 группы из 24. Предупреждения компилятора не просматривались.
-Полный `tools/smoke.ps1` на Windows после правок 12.11.2026 не запускался: из его сценариев на
-видеокарте пройден только `crowd` (замер ниже).
+MSVC build of stages 6–8. On 12.11.2026 at 23:38 corner-to-corner walking, stops in jobs and the full
+population with all fixes were built on the author's computer (`build.ps1`, directory
+`build/native-Release`): CTest — 24 groups of 24. Compiler warnings were not reviewed.
+The full `tools/smoke.ps1` on Windows was not run after the changes of 12.11.2026: of its scenarios only
+`crowd` was run on the graphics card (measurement below).
 
-Время кадра на компьютере автора: RTX 4060 Laptop, 3440×1440, режим quality, 360 кадров с
-неподвижной точки, ключ `--gpu-profile`. Высокое население (сценарий `day --density high`, до
-переноса ходьбы): кадр 9,0 мс по медиане и 9,8 мс на 95-м процентиле, сцена на GPU — 4,1 и 6,4 мс.
-Полное население (сценарий `crowd`, 1485 машин и 5265 жителей, окончательный код этапа 8): кадр
-11,4 мс по медиане и 12,4 мс на 95-м процентиле, сцена на GPU — 3,8 и 7,7 мс. Прибавка 2,4 мс
-приходится на процессор: время сцены на видеокарте по медиане не выросло. После этого замера
-полное население выбрано по умолчанию. Ночь, дождь и езда не замерялись.
+Frame time on the author's computer: RTX 4060 Laptop, 3440×1440, quality mode, 360 frames from
+a fixed point, `--gpu-profile` switch. High population (the `day --density high` scenario, before
+the walking port): frame 9.0 ms median and 9.8 ms at the 95th percentile, GPU scene 4.1 and 6.4 ms.
+Full population (the `crowd` scenario, 1485 cars and 5265 residents, final code of stage 8): frame
+11.4 ms median and 12.4 ms at the 95th percentile, GPU scene 3.8 and 7.7 ms. The extra 2.4 ms
+falls on the CPU: the median scene time on the graphics card did not increase. After this measurement
+full population was made the default. Night, rain and driving were not measured.
 
-Изменения от 13.11.2026: графика (SSAO, небо, дымка, отражения, мокрые улицы, потоковая загрузка
-секторов), животные на тротуарах, задний ход машин служб, сигнал пешеходам во всём городе, точка
-мирных заданий на тротуаре, частицы, следы столкновений и недостающие звуки, импорт карьеры,
-машины игрока и движения старого плана, сверка контрактов и рейсов. MSVC они не собирались и на
-видеокарте не запускались: компьютер автора во время работы был недоступен. Проверено в облачной
-среде: GCC 13 на Linux — 23 группы CTest из 23 на окончательном коде (без `native_assets`);
-clang-format 18; проход предупреждений GCC и Clang 18 по изменённым файлам; шейдеры —
-glslangValidator и компилятор Mesa; сборка MinGW-w64 без предупреждений. Под Wine с программным
-OpenGL (Mesa llvmpipe, 640×360) этот EXE прошёл все 63 запущенных сценария `smoke.ps1`;
-`tram-ride` и `trolley-ride` (по 4200 кадров) не запускались, как и раньше. После того прогона в
-коде менялись только проверка числа в импорте и сценарий `wreckage`: сценарий и импорт
-составленного сохранения целого города (25 МБ; на свои места вернулись 1195 из 1320 обычных
-машин и 3206 из 5151 прохожих) пройдены окончательным EXE. Сборка, в которой была только новая
-графика и секторы, до остановки прошла 40 сценариев из 40 запущенных.
+Changes of 13.11.2026: graphics (SSAO, sky, haze, reflections, wet streets, sector
+streaming), animals on the sidewalks, reversing of service vehicles, pedestrian signals throughout the city, the peaceful
+job spot on the sidewalk, particles, collision marks and missing sounds, import of the career,
+the player's car and the traffic of the old layout, comparison of contracts and rides. They were not built with MSVC and were not run on
+a graphics card: the author's computer was unavailable during the work. Checked in the cloud
+environment: GCC 13 on Linux — 23 CTest groups of 23 on the final code (without `native_assets`);
+clang-format 18; a GCC and Clang 18 warnings pass over the changed files; shaders —
+glslangValidator and the Mesa compiler; a MinGW-w64 build without warnings. Under Wine with software
+OpenGL (Mesa llvmpipe, 640×360) this EXE passed all 63 `smoke.ps1` scenarios that were run;
+`tram-ride` and `trolley-ride` (4200 frames each) were not run, as before. After that run
+only the number check in the import and the `wreckage` scenario changed in the code: the scenario and the import of
+a composed save of a whole city (25 MB; 1195 of 1320 ordinary cars and 3206 of 5151 passers-by
+returned to their places) passed with the final EXE. A build that had only the new
+graphics and sectors passed 40 of the 40 scenarios run before being stopped.
 
-Поток после этих правок (ядро окончательного кода, по 30 минут модельного времени): полный
-уровень — города 20261105, 7, 99 и ночь; высокий и низкий — 20261105. Машин, простоявших 300
-секунд, замен застрявших и погибших нет. Одно ожидание 101 с (автобус, город 7). Наезды машин NPC:
-два за 30 минут в городе 99, в остальных прогонах ни одного. Скорость потока 3,1 м/с на полном
-уровне, 3,2 на высоком, 3,4 на низком.
+Traffic after these changes (core of the final code, 30 minutes of simulated time each): full
+level — cities 20261105, 7, 99 and night; high and low — 20261105. No cars standing for 300
+seconds, no replacements of stuck ones and no deaths. One wait of 101 s (a bus, city 7). NPC car hits:
+two in 30 minutes in city 99, none in the other runs. Traffic speed 3.1 m/s at the full
+level, 3.2 at high, 3.4 at low.
 
-Не проверено: сборка MSVC и `native_assets`; `tools/smoke.ps1` на Windows; время кадра новой
-графики и частиц на видеокарте (под программным рендером новая графика стоила 7–10 % времени
-кадра, для видеокарты это не оценка); поведение драйверов. Небо, отражения, частицы и следы
-оценивались по кадрам программного рендера 640×360 и 960×540 и с C# попиксельно не сверялись.
-Импорт проверен на сохранениях, составленных по коду C#, а не записанных игрой.
+Not verified: the MSVC build and `native_assets`; `tools/smoke.ps1` on Windows; frame time of the new
+graphics and particles on a graphics card (under the software renderer the new graphics cost 7–10 % of the frame
+time, which is no estimate for a graphics card); driver behaviour. Sky, reflections, particles and marks
+were judged from software-rendered frames at 640×360 and 960×540 and were not compared with C# pixel by pixel.
+The import was verified on saves composed from the C# code, not written by the game.
 
-Изменения от 13.11.2026, второй этап (после проверки, описанной выше): отброшенные машиной животные,
-тонущие тела, подскок машины после падения, смешивание частиц с предумножением, уведомления о
-заказах, движение экипажей на вызове, скорая на красный свет и у пострадавшего, к которому не
-подъехать. MSVC не собирался: компьютер с Visual Studio был недоступен. Проверено GCC 13 на Linux —
-CTest 23 из 23 без `native_assets`, clang-format 18, проход `-Wall -Wextra -Wshadow` по изменённым
-файлам без предупреждений — и сборкой MinGW-w64. Под Wine с программным OpenGL запущен 41 из 63
-сценариев, все прошли: `pursuit`, `arrest`, `arrest-car`, `carjack`, `tank`, `drone`, `wreckage`,
+Changes of 13.11.2026, second stage (after the verification described above): animals thrown aside by a car,
+sinking bodies, a car bouncing after a fall, premultiplied particle blending, job
+notifications, crew movement when responding, the ambulance on a red light and at a victim who cannot
+be reached. Not built with MSVC: the computer with Visual Studio was unavailable. Checked with GCC 13 on Linux —
+CTest 23 of 23 without `native_assets`, clang-format 18, a `-Wall -Wextra -Wshadow` pass over the changed
+files without warnings — and a MinGW-w64 build. Under Wine with software OpenGL 41 of 63
+scenarios were run, and all passed: `pursuit`, `arrest`, `arrest-car`, `carjack`, `tank`, `drone`, `wreckage`,
 `wildlife`, `hydrant`, `canal-impact`, `taxi`, `contract-series`, `job-board`, `leaflets`, `drive`,
 `rollover`, `day`, `night`, `storm`, `traffic-lanes`, `transit`, `crowd`, `people`, `ambulance`,
 `bus`, `walk`, `canal`, `tunnel`, `market`, `console`, `street-hail`, `courier`, `recovery`,
 `scooter`, `delivery-rider`, `overpass`, `underpass`, `tunnel-exit`, `streaming`, `bridge`,
-`tram-recovery`. Большая часть шла на промежуточных сборках этапа; на окончательном коде повторены
-`pursuit`, `arrest` и `ambulance`. Остальные 22 сценария (районы, фасады, парк, меню, настройки,
-слоты, мастерская, автоматы, лужи, ямы, портал) в этом этапе не запускались.
+`tram-recovery`. Most of them ran on intermediate builds of the stage; on the final code
+`pursuit`, `arrest` and `ambulance` were repeated. The remaining 22 scenarios (districts, facades, park, menu, settings,
+slots, workshop, vending machines, puddles, potholes, portal) were not run in this stage.
 
-Службы проверены прогонами на полном населении: нарушитель стоит пешком на углу перекрёстка, режим
-god, пять звёзд. До правок, на углу у съезда, откуда экипажи его не видят, за восемь минут розыска
-экипажи встали в очередях в 30–45 м от него: стояли 62 машины, один БТР простоял на пути 471 с;
-через четверть часа после снятия розыска дольше 100 с стояли 84 машины, а правило последнего
-средства за 23 минуты заменило 10 и 32 застрявших (города 20261105 и 7). После правок, на обычном
-углу, три минуты розыска в четырёх городах: погибших нет, разбита одна машина в одном городе
-(до правок в двух городах ни одной). Через четыре и через восемь минут после снятия розыска, если
-нарушитель остаётся на месте, дольше 45 с стоят 0 и 0 машин в городе 7, 22 и 39 в городе 20261105,
-35 и 56 в городе 99, 13 и 30 в городе 4242; до правок — 40 и 52 в городе 7, 22 и 18 в городе
-20261105. Пробку держат экипажи, оставшиеся у места погони на встречной полосе или вплотную друг к
-другу, и обломок; когда игрок уходит, их убирают правила обновления города.
+Services were checked with runs at full population: the offender stands on foot at the corner of an intersection, god
+mode, five stars. Before the changes, at a corner by a ramp where crews could not see him, during eight minutes of wanted level
+crews got stuck in queues 30–45 m from him: 62 cars were standing, one APC stood on the path for 471 s;
+a quarter of an hour after the wanted level was cleared 84 cars had been standing for more than 100 s, and the last-resort
+rule replaced 10 and 32 stuck vehicles in 23 minutes (cities 20261105 and 7). After the changes, at an ordinary
+corner, three minutes of wanted level in four cities: no deaths, one car wrecked in one city
+(before the changes, none in two cities). Four and eight minutes after the wanted level was cleared, if
+the offender stays in place, 0 and 0 cars stand longer than 45 s in city 7, 22 and 39 in city 20261105,
+35 and 56 in city 99, 13 and 30 in city 4242; before the changes, 40 and 52 in city 7, 22 and 18 in city
+20261105. The jam is held by crews left at the scene of the chase in the oncoming lane or right next to each
+other, and by a wreck; when the player leaves, the city renewal rules remove them.
 
-Скорая, двадцать минут и двенадцать пострадавших по всему городу без погони, окончательный код:
-в городе 20261105 все на ногах, последний через 508 с, самая долгая поездка 346 с (до правок 625
-и 296 с); в городе 7 — 256 и 166 с. Шестеро в каждом прогоне заменены вне поля зрения. Замен
-застрявших машин нет.
+The ambulance, twenty minutes and twelve victims across the city without a chase, final code:
+in city 20261105 everyone is on their feet, the last one after 508 s, the longest trip 346 s (before the changes 625
+and 296 s); in city 7, 256 and 166 s. Six in each run were replaced out of sight. No replacements
+of stuck cars.
 
-Поток, по 30 минут на полном уровне, города 20261105 и 7 (ядро после переноса движения экипажей,
-до правок скорой и скорости подъезда, которые обычных водителей не касаются): ни одной машины,
-простоявшей 100 секунд, замен застрявших и погибших нет, скорость 3,1 м/с, один наезд машины NPC.
-Ночь и остальные уровни населения в этом этапе не повторялись.
+Traffic, 30 minutes each at the full level, cities 20261105 and 7 (core after the crew movement port,
+before the ambulance and approach speed changes, which do not affect ordinary drivers): not a single car
+standing for 100 seconds, no replacements of stuck ones and no deaths, speed 3.1 m/s, one NPC car hit.
+Night and the other population levels were not repeated in this stage.
 
-Не проверено в этом этапе: сборка MSVC, `native_assets`, `tools/smoke.ps1` на Windows, время кадра
-на видеокарте. Поведение экипажей с C# по одинаковым сценам не сверялось: правила взяты из кода
-C#, числа получены на нативной модели.
+Not verified in this stage: the MSVC build, `native_assets`, `tools/smoke.ps1` on Windows, frame time
+on a graphics card. Crew behaviour has not been compared with C# on identical scenes: the rules are taken from the
+C# code, the numbers were obtained on the native model.
 
-Проход по коду 14.11.2026: стандарт, средства C++23, поиск ошибок. Исходное состояние — папка на
-ПК на 15:31 14.11 (после этапа 10 на ПК добавлены дворы, газоны, дальние материалы, сценарии
-`yard-*`, `lawn`, `far-vehicle`; начато переименование в `namespace Promzona` и snake_case).
+Code pass of 14.11.2026: standard, C++23 features, bug search. Starting point — the folder on the
+PC as of 15:31 on 14.11 (after stage 10, courtyards, lawns, distant materials, the scenarios
+`yard-*`, `lawn`, `far-vehicle` were added on the PC; renaming to `namespace Promzona` and snake_case was started).
 
-Стандарт. Обе сборки на ПК уже идут с `/std:c++latest`: CMake 4.3.1 переводит
-`CMAKE_CXX_STANDARD 23` в этот ключ, в `Promzona.vcxproj` стоит `stdcpplatest`; компилятор —
-MSVC 14.52.37025, C++23 в нём реализован целиком, C++26 почти нет. Ключи сборки не менялись.
+Standard. Both builds on the PC already use `/std:c++latest`: CMake 4.3.1 maps
+`CMAKE_CXX_STANDARD 23` to this switch, and `Promzona.vcxproj` has `stdcpplatest`; the compiler is
+MSVC 14.52.37025, which implements C++23 completely and almost none of C++26. The build switches were not changed.
 
-Исправлено:
-- тесты не собирались после переименования (`pz` → `Promzona`, 61 функция): в `Promzona.vcxproj`
-  их нет, поэтому сборка из среды этого не показывала; тесты приведены к новым именам;
-- `SectorStream::stats().busy` после замены сравнения на `std::cmp_not_equal(active_, -1)` был
-  истинным всегда (`active_` — `size_t`), тест потоковой загрузки на этом падал; номер строящейся
-  ячейки теперь `std::optional<size_t>` в обоих потоках;
-- девять предупреждений MSVC C4804 в `src/roles.cpp` (сдвиг на `bool`): биты `walkLegs` получили
-  имена (`World::WalkLeg`, `World::walkLegBit`), раскладка закреплена `static_assert`;
-- `src/vehicle_entry.cpp` не собирался GCC и Clang без `<utility>`; ещё в 28 файлах заголовки
-  стандартной библиотеки приходили только через чужие заголовки — подключены явно;
-- файл значка называется `PROMZONA.ico`, а CMake, проект и `.rc` называли его `Promzona.ico`;
-- комментарии `} // namespace pz` в 65 файлах; параметр `aiming` в `src/civilian_cover.cpp`
-  закрывал `World::aiming`; поля без начальных значений (`ServiceSite::kind`, `Building::height`,
+Fixed:
+- the tests did not build after the renaming (`pz` → `Promzona`, 61 functions): they are not in `Promzona.vcxproj`,
+  so a build from the IDE did not show this; the tests were brought in line with the new names;
+- `SectorStream::stats().busy` was always true after the comparison was replaced with `std::cmp_not_equal(active_, -1)`
+  (`active_` is a `size_t`), and the streaming test failed on this; the number of the cell being built
+  is now `std::optional<size_t>` in both streams;
+- nine MSVC C4804 warnings in `src/roles.cpp` (shift on a `bool`): the `walkLegs` bits got
+  names (`World::WalkLeg`, `World::walkLegBit`), the layout is pinned with a `static_assert`;
+- `src/vehicle_entry.cpp` did not build with GCC and Clang without `<utility>`; in 28 more files standard
+  library headers came only through other headers — they are now included explicitly;
+- the icon file is named `PROMZONA.ico`, while CMake, the project and the `.rc` called it `Promzona.ico`;
+- `} // namespace pz` comments in 65 files; the `aiming` parameter in `src/civilian_cover.cpp`
+  shadowed `World::aiming`; fields without initial values (`ServiceSite::kind`, `Building::height`,
   `ContactWorld::Contact::a/b`, `PlayerInput::car/walking`).
 
-Средства языка и библиотеки:
-- `std::jthread`, `std::stop_token` и `std::condition_variable_any` в `SectorStream` и
-  `DetailStream` вместо флага остановки и ручного `join`;
-- `std::views::zip` в одиннадцати циклах по двум параллельным контейнерам; оставшиеся алгоритмы с
-  парами итераторов переведены на `std::ranges` (`contains`, `iota`, `partial_sort` с проекцией,
+Language and library features:
+- `std::jthread`, `std::stop_token` and `std::condition_variable_any` in `SectorStream` and
+  `DetailStream` instead of a stop flag and a manual `join`;
+- `std::views::zip` in eleven loops over two parallel containers; the remaining algorithms with
+  iterator pairs were moved to `std::ranges` (`contains`, `iota`, `partial_sort` with a projection,
   `unique`, `upper_bound`…), `views::reverse`, `views::take`, `views::values`;
-- `std::to_underlying` вместо приведения перечислений к целому (50 мест);
-- `std::format` там, где строка собиралась из `std::to_string` и не переводится (12 мест; коды
-  HRESULT и OpenGL теперь шестнадцатеричные); `resize_and_overwrite` в `wide`/`utf8`; литералы `uz`;
-- тесты: `std::println` вместо потоков, `std::source_location` в `check`/`require` (сообщение о
-  провале называет строку), `std::format` для имён временных файлов;
-- `[[nodiscard]]` на результатах, которые нельзя терять: `poll`, `build`, `pack`, `planSectors`,
+- `std::to_underlying` instead of casting enumerations to integers (50 places);
+- `std::format` where a string was assembled from `std::to_string` and is not translated (12 places; HRESULT
+  and OpenGL codes are now hexadecimal); `resize_and_overwrite` in `wide`/`utf8`; `uz` literals;
+- tests: `std::println` instead of streams, `std::source_location` in `check`/`require` (a failure
+  message names the line), `std::format` for temporary file names;
+- `[[nodiscard]]` on results that must not be lost: `poll`, `build`, `pack`, `planSectors`,
   `trim`, `captureSave`, `saveLanguage`, `saveDensity`, `AudioLevels::save`, `SaveSlots::completed`.
 
-Не делалось:
-- русские строки по-прежнему склеиваются: перевод идёт по фразам каталога, и `std::format` с
-  местами подстановки изменил бы сами фразы;
-- индексные циклы не переведены на `views::enumerate`: индекс почти везде служит номером
-  участника (`int(i) == controlledCar`);
-- `roadDistance`, `Footpath::edgeDistance` и сортировка пар в физике оставлены без адаптеров и
-  проекций: в отладочной сборке MSVC они обходятся дороже простого цикла;
-- `import std` и модули (нужна перестройка сборки, здесь не проверить); `std::print` в самой
-  игре, `ranges::to`, `flat_map`, `mdspan`, `generator` (их нет в GCC 13 из MinGW-w64, которым
-  проверяется EXE); `std::expected` (ошибки везде идут исключениями);
-- начатые на ПК переименование в snake_case и замена `int(x)` на `static_cast` не продолжались;
-- `SectorStream` и `DetailStream` по-прежнему повторяют друг друга (очередь, выдача, остановка).
+Not done:
+- Russian strings are still concatenated: translation goes by catalogue phrases, and `std::format` with
+  placeholders would change the phrases themselves;
+- index loops were not moved to `views::enumerate`: almost everywhere the index serves as the
+  participant's number (`int(i) == controlledCar`);
+- `roadDistance`, `Footpath::edgeDistance` and pair sorting in physics were left without adaptors and
+  projections: in an MSVC debug build they cost more than a plain loop;
+- `import std` and modules (the build would need restructuring, which cannot be verified here); `std::print` in the
+  game itself, `ranges::to`, `flat_map`, `mdspan`, `generator` (they are missing in the MinGW-w64 GCC 13 used
+  to check the EXE); `std::expected` (errors are reported with exceptions throughout);
+- the renaming to snake_case and the replacement of `int(x)` with `static_cast` started on the PC were not continued;
+- `SectorStream` and `DetailStream` still duplicate each other (queue, hand-off, stop).
 
-Проверка этого прохода. MSVC не собирался: всё проверено в облачной среде до записи на ПК.
-GCC 14.2 и Clang 20 с `-Wall -Wextra -Wpedantic -Wshadow` собирают ядро и тесты без
-предупреждений; CTest (GCC 14) — 23 из 23. Тестам теперь нужен `<print>`: GCC 14 или MSVC.
-Санитайзеры GCC 14 вместе с `_GLIBCXX_ASSERTIONS`: адреса и неопределённое поведение — 23 группы
-из 23 на состоянии ПК и семь на окончательном коде (`native_core`, `streaming`, `people`,
-`drone`, `transit`, `front_end`, `environment`); неопределённое поведение с проверкой приведения
-вещественных к целым — 23 из 23 на окончательном коде; гонки — `streaming` и `front_end`.
-Замечаний нет. clang-tidy 20 (bugprone, performance, modernize, часть misc, cppcoreguidelines и
-readability) по всем 51 единицам трансляции, включая файлы Windows, и cppcheck 2.13 дефектов не
-показали. MinGW-w64 GCC 13 собирает EXE и `native_assets` без предупреждений; `native_assets`
-впервые пройден под Wine, на сокращённом наборе с дальними материалами ПК: 354 GLB, 17 скинов,
-153 изображения, 51 WAV. Сценарии под Wine с программным OpenGL: состояние ПК — `day`, `drive`,
-`streaming`, `pursuit`, `crowd`, `wreckage`; EXE с `_GLIBCXX_ASSERTIONS` на промежуточной сборке —
-те же шесть и `settings`, `save-slots`, `job-board`, `console`, на окончательной — `day`,
-`far-vehicle`, `lawn`, `yard-car-day`, `people`, `transit`, `drone`. Все прошли; остальные
-сценарии не запускались. Не проверено: сборка MSVC с `/W4`, `tools/smoke.ps1`, время кадра.
+Verification of this pass. Not built with MSVC: everything was checked in the cloud environment before being written to the PC.
+GCC 14.2 and Clang 20 with `-Wall -Wextra -Wpedantic -Wshadow` build the core and tests without
+warnings; CTest (GCC 14) — 23 of 23. The tests now need `<print>`: GCC 14 or MSVC.
+GCC 14 sanitizers together with `_GLIBCXX_ASSERTIONS`: address and undefined behaviour — 23 groups
+of 23 on the PC state and seven on the final code (`native_core`, `streaming`, `people`,
+`drone`, `transit`, `front_end`, `environment`); undefined behaviour with float-to-integer
+conversion checks — 23 of 23 on the final code; threads — `streaming` and `front_end`.
+No findings. clang-tidy 20 (bugprone, performance, modernize, part of misc, cppcoreguidelines and
+readability) over all 51 translation units, including the Windows files, and cppcheck 2.13 found no
+defects. MinGW-w64 GCC 13 builds the EXE and `native_assets` without warnings; `native_assets`
+passed under Wine for the first time, on a reduced set with the PC's distant materials: 354 GLB, 17 skins,
+153 images, 51 WAV. Scenarios under Wine with software OpenGL: PC state — `day`, `drive`,
+`streaming`, `pursuit`, `crowd`, `wreckage`; the EXE with `_GLIBCXX_ASSERTIONS` on an intermediate build —
+the same six plus `settings`, `save-slots`, `job-board`, `console`; on the final one — `day`,
+`far-vehicle`, `lawn`, `yard-car-day`, `people`, `transit`, `drone`. All passed; the other
+scenarios were not run. Not verified: the MSVC build with `/W4`, `tools/smoke.ps1`, frame time.

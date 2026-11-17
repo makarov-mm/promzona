@@ -1,102 +1,102 @@
-# Растительность и солнечные тени
+# Vegetation and sun shadows
 
-Этап переноса от 05.11.2026. Это новая нативная реализация для текущего C++ города,
-а не полное воспроизведение рендера исходной PROMZONA.
+Porting stage of 05.11.2026. This is a new native implementation for the current C++ city,
+not a full reproduction of the original PROMZONA renderer.
 
-## Деревья
+## Trees
 
-`planTrees()` размещает берёзы, липы и ели в парках и свободных дворах.
-Отдельный генератор случайных чисел сохраняет прежнюю последовательность
-машин, людей и предметов. Проверяются отступы от зданий, тротуаров, воды,
-уличных объектов и всей зарезервированной области эстакад/тоннелей.
-Основание ствола привязано к рельефу. Ствол получает неподвижный круговой
-коллайдер в существующей локальной системе контактов; крона декоративна.
+`planTrees()` places birches, lindens and spruces in parks and free courtyards.
+A separate random number generator keeps the existing sequence of
+cars, people and objects. Clearances from buildings, sidewalks, water,
+street objects and the whole reserved area of overpasses/tunnels are checked.
+The base of the trunk is anchored to the terrain. The trunk gets a static circular
+collider in the existing local contact system; the crown is decorative.
 
-Для каждого вида есть три силуэта и два уровня детализации. Видеокарта хранит
-36 общих мешей: ствол и крона для каждого варианта/LOD. Растения отличаются
-масштабом, поворотом, оттенком и фазой ветра. Instancing передаёт на дерево
-32 байта параметров вместо отдельной копии всех вершин. Списки видимых
-экземпляров пересобираются для камеры и для света, ёмкости CPU-векторов
-используются повторно. Потоковый VBO переиспользуется с orphaning.
+Each species has three silhouettes and two levels of detail. The GPU stores
+36 shared meshes: a trunk and a crown for each variant/LOD. Plants differ in
+scale, rotation, tint and wind phase. Instancing sends 32 bytes of parameters
+per tree instead of a separate copy of all vertices. Lists of visible
+instances are rebuilt for the camera and for the light; the capacity of CPU vectors
+is reused. The streaming VBO is reused with orphaning.
 
-Листва использует alpha test: на карточке несколько веточек с мелкими листьями
-или иголками. Геометрия и деформация ветром совпадают в проходах цвета и теней.
-Ближний и дальний LOD смешиваются дизерингом между 85 и 115 м, деревья плавно
-исчезают на 560–620 м. В обоих проходах используется дистанция до камеры,
-а отсечение — собственный объём камеры или света.
+Foliage uses alpha test: each card holds several twigs with small leaves
+or needles. Geometry and wind deformation match in the color and shadow passes.
+Near and far LODs are blended with dithering between 85 and 115 m, and trees fade
+out at 560–620 m. Both passes use the distance to the camera,
+and culling uses the camera's or the light's own volume.
 
-В контрольном городе seed 20261105 размещается 2090 деревьев. После замены
-индивидуальных мешей instancing память буферов всей статической сцены уменьшилась
-с 924 до 545 МиБ. Это сравнение двух реализаций этого этапа, не сравнение с C#.
-Счётчик включает вершины и индексы сцены, но не текстуры, акторов, shadow map
-и небольшие динамические instance-буферы; он не равен полной видеопамяти.
+The reference city with seed 20261105 has 2090 trees. After replacing
+individual meshes with instancing, the buffer memory of the whole static scene dropped
+from 924 to 545 MiB. This compares two implementations of this stage, not the C# version.
+The counter includes scene vertices and indices but not textures, actors, the shadow map
+or the small dynamic instance buffers; it is not the total video memory.
 
-## Тени
+## Shadows
 
-Одна локальная depth map 2048×2048 покрывает область 220 м в плоскости света
-вокруг цели камеры. Проекция привязана к шагу texel; это уменьшает дрожание
-при движении камеры. Вершины зданий, машин, людей и листвы проходят одинаковые
-преобразования в теневом и основном проходах. Вода и мелкие фасадные детали
-не отбрасывают тени на этом этапе.
+A single local 2048×2048 depth map covers a 220 m area in the light plane
+around the camera target. The projection is snapped to the texel grid; this reduces shimmering
+when the camera moves. Vertices of buildings, cars, people and foliage go through the same
+transforms in the shadow and main passes. Water and small facade details
+do not cast shadows at this stage.
 
-PCF 3×3 смягчает границы; bias и polygon offset уменьшают self-shadow acne.
-Тени затухают у края карты. Когда солнце за горизонтом, теневой проход
-пропускается; дождь уменьшает контраст прямого солнечного освещения.
-Затенение применяется к прямому свету, окружающий свет остаётся.
+3×3 PCF softens the edges; bias and polygon offset reduce self-shadow acne.
+Shadows fade out at the edge of the map. When the sun is below the horizon the shadow pass
+is skipped; rain reduces the contrast of direct sunlight.
+Shadowing applies to direct light; ambient light remains.
 
-Это не каскадные тени на весь город. Тени далёких объектов и тени от фонарей
-не реализованы. С 10.11.2026 ближние детали зданий подгружаются в фоне, с
-13.11.2026 так же подгружаются и секторы базового города.
-См. [стоимость рендера](ARCHITECTURE.md#стоимость-рендера).
+These are not cascaded shadows for the whole city. Shadows of distant objects and shadows from street lamps
+are not implemented. Since 10.11.2026 near building details are loaded in the background, and since
+13.11.2026 the sectors of the base city are loaded the same way.
+See [rendering cost](ARCHITECTURE.md#rendering-cost).
 
-## Небо, дымка и отражения
+## Sky, haze and reflections
 
-С 13.11.2026 небо, дымка и отражения перенесены из C# игры. Цвета горизонта и
-зенита, плотность и высота дымки, золотой и сумеречный оттенки считает
-`Atmosphere::create` (перенос `CityAtmosphere`) по дождю, дневному свету, высоте
-солнца и мокрой улице. Небо рисуется одним треугольником на дальней плоскости
-после неподвижной сцены (перенос `Sky/Weather.frag`): солнце, луна, четыре октавы
-облаков, звёзды. Дымка — экспоненциальный слой: поверхность уходит в цвет
-горизонта тем сильнее, чем дальше и ниже она находится. Это не объёмная погода.
+Since 13.11.2026 the sky, haze and reflections have been ported from the C# game. The horizon and
+zenith colors, haze density and height, and golden and twilight tints are computed by
+`Atmosphere::create` (a port of `CityAtmosphere`) from rain, daylight, sun
+height and street wetness. The sky is drawn as a single triangle on the far plane
+after the static scene (a port of `Sky/Weather.frag`): sun, moon, four octaves of
+clouds, stars. Haze is an exponential layer: a surface blends into the horizon color
+the more, the farther and lower it is. This is not volumetric weather.
 
-Отражения — локальная кубическая карта (перенос `CityReflections`): 128 пикселей
-на грань, RGBA16F с mip-уровнями, две карты — готовая и снимаемая. Пока карта
-снимается, за кадр рисуется одна грань: неподвижный город без фасадных деталей,
-деревья и небо, без машин и людей. Карту снимают заново, когда игрок ушёл на
-22 м, игровое время сдвинулось на четверть часа, дождь изменился на 0,12, рядом
-появился или исчез сектор города, и каждые 12 секунд. Поверхность читает карту
-с поправкой на параллакс (сфера радиусом 70 м) и между 28 и 100 м от её центра
-переходит на расчётное окружение: земля, зубчатый силуэт, небо и блик солнца.
-Отражают окна, вода, лужи, мокрые пятна асфальта, стёкла, хром и лак машин;
-шероховатость выбирает mip-уровень. Сгоревшая машина ничего не отражает.
+Reflections use a local cube map (a port of `CityReflections`): 128 pixels
+per face, RGBA16F with mip levels, two maps — the finished one and the one being captured. While a map
+is being captured, one face is drawn per frame: the static city without facade details,
+trees and sky, without cars and people. The map is recaptured when the player has moved
+22 m, game time has advanced by a quarter of an hour, rain has changed by 0.12, a city sector
+has appeared or disappeared nearby, and every 12 seconds. A surface reads the map
+with parallax correction (a sphere of 70 m radius) and between 28 and 100 m from its centre
+switches to a computed environment: ground, a jagged skyline, sky and the sun's highlight.
+Windows, water, puddles, wet patches of asphalt, glass, chrome and car paint reflect;
+roughness selects the mip level. A burnt-out car reflects nothing.
 
-SSAO (перенос `PostProcess/Occlusion.frag` и части `Compose.frag`) считается по
-глубине готового кадра в половинном разрешении и размывается 3×3 с учётом
-глубины; за 160 м затенения нет. Цель занимает один байт на пиксель.
+SSAO (a port of `PostProcess/Occlusion.frag` and part of `Compose.frag`) is computed from
+the depth of the finished frame at half resolution and blurred 3×3 with respect to
+depth; beyond 160 m there is no occlusion. The target takes one byte per pixel.
 
-Сцена считает свет в линейном пространстве и сжимает его в конце, а C# игра
-работала в цветах экрана. Цвета неба и дымки поэтому задаются как на экране, а
-для отражений переводятся обратным преобразованием: зеркало показывает небо той
-же яркости, что и само небо.
+The scene computes light in linear space and tone-maps it at the end, while the C# game
+worked in screen colors. Sky and haze colors are therefore given as on screen and
+converted back by the inverse transform for reflections: a mirror shows the sky at the
+same brightness as the sky itself.
 
-Шейдеры сцены, эффектов и неба подключают общий файл `environment.glsl` строкой
-`#include`; её раскрывает загрузчик шейдеров, в GLSL такой директивы нет.
+The scene, effects and sky shaders include the shared file `environment.glsl` with an
+`#include` line; it is expanded by the shader loader, as GLSL has no such directive.
 
-## Побережье, облака и мокрая дорога
+## Coast, clouds and wet road
 
-Прибрежная вода строится по дну с шагом 3 м. Соседние секторы используют одинаковые
-глубины на границе. Амплитуда прибоя затухает в каналах и на стыке с дальним морем.
-Волна поднимает поверхность и кольца от попаданий по одной фазе. У берега глубина
-задаёт цвет мелководья и прерывистую пену. При взгляде в море дальнее отражение
-переходит в небо; в сторону города сохраняется силуэт застройки.
+Coastal water is built over the seabed on a 3 m grid. Neighbouring sectors use the same
+depths at their boundary. Surf amplitude fades out in the canals and where it meets the open sea.
+A wave lifts the surface and the hit rings with the same phase. Near the shore the depth
+sets the color of the shallows and the broken foam. Looking out to sea, the distant reflection
+blends into the sky; towards the city the skyline silhouette is kept.
 
-Верхний облачный слой и низкие клочья движутся с разными скоростями. Освещённость
-края зависит от плотности со стороны солнца. На мокром асфальте распределение плёнки
-меняет шероховатость и отражение. След торможения учитывает воду под шиной в момент
-его появления. Вблизи автобус и фургон газовой службы показывают салон и колёсные
-арки; вдали используются прежние модели.
+The upper cloud layer and the low wisps move at different speeds. The lighting of an
+edge depends on the density on the sun's side. On wet asphalt the distribution of the water film
+changes roughness and reflection. A skid mark takes into account the water under the tyre when
+it appears. Up close, the bus and the gas service van show their interior and wheel
+arches; far away the previous models are used.
 
-Для проверки движения камеры соберите пакет и запустите из корня репозитория:
+To check camera motion, build a package and run from the repository root:
 
 ```powershell
 .\build.ps1 -Configuration Release -Package
@@ -104,92 +104,92 @@ SSAO (перенос `PostProcess/Occlusion.frag` и части `Compose.frag`) 
 .\tools\smoke.ps1 -VisualRoute rain -Scenarios seafront,portal
 ```
 
-Каждый маршрут проходит 60 кадров прогрева и 600 кадров движения с фиксированным
-шагом. В `build/smoke/Release/routes/<погода>/<сцена>` сохраняются соседние пары
-кадров каждые 15 кадров и последний кадр. Сравнивайте одинаковые номера. Для
-измерения времени кадра используйте отдельный прогон с `--gpu-profile`: чтение кадра
-с GPU и запись изображений меняют длительность кадра на маршруте.
+Each route runs 60 warm-up frames and 600 frames of motion with a fixed
+step. `build/smoke/Release/routes/<weather>/<scene>` receives pairs of adjacent
+frames every 15 frames and the last frame. Compare the same frame numbers. To
+measure frame time, use a separate run with `--gpu-profile`: reading the frame back
+from the GPU and writing images change the frame duration on a route.
 
-Для сравнения фар и дождя на одном перекрёстке и для проверки мелких деталей
-используйте те же кадры маршрутов на двух сборках.
+To compare headlights and rain at one crossing and to check small details,
+use the same route frames from two builds.
 
 ```powershell
 .\tools\smoke.ps1 -VisualRoute rain -Scenarios night-crossing
 .\tools\smoke.ps1 -VisualRoute clear -Scenarios wire-street,shadow-avenue,entrance,entrance-night
 ```
 
-На перекрёстке перед неподвижной камерой проезжают автобус и четыре машины.
-На маршруте `wire-street` камера медленно движется вдоль контактной сети.
-Время GPU для теней, отражений, основной сцены, частиц и постобработки
-записывается по отдельности при запуске с `--gpu-profile`.
+At the crossing a bus and four cars pass in front of a static camera.
+On the `wire-street` route the camera moves slowly along the overhead wires.
+GPU time for shadows, reflections, the main scene, particles and post-processing
+is recorded separately when running with `--gpu-profile`.
 
-### Свет фар, укрытия и облачные тени
+### Headlight beams, shelters and cloud shadows
 
 ```powershell
 .\tools\smoke.ps1 -VisualRoute rain -Scenarios beam-wall,dry-canopy
 .\tools\smoke.ps1 -VisualRoute clear -Scenarios bus-puddle,cloud-coast
 ```
 
-На маршруте `beam-wall` автобус пересекает луч между автомобилем и фасадом.
-Ближайшая к камере активная пара фар учитывает ориентированные объёмы машин и
-стены. На `dry-canopy` дождь прекращается в середине записи, пока открытое мощение
-остаётся мокрым. Крыши остановок и козырьки используют одни размеры для отсечения
-капель и маски влажности.
+On the `beam-wall` route a bus crosses the beam between a car and a facade.
+The pair of active headlights nearest to the camera takes into account the oriented volumes of cars and
+walls. On `dry-canopy` the rain stops in the middle of the recording while the open paving
+stays wet. Bus stop roofs and canopies use the same dimensions for blocking
+raindrops and for the wetness mask.
 
-На `bus-puddle` автобус проезжает за лужей. В высоком качестве с постобработкой
-луч отражения ищет пересечение с глубиной текущего кадра. У границы экрана и
-за пределами рабочего расстояния остаётся отражение окружения. Для сравнения
-облаков за 20 секунд запустите `cloud-coast` с `--frames 1261`. Камера неподвижна.
+On `bus-puddle` a bus passes behind a puddle. At high quality with post-processing
+the reflection ray searches for an intersection with the depth of the current frame. At the screen edge and
+beyond the working distance the environment reflection remains. To compare
+clouds over 20 seconds, run `cloud-coast` with `--frames 1261`. The camera is static.
 
-Для измерения теней запустите `--smoke --scenario shadow-avenue --gpu-profile
+To measure shadows, run `--smoke --scenario shadow-avenue --gpu-profile
 --quality 2 --scene-mode quality --smoke-size 1920 1080 --frames 421`.
-Камера проходит 96 метров с поворотом. В журнале у каждого измеренного кадра
-указаны номер, факт отрисовки дальнего каскада и время GPU в миллисекундах.
-При плавном движении две половины карты строятся в соседних кадрах. Готовая
-карта и её матрица переключаются вместе. При телепортации карта строится сразу.
+The camera travels 96 metres while turning. For each measured frame the log
+gives its number, whether the far cascade was drawn and the GPU time in milliseconds.
+With smooth motion the two halves of the map are built in adjacent frames. The finished
+map and its matrix are switched together. On a teleport the map is built at once.
 
-## Частицы и следы столкновений
+## Particles and collision marks
 
-Частицы — перенос `CityParticle` и `CityTraffic.Emit`: `World::emit(точка, пол,
-вид, число, скорость)` бросает сноп с разбросом вокруг вертикали. Видов семь:
-искра, дым, осколок, вода, огонь, песок и язык огнемёта. У каждого свои срок
-жизни, размер и цвет (`CityEffects.Draw`); дым поднимается, расширяется и
-сносится в сторону, остальные падают с ускорением 9,81 и отскакивают от пола,
-запомненного при броске (улица, настил эстакады или пол тоннеля). Восьмой вид,
-`plain`, — прежние частицы порта: цветная точка, которая только падает; так
-рисуются трассы пуль. Всего частиц не больше 5000.
+Particles are a port of `CityParticle` and `CityTraffic.Emit`: `World::emit(point, floor,
+kind, count, speed)` throws a spray scattered around the vertical. There are seven kinds:
+spark, smoke, debris, water, fire, sand and flamethrower tongue. Each has its own
+lifetime, size and color (`CityEffects.Draw`); smoke rises, expands and
+drifts sideways, the others fall with an acceleration of 9.81 and bounce off the floor
+remembered at the throw (street, overpass deck or tunnel floor). The eighth kind,
+`plain`, is the port's earlier particle: a colored point that only falls; bullet
+tracers are drawn this way. There are at most 5000 particles in total.
 
-Случайные числа эффектов идут из отдельной последовательности
-(`World::effectNoise`, xorshift с тем же начальным значением 4191, что `Noise` в
-C#): то, что видно, не меняет того, что происходит. Сохранение частиц и следов
-не хранит.
+Effects take random numbers from a separate sequence
+(`World::effectNoise`, xorshift with the same seed 4191 as `Noise` in
+C#): what is seen does not change what happens. Saves do not store particles or
+marks.
 
-След столкновения (`Scuff`) — тёмные полосы на обоих бортах машины на 100
-секунд или пятно на стене ближайшего дома на 90; `EffectBatch::scuffs` рисует
-их каждый кадр по текущему положению машины. Дым, осколки, песок, вода и следы
-темнеют ночью вместе со сценой; огонь, искры и пламя — нет. Эффекты смешиваются
-с предумножением: шейдер отдаёт цвет, уже умноженный на прозрачность и обрезанный
-по единице. Так цвета ярче белого (огонь — 3,0 по красному) не тускнеют, пока
-частица гаснет, хотя кадр 8-битный.
+A collision mark (`Scuff`) is dark streaks on both sides of a car for 100
+seconds, or a stain on the wall of the nearest building for 90; `EffectBatch::scuffs` draws
+them every frame at the car's current position. Smoke, debris, sand, water and marks
+darken at night together with the scene; fire, sparks and flames do not. Effects are blended
+premultiplied: the shader outputs a color already multiplied by opacity and clamped
+to one. This way colors brighter than white (fire is 3.0 in red) do not dim while the
+particle fades, even though the frame is 8-bit.
 
-## Проверки
+## Checks
 
-`native_environment` проверяет три seed: размещение и воспроизводимость,
-привязку к земле, уникальность ID коллайдеров, геометрию обоих LOD и бюджет
-треугольников. Проверки проекции света охватывают полдень, низкое солнце,
-ночь, положение солнца прямо над наблюдателем, отсечение и привязку к texel.
-Остальные группы проверяют маршруты AI, проезды дорожных уровней и сохранения.
+`native_environment` checks three seeds: placement and reproducibility,
+anchoring to the ground, uniqueness of collider IDs, the geometry of both LODs and the triangle
+budget. Light projection checks cover noon, a low sun,
+night, the sun directly overhead, culling and texel snapping.
+The remaining groups check AI routes, road level crossings and saves.
 
-Там же проверяются частицы: параметры каждого вида против C#, независимость от
-последовательности города, движение дыма и искр, события столкновения, горящей
-и повреждённой машины, обломка, попадания в игрока. GPU-сценарий `wreckage`
-взрывает одну машину рядом с горящей и дымящей и считает частицы и звуки.
+Particles are checked there too: the parameters of each kind against C#, independence from
+the city's sequence, the motion of smoke and sparks, the events of a collision, a burning
+and a damaged car, wreckage and a hit on the player. The GPU scenario `wreckage`
+blows up a car next to a burning and smoking one and counts particles and sounds.
 
-В GPU-набор добавлены `park`, `park-unshadowed` и `park-evening`.
-Первые два дают одинаковый ракурс и состояние с тенями и без них; третий —
-вечернее освещение. Сценарии используют настоящий OpenGL-рендер, а не внешний
-визуализатор. Эталонные кадры этого этапа лежат в `docs/screens`; каждый запуск
-GPU-проверки пишет свежие кадры в `build/smoke`.
+The GPU set includes `park`, `park-unshadowed` and `park-evening`.
+The first two give the same view and state with and without shadows; the third shows
+evening lighting. The scenarios use the real OpenGL renderer, not an external
+visualiser. Reference frames of this stage are in `docs/screens`; each run of the
+GPU check writes fresh frames to `build/smoke`.
 
-Формат `promzona-cpp-5` сохранён. При загрузке деревья и их коллайдеры
-восстанавливаются из seed; отдельной записи тысяч декоративных объектов нет.
+The `promzona-cpp-5` format is kept. On loading, trees and their colliders
+are restored from the seed; there is no separate record of thousands of decorative objects.

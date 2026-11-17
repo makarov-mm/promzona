@@ -128,7 +128,7 @@ Press **F2** in the main or pause menu to cycle through the display modes. The s
 | Balanced | Scene rendered at 75% of each screen dimension, with full-resolution UI and the same shadow-map resolution |
 | Native | Full-resolution scene with post-processing disabled |
 
-For technical details, see [city geometry and streaming](docs/ARCHITECTURE.md) and [lighting, weather, and vegetation](docs/ENVIRONMENT.md) (both in Russian).
+For technical details, see [city geometry and streaming](docs/ARCHITECTURE.md) and [lighting, weather, and vegetation](docs/ENVIRONMENT.md).
 
 ## Development
 

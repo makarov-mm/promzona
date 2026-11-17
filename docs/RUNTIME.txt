@@ -1,67 +1,67 @@
 PROMZONA — C++23 migration prototype
 
-Это проверочный нативный билд переноса, а не полная версия исходной PROMZONA.
-Город и игровые механики пока упрощены. Существующую игру он не заменяет.
-Все ресурсы сохранены для дальнейшего переноса; многие ещё не подключены.
+This is a test native build of the port, not the full version of the original PROMZONA.
+The city and the game mechanics are still simplified. It does not replace the existing game.
+All assets are kept for further porting; many of them are not used yet.
 
-Обновление 05.11.2026: город 49x49, каналы и мосты, две эстакады и два тоннеля.
-Трафик ездит по многоуровневым дорогам. Машины под мостом и над тоннелем
-сохраняют свой уровень; при падении с настила действует гравитация.
-Выход из машины внутри тоннеля сохраняет высоту игрока.
-Это ещё не текущая полная планировка C# игры с подробными районами и декорациями.
+Update 05.11.2026: a 49x49 city, canals and bridges, two overpasses and two tunnels.
+Traffic drives on multi-level roads. Cars under a bridge and above a tunnel
+keep their level; falling off a deck is subject to gravity.
+Leaving a car inside a tunnel keeps the player's height.
+This is not yet the current full layout of the C# game with its detailed districts and props.
 
-Добавлены фасадные материалы, окна со шторами и имитацией комнат,
-балконы, подъезды и кондиционеры. Свет в окнах меняется медленно.
-Ближние детали исчезают на 135–185 м, дальность города по умолчанию 1000 м.
-Фасадные детали ближайших кварталов подгружаются в фоне и освобождаются вдали.
-Дороги, рельеф и основные объёмы зданий держатся в памяти в пределах дальности прорисовки и достраиваются в фоне по мере движения.
-Обновление 13.11.2026: небо с облаками, солнцем, луной и звёздами; дымка к горизонту; отражения города в окнах, воде, лужах,
-мокром асфальте и на машинах; затенение углов (SSAO). После дождя улицы остаются мокрыми и скользкими несколько минут.
-На низком качестве отражения и SSAO отключены. Запуск с --quality 0|1|2 задаёт качество на один сеанс.
-В городе работают шесть уровней розыска, погоня с бронетехникой и вертолётом,
-трамваи и троллейбусы с пассажирами, киоски с едой и поликлиники.
-По улицам ходят автобусы и останавливаются у павильонов; встречаются машины газовой службы.
-Можно доставить посылку, перегнать автомобиль, устранить цель, раздать листовки,
-провезти громкоговоритель, выполнить рейс такси, доставить пациента или провести разведку трёх крыш с дрона.
+Added facade materials, windows with curtains and simulated rooms,
+balconies, entrances and air conditioners. Window lights change slowly.
+Near details fade out at 135–185 m; the default city draw distance is 1000 m.
+Facade details of the nearest blocks are loaded in the background and released far away.
+Roads, terrain and the main building volumes are kept in memory within the draw distance and built in the background as you move.
+Update 13.11.2026: a sky with clouds, sun, moon and stars; haze towards the horizon; reflections of the city in windows, water, puddles,
+wet asphalt and on cars; ambient occlusion (SSAO). After rain the streets stay wet and slippery for several minutes.
+On low quality reflections and SSAO are disabled. Launching with --quality 0|1|2 sets the quality for one session.
+The city has six wanted levels, pursuit with armoured vehicles and a helicopter,
+trams and trolleybuses with passengers, food kiosks and clinics.
+Buses drive the streets and stop at shelters; gas service vans can be seen as well.
+You can deliver a parcel, move a car, eliminate a target, hand out leaflets,
+drive a loudspeaker around, do a taxi ride, deliver a patient or scout three rooftops with a drone.
 
-Запуск: Promzona.exe (Windows) или Promzona (Linux, macOS). Папка Content должна оставаться рядом.
-Требуются Windows x64, Linux или macOS и видеодрайвер с OpenGL 3.3. .NET не требуется.
+Launch: Promzona.exe (Windows) or Promzona (Linux, macOS). The Content folder must stay next to it.
+Requires Windows x64, Linux or macOS and a graphics driver with OpenGL 3.3. .NET is not required.
 
-В меню выбирайте пункт мышью или стрелками ↑/↓ и Enter. Esc открывает паузу, возвращает назад или продолжает игру. Q в главном меню завершает игру.
-M переключает трек «Радио Пустырь». В настройках ←/→ меняют выбранное значение. Мышью нажмите на левую или правую половину строки.
-WASD: движение. Shift: бег. Space: ручной тормоз.
-F: сесть/выйти. Пешком повернитесь к прохожему и нажмите F для разговора. Нажмите ещё раз, чтобы принять предложение. R: эвакуация остановившейся машины на свободную дорогу рядом. Повторно — через 8 секунд. Урон и пожар сохраняются. V: камера (погоня, дальний вид сверху, вид строго сверху).
-F у свободного самоката: встать на него / сойти. WASD: ехать на самокате. Space: тормоз.
-Мышь: взгляд пешком. ЛКМ: стрельба. Колесо или [ и ]: оружие.
-J: журнал заказов. 6: такси, 7: пациент. Остановитесь возле пассажира и нажмите E. E: действие по заданию. F пешком у киоска: купить еду.
-K пешком: запустить / отключить дрон. ЛКМ с дрона: осмотреть отмеченную крышу.
-Space или Q / Ctrl или Z в полёте: набор высоты / снижение. L: автоматическая посадка вертолёта, повторно — отмена. W / S на трамвае: вперёд / назад.
-У остановки B позволяет сесть пассажиром в трамвай или троллейбус. В салоне B или F заказывает выход на следующей остановке. Если транспорт уже стоит у платформы, вы сразу выйдете.
-За рулём троллейбуса держитесь его маршрута: дальше трёх метров от проводов тяги нет.
-Мышь в танке или БТР: навести орудие. ЛКМ: огонь.
-J, затем 8: начать следующий этап серии контрактов.
-E у ожидающего пассажира: принять поездку. Повторное E после остановки: высадить.
-F1: консоль. help: список команд. Стрелки вверх/вниз: история. Tab: дополнение команды.
-В меню 1–3 выбирают слот, L загружает выбранный. F5 сохраняет в активный слот, F9 загружает выбранный. Запись в другой слот через паузу создаёт копию. Новая игра и загрузка назначают активный слот. Игра сохраняется каждые две минуты игры, при переходе на паузу и при штатном выходе.
+In menus, choose an item with the mouse or with the ↑/↓ arrows and Enter. Esc opens the pause menu, goes back or resumes the game. Q in the main menu quits the game.
+M switches the "Radio Pustyr" track. In settings, ←/→ change the selected value. With the mouse, click the left or right half of the row.
+WASD: movement. Shift: run. Space: handbrake.
+F: get in/out. On foot, turn to a passer-by and press F to talk. Press again to accept an offer. R: tow a stopped car to a free road nearby. Again after 8 seconds. Damage and fire are kept. V: camera (chase, distant overhead view, top-down view).
+F next to a free scooter: get on / off. WASD: ride the scooter. Space: brake.
+Mouse: look around on foot. LMB: shoot. Wheel or [ and ]: weapon.
+J: job log. 6: taxi, 7: patient. Stop next to the passenger and press E. E: job action. F on foot at a kiosk: buy food.
+K on foot: launch / disable the drone. LMB from the drone: inspect the marked rooftop.
+Space or Q / Ctrl or Z in flight: climb / descend. L: automatic helicopter landing, again to cancel. W / S on a tram: forward / backward.
+At a stop, B lets you board a tram or trolleybus as a passenger. Inside, B or F requests a stop at the next station. If the vehicle is already at the platform, you get off at once.
+Driving a trolleybus, stay on its route: more than three metres from the wires there is no traction.
+Mouse in a tank or APC: aim the gun. LMB: fire.
+J, then 8: start the next stage of a contract series.
+E at a waiting passenger: accept the ride. E again after stopping: drop them off.
+F1: console. help: list of commands. Up/down arrows: history. Tab: command completion.
+In the menu, 1–3 choose a slot, L loads the selected one. F5 saves to the active slot, F9 loads the selected one. Saving to another slot from the pause menu creates a copy. A new game and loading set the active slot. The game is saved every two minutes of play, on pause and on a normal exit.
 
-Примеры команд: weapons, health, god on, spawn pills, money 1000, hour 7, rain on, wanted 3, recover.
-N прибавляет шесть часов, P включает и выключает дождь.
-Наезд на прохожего сбивает его с ног, быстрый наезд смертелен; за это начисляется розыск.
-Тела, разбитые и брошенные машины исчезают, когда вы отошли дальше 245 м; город пополняется в другом месте.
-Машина в глубокой воде тонет. Вода гасит огонь. Ямы на дороге подбрасывают машину.
+Command examples: weapons, health, god on, spawn pills, money 1000, hour 7, rain on, wanted 3, recover.
+N adds six hours, P toggles rain.
+Hitting a pedestrian knocks them down, a fast hit is fatal; this raises the wanted level.
+Bodies, wrecked and abandoned cars disappear once you are more than 245 m away; the city is replenished elsewhere.
+A car sinks in deep water. Water puts out fire. Potholes toss the car up.
 
-Население новой игры (низкое, среднее, высокое, полное) выбирается в настройках и действует на следующую новую игру.
-Полное — население C# версии: 1485 машин и 5265 жителей; оно выбрано по умолчанию. Высокое — 1080 и 3240.
-Запуск с --density low|medium|high|full меняет его на один сеанс. Уже начатая игра свою плотность сохраняет.
-Пешеходы ждут у светофора и обходят друг друга. Стоящую без газа машину удерживает тормоз.
+The population of a new game (low, medium, high, full) is chosen in settings and applies to the next new game.
+Full is the population of the C# version: 1485 cars and 5265 residents; it is the default. High is 1080 and 3240.
+Launching with --density low|medium|high|full changes it for one session. A game already started keeps its density.
+Pedestrians wait at traffic lights and walk around each other. A car standing without throttle is held by the brake.
 
-Язык интерфейса (русский, English, українська) выбирается в настройках.
-Запуск с --language ru|en|uk меняет язык на один сеанс.
+The interface language (русский, English, українська) is chosen in settings.
+Launching with --language ru|en|uk changes the language for one session.
 
-Сохранения и журнал: %LOCALAPPDATA%/PromzonaCpp (Windows), ~/Library/Application Support/PromzonaCpp (macOS), ~/.local/share/PromzonaCpp (Linux).
-Сохранение C# версии переносится так: Promzona.exe --import-save "путь\save.json".
-Исходный файл не изменяется, результат попадает в первый свободный слот.
-Переносятся город (seed), время, погода, деньги, здоровье, оружие, розыск и счётчики заказов; кто был за рулём, получает машину того же вида. В городе старой планировки (ревизия 0, сетка 49×49) игрок, машины потока и прохожие встают на прежние места; в остальных игрок начинает на обычном месте, а город заселяется заново, с населением, выбранным для новой игры.
-Новые сохранения используют формат promzona-cpp-7. Игра также открывает нативные сохранения версий 5 и 6. Для более ранних версий потребуется новая игра.
+Saves and the log: %LOCALAPPDATA%/PromzonaCpp (Windows), ~/Library/Application Support/PromzonaCpp (macOS), ~/.local/share/PromzonaCpp (Linux).
+A save of the C# version is imported like this: Promzona.exe --import-save "path\save.json".
+The source file is not changed; the result goes to the first free slot.
+Imported are the city (seed), time, weather, money, health, weapons, wanted level and job counters; whoever was driving gets a car of the same kind. In a city of the old layout (revision 0, 49×49 grid) the player, traffic cars and pedestrians are put back in their places; in other cities the player starts at the usual spot and the city is populated anew, with the population chosen for a new game.
+New saves use the promzona-cpp-7 format. The game also opens native saves of versions 5 and 6. Earlier versions require a new game.
 
-В главном меню и в меню паузы F2 меняет графику: сглаживание при 100% (по умолчанию), 75% или без обработки при 100%. Интерфейс всегда в разрешении окна. Выбор сохраняется. В настройках доступны дальность 130–3000 м (по умолчанию 1000 м), три уровня детализации, свечение, эффекты погоды и частиц, общая громкость и радио.
+In the main menu and the pause menu, F2 changes the graphics: anti-aliasing at 100% (default), 75%, or no processing at 100%. The interface is always at window resolution. The choice is saved. Settings offer a draw distance of 130–3000 m (1000 m by default), three detail levels, glow, weather and particle effects, master volume and radio.

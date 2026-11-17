@@ -1,90 +1,91 @@
-# Здания в нативном рендере
+# Buildings in the native renderer
 
-Этот этап адаптирует часть CityArchitecture исходной PROMZONA. Планировка города
-и физические размеры зданий не изменяются. Это не полный перенос старого рендера.
+This stage adapts part of CityArchitecture from the original PROMZONA. The city
+layout and the physical dimensions of buildings do not change. This is not a full
+port of the old renderer.
 
-## Общий план
+## Overall plan
 
-`planBuilding()` создаёт воспроизводимый план из положения, размеров и стиля здания.
-Окна находятся на длинных стенах, а торцы остаются глухими. Балконы расположены
-вертикальными рядами. Базовый и ближний меши используют один план, поэтому окна
-не меняют положение при приближении камеры. Текстуры фасада повторяются с шагом
-3,2 м, не растягиваясь на высоту всего дома.
+`planBuilding()` creates a reproducible plan from a building's position, size and style.
+Windows sit on the long walls, while the end walls stay blank. Balconies are arranged
+in vertical rows. The base mesh and the near mesh share one plan, so windows
+do not move as the camera approaches. Facade textures repeat every
+3.2 m instead of stretching over the full height of the building.
 
-Основной меш содержит стены, крышу, цоколь и непрозрачные оконные прямоугольники.
-Ближний содержит подъезд, навес, парапет, водосток, подоконники, кондиционеры,
-три варианта балконов и часть существующих вывесок. Вывески сохраняют пропорцию
-2:1; их положение не пересекает дверь или окна. Внешние детали декоративны:
-физический объём здания остаётся прежним.
+The main mesh contains the walls, roof, plinth and opaque window rectangles.
+The near mesh contains the entrance, canopy, parapet, drainpipe, window sills, air conditioners,
+three balcony variants and some of the existing signs. Signs keep a 2:1
+aspect ratio and are placed so they never overlap a door or windows. Exterior details are decorative:
+the physical volume of the building stays the same.
 
-## Материалы и окна
+## Materials and windows
 
-Восемь существующих фасадов используют color, normal и ORM (AO, roughness,
-metallic). Освещение использует GGX, приближённую засветку от неба и атмосферную
-дымку. Добавлены локальные солнечные тени — см. [ENVIRONMENT.md](ENVIRONMENT.md).
-С 13.11.2026 окна отражают небо и соседние здания через локальную карту
-окружения — см. [ENVIRONMENT.md](ENVIRONMENT.md#небо-дымка-и-отражения).
+The eight existing facades use color, normal and ORM (AO, roughness,
+metallic) maps. Lighting uses GGX, approximate sky illumination and atmospheric
+haze. Local sun shadows have been added — see [ENVIRONMENT.md](ENVIRONMENT.md).
+Since 13.11.2026 windows reflect the sky and neighbouring buildings through a local
+environment map — see [ENVIRONMENT.md](ENVIRONMENT.md#sky-haze-and-reflections).
 
-В оконном шейдере луч пересекает виртуальную коробку комнаты. Четыре варианта
-задней стены показывают ковёр с телевизором на тумбе, шкаф, холодильник или
-пустое помещение. Это иллюзия глубины, а не доступный игроку интерьер.
-Десять вариантов оформления включают окна без штор, раздвинутые, полузакрытые
-и закрытые шторы, тюль и жалюзи. Используется уже имеющаяся текстура ковра.
+In the window shader a ray intersects a virtual room box. Four variants of the
+back wall show a rug with a TV on a cabinet, a wardrobe, a fridge or an
+empty room. This is an illusion of depth, not an interior the player can enter.
+Ten dressing variants include windows without curtains, with open, half-drawn
+and drawn curtains, net curtains and blinds. The existing rug texture is reused.
 
-У окна постоянный идентификатор: он передаётся через неиспользуемый канал
-суставов статического меша и **flat**-выход вершинного шейдера. Интерполировать
-его нельзя: дробный seed создаёт случайный узор между пикселями.
-Состояние света зависит от времени суток и индивидуального периода 200–850 с
-модельного времени; переход плавный. Это не симуляция жителей квартиры.
+Each window has a persistent identifier: it is passed through an unused joint
+channel of the static mesh and a **flat** output of the vertex shader. It must not
+be interpolated: a fractional seed produces a random pattern between pixels.
+Whether a window is lit depends on the time of day and an individual period of 200–850 s
+of simulated time; the transition is smooth. This is not a simulation of the residents.
 
-## Стоимость рендера
+## Rendering cost
 
-Базовая сцена разбита на секторы 144 м, ближние детали — на ячейки 72 м.
-Рабочий поток строит детали по неизменяемым планам зданий без доступа к OpenGL
-и акторам. В очереди до 8 заданий; она перестраивается по расстоянию до камеры.
-Готовыми могут ожидать до двух ячеек. Перила используют перекрёстные плоскости вместо коробок.
-Фактические границы мешей определяют сферы отсечения; учитываются все шесть
-плоскостей камеры, в том числе объекты позади неё.
+The base scene is split into 144 m sectors, near details into 72 m cells.
+A worker thread builds details from immutable building plans without access to OpenGL
+or actors. The queue holds up to 8 jobs and is reordered by distance to the camera.
+Up to two finished cells can wait. Railings use crossed planes instead of boxes.
+The actual mesh bounds define the culling spheres; all six camera planes
+are taken into account, including objects behind the camera.
 
-Детали плавно исчезают через экранный дизеринг на расстоянии 135–185 м.
-Окна остаются в базовом меше до прежней дальности 1000 м. Ближние ячейки
-запрашиваются в пределах 260 м от их границы и освобождаются за 370 м.
-Разница порогов позволяет развернуться без немедленной пересборки.
-На GPU детали занимают до 64 МиБ: перед новой загрузкой учитывается весь объём ячейки.
-Поток рендера передаёт материалы порциями с ориентирами 2 МиБ и 1,5 мс за кадр;
-одно обращение к драйверу может занять дольше. Ячейка рисуется после завершения
-загрузки. При резкой смене района сразу видны базовые дома с окнами; украшения
-появляются по готовности.
+Details fade out with screen-space dithering at 135–185 m.
+Windows stay in the base mesh up to the original range of 1000 m. Near cells
+are requested within 260 m of their boundary and released beyond 370 m.
+The gap between the thresholds lets the player turn around without an immediate rebuild.
+Details take up to 64 MiB on the GPU: the full size of a cell is accounted for before a new upload.
+The render thread uploads materials in portions, aiming at 2 MiB and 1.5 ms per frame;
+a single driver call can take longer. A cell is drawn once its upload has
+finished. After an abrupt change of district the base buildings with windows are visible at once; decorations
+appear as they become ready.
 
-С 13.11.2026 так же подгружается базовая геометрия (перенос поведения
-`CityDistricts`). Сектор нужен, пока его квадрат ближе дальности прорисовки плюс
-30 м, и освобождается ещё через 40 м. При загрузке игры секторы вокруг игрока
-строятся сразу, поэтому первый кадр полон. Дальше второй рабочий поток строит
-секторы, попавшие в дальность, ближние первыми; у него своя копия мира, и смена
-города ему не мешает. В очереди до 16 заданий, готовыми ждут до двух секторов;
-на GPU сектор передаётся теми же порциями (2 МиБ или 1,5 мс за кадр) и рисуется
-целиком после загрузки. Сектор ближе 60 м от камеры строится немедленно: после
-скачка камеры земля под ней есть в том же кадре. Открытое море за краем острова
-рисуется всегда и не зависит от загруженных секторов. Упрощённые дальние уровни
-районов C# игры (LOD 2 и 3) не перенесены: загруженный сектор полон.
+Since 13.11.2026 the base geometry is streamed the same way (a port of the
+`CityDistricts` behaviour). A sector is needed while its square is closer than the draw distance plus
+30 m, and is released 40 m further out. When a game is loaded, the sectors around the player
+are built at once, so the first frame is complete. After that a second worker thread builds
+sectors that come into range, nearest first; it has its own copy of the world, so a change of
+city does not disturb it. The queue holds up to 16 jobs, and up to two finished sectors can wait;
+a sector is uploaded to the GPU in the same portions (2 MiB or 1.5 ms per frame) and drawn
+as a whole once uploaded. A sector closer than 60 m to the camera is built immediately: after
+a camera jump the ground beneath it exists in the same frame. The open sea beyond the edge of the island
+is always drawn and does not depend on loaded sectors. The simplified distant levels
+of the C# game's districts (LOD 2 and 3) have not been ported: a loaded sector is complete.
 
-Вершина неподвижной геометрии занимает 48 байт вместо 64: веса костей ей не
-нужны, а индексы 16-битные, где их хватает. Весь базовый город занимает 254 МиБ
-вместо 348. Неподвижный город рисуется по материалам, а не по секторам: подряд
-идут меши с одинаковыми текстурами и константами, и повторные значения драйверу
-не передаются.
-В журнал GPU-проверки записываются число поданных мешей, треугольников, размер
-буферов сцены, число загруженных секторов и граней карты отражений. Размер не включает текстуры и акторов и не равен полной видеопамяти.
+A vertex of static geometry takes 48 bytes instead of 64: it needs no bone
+weights, and indices are 16-bit where that is enough. The whole base city takes 254 MiB
+instead of 348. The static city is drawn by material rather than by sector: meshes with
+the same textures and constants are drawn one after another, and repeated values are not
+sent to the driver again.
+The GPU check log records the number of submitted meshes and triangles, the size of the
+scene buffers, the number of loaded sectors and of reflection map faces. The size excludes textures and actors and is not the total video memory.
 
-## Проверки
+## Checks
 
-`native_architecture` проверяет ориентацию и размеры окон, воспроизводимость,
-масштаб UV, геометрию каждого здания контрольного города, допустимые выступы,
-размещение вывесок, бюджет треугольников и границы объёма камеры.
-GPU-сценарии `facade` и `facade-night` показывают одинаковое здание при дневном
-и ночном свете. Они проверяют компиляцию GLSL на драйвере, но оценка внешнего
-вида требует просмотра полученных изображений. Сценарий `streaming` перемещает
-камеру в четыре отдалённых района и возвращает в первый. Он проверяет ограничения
-очередей и памяти, освобождение и повторную загрузку ячеек и секторов на
-настоящем драйвере, а также то, что под камерой всегда есть земля и к концу
-каждой остановки город в пределах дальности загружен.
+`native_architecture` checks window orientation and size, reproducibility,
+UV scale, the geometry of every building of the reference city, allowed protrusions,
+sign placement, the triangle budget and the camera frustum bounds.
+The GPU scenarios `facade` and `facade-night` show the same building in daylight
+and at night. They verify that GLSL compiles on the driver, but judging the
+look requires viewing the resulting images. The `streaming` scenario moves the
+camera to four remote districts and back to the first one. It checks the queue and memory
+limits, the release and reloading of cells and sectors on a
+real driver, that there is always ground under the camera, and that by the end of
+each stop the city within range is loaded.
