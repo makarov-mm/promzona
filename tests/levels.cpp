@@ -2,6 +2,7 @@
 #include <print>
 #include <fstream>
 #include <queue>
+#include <set>
 #include <stdexcept>
 #include <source_location>
 #include <format>
@@ -133,7 +134,8 @@ void checkRecovery(World &w)
 }
 void generated(World &w)
 {
-    check(w.roadLevels.size() == 9, "five overpasses and four tunnels generated");
+    check(w.roadLevels.size() == (w.layout.variety() ? 14u : 9u),
+          "nine road levels (fourteen in the varied city) generated");
     for (const auto &p : w.people)
     {
         // Beach visitors stand off the street grid and only remember the nearest corner.
@@ -256,6 +258,49 @@ int main()
         {
             w.generate(seed);
             generated(w);
+        }
+        // The varied city of new games: every level sound, the station and the clinics standing,
+        // every street reachable, no two buildings in one another and a skyline of many heights.
+        for (auto seed : {20261105u, 42u, 987654u})
+        {
+            w.generate(seed, {}, CityLayout::varietyRevision);
+            generated(w);
+            check(std::ranges::count_if(w.buildings, [](const Building &b) { return b.half.x == 9 && b.half.z == 8; }) >= 4,
+                  "a clinic or the station was lost to a road level");
+            const int n = w.layout.nodes();
+            std::vector<bool> seen(size_t(n * n));
+            std::queue<int> open;
+            open.push(n / 2 + n / 2 * n);
+            seen[size_t(open.front())] = true;
+            int reached = 1, streets = 0;
+            while (!open.empty())
+            {
+                const int k = open.front();
+                open.pop();
+                for (int m : w.layout.neighbours(k))
+                    if (!seen[size_t(m)])
+                    {
+                        seen[size_t(m)] = true;
+                        ++reached;
+                        open.push(m);
+                    }
+            }
+            for (int k = 0; k < n * n; ++k)
+                streets += w.layout.degree(k) > 0;
+            check(reached == streets, "a street of the varied city cannot be reached");
+            for (size_t a = 0; a < w.buildings.size(); ++a)
+                for (size_t b = a + 1; b < w.buildings.size(); ++b)
+                {
+                    const auto &x = w.buildings[a], &y = w.buildings[b];
+                    check(std::abs(x.p.x - y.p.x) >= x.half.x + y.half.x - .01 ||
+                              std::abs(x.p.z - y.p.z) >= x.half.z + y.half.z - .01,
+                          "two buildings of the varied city overlap");
+                }
+            std::set<int> storeys;
+            for (const auto &b : w.buildings)
+                if (b.kind == BuildingKind::apartment)
+                    storeys.insert(int(b.height / 3));
+            check(storeys.size() >= 12 && *storeys.rbegin() >= 16, "the varied skyline is flat");
         }
         w.generate(20261105);
         checkRecovery(w);

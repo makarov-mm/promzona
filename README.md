@@ -45,6 +45,8 @@ The `release` and `debug` CMake presets do the same without the script (`cmake -
 
 ## Around the city
 
+- **The city.** New games get the varied city (layout revision 5): a patchwork of districts with a dense centre of towers, old brick courtyards, estates of nine- to sixteen-storey slabs and point towers, garden suburbs and garage belts. Streets thin out away from the centre, fourteen overpasses and tunnels carry traffic between levels, and roofs carry lift rooms, vents and aerials. Saves keep the city they were made in.
+
 - **Districts.** A city seed determines the street grid, housing estates, courtyards, parks, garages, and factories. A freight line runs through the northern industrial district. On the coast, canals open into the sea. Five overpasses and four tunnels carry traffic between levels.
 - **Traffic and public transport.** Drivers leave space beyond junctions and yield at pedestrian crossings. Buses pull in at stops. Trams and trolleybuses carry passengers on four routes. You can ride as a passenger or take the controls. A trolleybus loses power if you drive more than three metres from its route's overhead wires.
 - **Work.** Pick up a parcel at a kiosk or open the job journal for vehicle deliveries, taxi fares, patient transport, and other assignments. On a passenger job, stop beside the person, press **E** to pick them up, and drive to the marked destination. A reconnaissance job takes you above the streets to inspect three rooftops by drone.
@@ -106,7 +108,9 @@ Choose a population level in **Settings** when starting a city. A saved city kee
 | High | 1,080 | 3,240 |
 | Full (default) | 1,485 | 5,265 |
 
-The interface supports English, Russian, and Ukrainian. On first launch, the game uses the system language when available. Change it in **Settings**. Language and population preferences are stored in `language.txt` and `density.txt` alongside the saves. For a single launch, pass `--language en`, `ru`, or `uk`, and `--density low`, `medium`, `high`, or `full`.
+The **Maximum** population (the default for new games) has 4,000 vehicles and 14,000 people; seen from a helicopter, passers-by and traffic stay visible across the city. Lower settings reduce the load on slower machines.
+
+The interface supports English, Russian, and Ukrainian. On first launch, the game uses the system language when available. Change it in **Settings**. Language and population preferences are stored in `language.txt` and `density.txt` alongside the saves. For a single launch, pass `--language en`, `ru`, or `uk`, and `--density low`, `medium`, `high`, `full`, or `max`.
 
 ```powershell
 .\artifacts\Release\Promzona.exe --language en --density medium

@@ -87,7 +87,7 @@ namespace Promzona
         // The full population has the managed game's animals as well: about 960 pigeons and
         // 160 cats, dogs and lone birds (ResetLife, AnimalPopulationRevision 2). The lower
         // densities keep the animals their saves were made with.
-        const bool full = density == Density::full;
+        const bool full = density >= Density::full;
         const int strays = full ? 106 : 72, pigeonFlocks = full ? 120 : 32, loneBirds = full ? 54 : 10;
         // As in the managed game the animals live on the pavements as well as in the parks:
         // cats, dogs and lone birds wherever their block falls, a flock of pigeons in a park

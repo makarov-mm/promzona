@@ -370,6 +370,13 @@ struct Renderer::Impl
     GLuint staticDepth{}, scene{}, ui{}, white{}, bones[2]{}, rug{};
     std::array<GLuint, 3> shadowTexture{}, shadowFbo{};
     Mesh uiQuad, cube, marker, skin[2], patrolCap[2];
+    // Beyond the skinned people and the full vehicle models, the city keeps its crowd and
+    // traffic as instanced stand-ins: a blocky figure per passer-by and the coarsest model
+    // of each vehicle, grouped by clothing colour and by model and paint.
+    Mesh farPerson;
+    static constexpr int crowdColours = 8;
+    std::array<std::vector<std::array<float, 8>>, crowdColours> crowdInstances;
+    std::vector<std::vector<std::array<float, 8>>> trafficInstances;
     struct
     {
         GLint right{}, up{}, forward{}, sun{}, fog{}, zenith{}, air{}, day{}, rain{}, time{}, probePass{};
@@ -873,6 +880,11 @@ struct Renderer::Impl
         MeshData c;
         box(c, {}, {.5f, .5f, .5f});
         cube.upload(c);
+        MeshData figure;
+        box(figure, {0, .44f, 0}, {.15f, .44f, .1f});
+        box(figure, {0, 1.17f, 0}, {.21f, .31f, .13f});
+        box(figure, {0, 1.6f, 0}, {.11f, .12f, .11f});
+        farPerson.upload(figure);
         MeshData arrow;
         const Vec3 rim[] = {{-.43f, .9f, -.43f}, {.43f, .9f, -.43f}, {.43f, .9f, .43f}, {-.43f, .9f, .43f}};
         for (int i = 0; i < 4; ++i)
@@ -1694,7 +1706,7 @@ struct Renderer::Impl
                             const auto y = tile.height(x, z);
                             const Vec2 at{x, z};
                             if (y < CityLayout::waterLevel + .12f || world.insideBuilding(at, y + .1, .25) ||
-                                (world.layout.revision() == CityLayout::districtRevision &&
+                                (world.layout.districts() &&
                                  x >= world.layout.railStart() && x <= world.layout.railEnd() &&
                                  std::abs(z - world.layout.railZ()) < 1.95))
                                 continue;
@@ -3103,6 +3115,90 @@ void Renderer::render(const World &world, const View &view, int w, int h)
             return Mat4::translate(base) * Mat4::yaw(float(c.heading())) *
                    Mat4::pitch(float(-c.terrainPitch + c.pitch)) * Mat4::roll(float(-c.terrainRoll + c.roll));
         };
+        // The crowd and the traffic past the reach of their full models: one instanced draw per
+        // clothing colour and per vehicle model and paint. Only the camera view needs them.
+        auto drawDistantLife = [&]
+        {
+            constexpr float personNear = 130, vehicleNear = 400;
+            const float crowdFar = std::min(passRange, 900.f), trafficFar = std::min(passRange, 1600.f);
+            for (auto &group : r.crowdInstances)
+                group.clear();
+            for (const auto &p : world.people)
+            {
+                if (p.riding >= 0 || p.dead)
+                    continue;
+                const Vec3 feet{float(p.body.p.x), float(p.body.height - .85), float(p.body.p.z)};
+                const float distance = (feet - eye).length();
+                if (distance <= personNear || !visible(feet + Vec3{0, .9f, 0}, 1.5f, crowdFar))
+                    continue;
+                // Grown a little with distance so that a passer-by stays a few pixels tall.
+                const float scale = 1.f + std::clamp((distance - 250.f) / 650.f, 0.f, 1.f) * .6f;
+                const float angle = float(p.heading);
+                const int colour = p.officer() ? 6
+                                   : p.uniform == Person::Uniform::medical
+                                       ? 7
+                                       : int(p.body.id * 2654435761u % 6);
+                r.crowdInstances[size_t(colour)].push_back(
+                    {feet.x, feet.y, feet.z, scale, std::sin(angle), std::cos(angle), 0, 0});
+            }
+            static constexpr Vec3 clothes[Impl::crowdColours] = {
+                {.18f, .20f, .26f}, {.42f, .17f, .13f}, {.24f, .30f, .20f}, {.55f, .50f, .40f},
+                {.12f, .12f, .13f}, {.33f, .36f, .48f}, {.20f, .26f, .38f}, {.86f, .86f, .82f}};
+            r.setModel(Mat4::identity());
+            for (int colour = 0; colour < Impl::crowdColours; ++colour)
+            {
+                const auto &group = r.crowdInstances[size_t(colour)];
+                if (group.empty())
+                    continue;
+                // A material resets the instancing flag, so it is set after it.
+                r.material(r.white, 0, clothes[colour]);
+                r.setFlag(Impl::Constant::instanced, 1);
+                r.farPerson.drawInstances(group);
+                ++r.submittedBatches;
+                r.submittedTriangles += size_t(r.farPerson.count) / 3 * group.size();
+            }
+            constexpr int paints = 16;
+            r.trafficInstances.resize(r.cars.size() * paints);
+            for (auto &group : r.trafficInstances)
+                group.clear();
+            for (const auto &c : world.cars)
+            {
+                if (c.falling || int(c.id) == world.controlledCar)
+                    continue;
+                const Vec3 base{float(c.body.p.x), float(c.body.height - .8), float(c.body.p.z)};
+                const float distance = (base - eye).length();
+                if (distance <= vehicleNear || !visible(base, float(c.body.halfH + 2), trafficFar))
+                    continue;
+                const float angle = float(c.heading() + (fleet[c.model].reversed ? pi : 0.));
+                r.trafficInstances[size_t(c.model) * paints + size_t(std::clamp(c.paint, 0, paints - 1))].push_back(
+                    {base.x, base.y, base.z, 1, std::sin(angle), std::cos(angle), 0, 0});
+            }
+            for (size_t k = 0; k < r.trafficInstances.size(); ++k)
+            {
+                const auto &group = r.trafficInstances[k];
+                if (group.empty())
+                    continue;
+                auto &model = r.cars[k / paints];
+                Uniform1i(r.uniform("uPaintIndex"), int(k % paints));
+                Uniform1i(r.uniform("uCoat"), 1);
+                for (auto &b : model.lods.back())
+                {
+                    if (b.alpha < .99f)
+                        continue;
+                    r.apply(b.color, b.normal, b.orm, b.tint, b.emissive, b.surface, b.alpha, b.roughness,
+                            b.metallic, b.detail);
+                    Uniform1i(r.uniform("uPaintMask"), b.paintMask);
+                    r.setFlag(Impl::Constant::instanced, 1);
+                    b.mesh.drawInstances(group);
+                    ++r.submittedBatches;
+                    r.submittedTriangles += size_t(b.mesh.count) / 3 * group.size();
+                }
+            }
+            Uniform1i(r.uniform("uPaintIndex"), 0);
+            Uniform1i(r.uniform("uPaintMask"), 0);
+            Uniform1i(r.uniform("uCoat"), 0);
+            r.setFlag(Impl::Constant::instanced, 0);
+        };
         auto person = [&](const Body &b, const Appearance &look, double heading, double distance, bool dead,
                           bool player, const Car *cabin = nullptr, WeaponId drawn = WeaponId::none,
                           bool ridingScooter = false, bool courier = false)
@@ -3384,6 +3480,8 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                 Uniform1i(r.uniform("uCoat"), 0);
             }
         }
+        if (viewPass)
+            drawDistantLife();
         if (viewPass) frame_trace.enter(FrameTrace::animals);
         for (const auto &s : world.scooters)
         {
@@ -3746,7 +3844,7 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         constexpr int ms = Minimap::size;
         r.rect(mx - 5, my - 5, ms + 10, ms + 10, rgb(17, 28, 26));
         auto focus = world->drone.active ? world->drone.position : world->position();
-        if (world->layout.revision() == CityLayout::districtRevision)
+        if (world->layout.districts())
         {
             const auto &layout = world->layout;
             int i = int(std::floor((focus.x - layout.coordinate(0)) / layout.spacing));

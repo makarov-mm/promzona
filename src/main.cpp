@@ -500,7 +500,7 @@ int main(int argc, char *argv[])
             scenario != L"console" && scenario != L"street-hail" && scenario != L"estate" &&
             scenario != L"courtyard" && scenario != L"cottages" && scenario != L"centre" &&
             scenario != L"garages" && scenario != L"rail-yard" && scenario != L"cloud-coast" && scenario != L"seafront" &&
-            scenario != L"canal-mouth" && scenario != L"crowd")
+            scenario != L"canal-mouth" && scenario != L"crowd" && scenario != L"aerial")
             throw std::runtime_error("Unknown smoke scenario");
 
         if (content.empty())
@@ -596,8 +596,9 @@ int main(int argc, char *argv[])
             const auto densityFile = app.saveFile.parent_path() / "density.txt";
             menus.population = densityOverride        ? *densityOverride
                                : scenario == L"crowd" ? Density::full
+                               : scenario == L"aerial" ? Density::max
                                : smoke                ? Density::low
-                                                      : loadDensity(densityFile, Density::full);
+                                                      : loadDensity(densityFile, Density::max);
             SaveSlots slots(app.saveFile);
             auto refreshSlots = [&]
             {
@@ -698,9 +699,13 @@ int main(int argc, char *argv[])
                 app.cursor(app.active);
                 progress = 0;
                 const Density population = menus.population;
+                // New games get the varied city. The automated scenarios were laid out on the
+                // revision-4 city of their fixed seed and keep it; "aerial" shows the new one.
+                const int revision = smoke && scenario != L"aerial" ? CityLayout::districtRevision
+                                                                    : CityLayout::latestRevision;
                 generation =
                     std::async(std::launch::async,
-                               [&, load, path, population]
+                               [&, load, path, population, revision]
                                {
                                    auto next = std::make_unique<World>();
                                    if (load)
@@ -711,7 +716,7 @@ int main(int argc, char *argv[])
                                    else
                                        next->generate(
                                            smoke ? 20261105u : std::random_device{}(), [&](float p)
-                                           { progress = p; }, CityLayout::districtRevision, population);
+                                           { progress = p; }, revision, population);
                                    return next;
                                });
             };
@@ -1592,6 +1597,15 @@ int main(int argc, char *argv[])
                                 view.eye = {float(camera.x), float(world->terrain.height(camera) + 2.6),
                                             float(camera.z)};
                                 reviewView = view;
+                            }
+                            if (scenario == L"aerial")
+                            {
+                                // The city from a helicopter: the view that shows how much of it
+                                // is lived in and how alike its blocks are.
+                                world->command("spawn helicopter");
+                                world->controlledCar = int(world->cars.size() - 1);
+                                app.look = world->cars.back().heading() + .6;
+                                world->clock.set_hour(16);
                             }
                             if (scenario == L"tank")
                             {
@@ -2502,6 +2516,15 @@ int main(int argc, char *argv[])
                             input.car = {.85, 0, false, false};
                         if (smoke && scenario == L"tank")
                             input.shooting = frames >= 150;
+                        if (smoke && scenario == L"aerial" && world->controlledCar >= 0)
+                        {
+                            // Held at 110 m over the street, so that every frame is the same view.
+                            auto &heli = world->cars[world->controlledCar];
+                            heli.lift = 110;
+                            heli.body.height = world->surface(heli.body.p, 0) + .8 + heli.lift;
+                            heli.verticalVelocity = 0;
+                            heli.body.v = {};
+                        }
                         if (smoke && scenario == L"wreckage")
                         {
                             input.car = {0, 0, true, true};

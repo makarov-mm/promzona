@@ -58,7 +58,7 @@ void soundCity(const World &w, Density density, bool fresh = true)
     // Only the full population has the animals of the managed game: 120 flocks of six to
     // ten pigeons and 160 cats, dogs and lone birds.
     const auto pigeons = size_t(std::ranges::count(w.animals, Species::pigeon, &Animal::species));
-    if (density == Density::full)
+    if (density >= Density::full)
         require(pigeons >= 720 && pigeons <= 1200 && w.animals.size() - pigeons == 160 &&
                     w.flocks.size() == 174,
                 "the full city does not have the managed game's animals");
@@ -74,17 +74,20 @@ int main()
                 populationSize(Density::medium).cars == 540 &&
                 populationSize(Density::medium).people == 1800 &&
                 populationSize(Density::high).cars == 1080 && populationSize(Density::high).people == 3240 &&
-                populationSize(Density::full).cars == 1485 && populationSize(Density::full).people == 5265,
+                populationSize(Density::full).cars == 1485 && populationSize(Density::full).people == 5265 &&
+                populationSize(Density::max).cars == 4000 && populationSize(Density::max).people == 14000,
             "population sizes changed");
 
-        // The setting: four values, a stable file form and a tolerant reader.
+        // The setting: five values, a stable file form and a tolerant reader.
         require(cycleDensity(Density::low, 1) == Density::medium &&
                     cycleDensity(Density::high, 1) == Density::full &&
-                    cycleDensity(Density::full, 1) == Density::low &&
-                    cycleDensity(Density::low, -1) == Density::full &&
+                    cycleDensity(Density::full, 1) == Density::max &&
+                    cycleDensity(Density::max, 1) == Density::low &&
+                    cycleDensity(Density::low, -1) == Density::max &&
                     cycleDensity(Density::full, -1) == Density::high,
                 "density does not cycle");
-        require(density_from_code("full", Density::low) == Density::full &&
+        require(density_from_code("max", Density::low) == Density::max &&
+                    density_from_code("full", Density::low) == Density::full &&
                     density_from_code("high", Density::low) == Density::high &&
                     density_from_code("medium", Density::low) == Density::medium &&
                     density_from_code("low", Density::high) == Density::low &&
@@ -102,7 +105,8 @@ int main()
         FrontEnd menu;
         menu.page = MenuPage::settings;
         for (const auto &[level, title] :
-             {std::pair{Density::high, L"Высокая"}, std::pair{Density::full, L"Полная"}})
+             {std::pair{Density::high, L"Высокая"}, std::pair{Density::full, L"Полная"},
+              std::pair{Density::max, L"Максимальная"}})
         {
             menu.population = level;
             bool listed = false;
@@ -127,7 +131,7 @@ int main()
         require(loaded.density == Density::low && loaded.people.size() == 720,
                 "low-density save did not load");
 
-        for (Density density : {Density::medium, Density::high, Density::full})
+        for (Density density : {Density::medium, Density::high, Density::full, Density::max})
         {
             World w;
             w.generate(20261105u, {}, CityLayout::districtRevision, density);
@@ -137,7 +141,7 @@ int main()
                         w.buildings.size() == legacy.buildings.size() &&
                         w.potholes.size() == legacy.potholes.size(),
                     "density changed the city itself");
-            require(density == Density::full || (w.animals.size() == legacy.animals.size() &&
+            require(density >= Density::full || (w.animals.size() == legacy.animals.size() &&
                                                  w.flocks.size() == legacy.flocks.size()),
                     "density changed the animals of earlier saves");
             // A quiet minute: nobody dies, nothing burns and no one is wanted without the player.
@@ -205,7 +209,7 @@ int main()
             std::ifstream in(file, std::ios::binary);
             auto j = nlohmann::json::parse(in);
             in.close();
-            j["density"] = int(Density::full) + 1;
+            j["density"] = int(Density::max) + 1;
             std::ofstream(file, std::ios::binary | std::ios::trunc) << j.dump();
         }
         bool refused = false;

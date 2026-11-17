@@ -321,6 +321,54 @@ void buildingCore(CityChunk &data, const BuildingPlan &p, int facade)
     shell(data[Facade + clamp(facade, 0, 7)], p.height, 0, 3.2f);
     shell(data[Foundation], .60f, .035f, 2.f);
     box(data[Roof], p.origin + Vec3{0, p.height + .12f, 0}, {p.halfWidth + .12f, .12f, p.halfDepth + .12f});
+    // What a roof carries, seen from above: the lift machine rooms over the stairwells, vent
+    // stacks, and on some houses an aerial mast or, on a tower, a water tank. Low houses keep a
+    // bare roof. The plan seed decides, so a building always looks the same.
+    if (p.height > 13)
+    {
+        const float top = p.height + .24f;
+        const bool alongX = p.halfWidth >= p.halfDepth;
+        const float length = alongX ? p.halfWidth : p.halfDepth, breadth = alongX ? p.halfDepth : p.halfWidth;
+        auto onRoof = [&](float along, float across, float y, Vec3 half)
+        {
+            const Vec3 offset = alongX ? Vec3{along, y, across} : Vec3{across, y, along};
+            return p.origin + offset;
+        };
+        auto spin = [&](Vec3 half) { return alongX ? half : Vec3{half.z, half.y, half.x}; };
+        const auto r = hash(p.seed ^ 0x5bd1e995u);
+        const int rooms = length > 7 ? 1 + int(r % 2) : 1;
+        for (int k = 0; k < rooms; ++k)
+        {
+            const float along = rooms == 1 ? (float(int(r >> 4) % 5) - 2) * length * .12f
+                                           : (k ? 1.f : -1.f) * length * .45f;
+            const float tall = .9f + float((r >> (8 + k)) % 3) * .25f;
+            const Vec3 half = spin({std::min(2.1f, length * .3f), tall, std::min(1.5f, breadth * .45f)});
+            box(data[Foundation], onRoof(along, 0, top + tall, half), half);
+            box(data[Roof], onRoof(along, 0, top + 2 * tall + .06f, half), half + Vec3{.1f, -tall + .06f, .1f});
+        }
+        for (int k = 0; k < 1 + int((r >> 12) % 3); ++k)
+        {
+            const auto v = hash(r + std::uint32_t(k) * 7919u);
+            const float along = (float(v % 1000) / 1000.f * 1.6f - .8f) * length,
+                        across = (float((v >> 10) % 1000) / 1000.f * 1.4f - .7f) * breadth;
+            box(data[Metal], onRoof(along, across, top + .45f, {}), {.22f, .45f, .22f});
+        }
+        if ((r >> 20) % 3 == 0)
+        {
+            const float along = length * .6f * ((r >> 22) % 2 ? 1.f : -1.f);
+            box(data[Metal], onRoof(along, 0, top + 2.6f, {}), {.05f, 2.6f, .05f});
+            box(data[Metal], onRoof(along, 0, top + 4.4f, {}), spin({1.1f, .03f, .03f}));
+        }
+        if (p.height > 36 && (r >> 24) % 4 == 0)
+        {
+            const Vec3 half{1.1f, .8f, 1.1f};
+            box(data[Metal], onRoof(-length * .2f, breadth * .1f, top + 2.6f + half.y, {}), half);
+            for (int a : {-1, 1})
+                for (int b : {-1, 1})
+                    box(data[Metal], onRoof(-length * .2f + a * 1.3f, breadth * .1f + b * 1.3f, top + 1.3f, {}),
+                        {.08f, 1.3f, .08f});
+        }
+    }
     auto at = [&](float x, float y, float z)
     { return p.origin + side * x + Vec3{0, y, 0} + front * (depth + z); };
     const float w = entranceHalfWidth, h = entranceHeight;

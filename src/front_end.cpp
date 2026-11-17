@@ -30,7 +30,8 @@ namespace Promzona
 
     const wchar_t *density_title(Density density)
     {
-        return density == Density::full     ? L"Полная"
+        return density == Density::max      ? L"Максимальная"
+               : density == Density::full   ? L"Полная"
                : density == Density::high   ? L"Высокая"
                : density == Density::medium ? L"Средняя"
                                             : L"Низкая";
@@ -38,7 +39,8 @@ namespace Promzona
 
     const char *density_code(Density density)
     {
-        return density == Density::full     ? "full"
+        return density == Density::max      ? "max"
+               : density == Density::full   ? "full"
                : density == Density::high   ? "high"
                : density == Density::medium ? "medium"
                                             : "low";
@@ -46,7 +48,8 @@ namespace Promzona
 
     Density density_from_code(std::string_view code, Density fallback)
     {
-        return code == "full"     ? Density::full
+        return code == "max"      ? Density::max
+               : code == "full"   ? Density::full
                : code == "high"   ? Density::high
                : code == "medium" ? Density::medium
                : code == "low"    ? Density::low
@@ -55,7 +58,7 @@ namespace Promzona
 
     Density cycleDensity(Density density, int step)
     {
-        constexpr int levels = std::to_underlying(Density::full) + 1;
+        constexpr int levels = std::to_underlying(Density::max) + 1;
         return static_cast<Density>((std::to_underlying(density) + (step < 0 ? levels - 1 : 1)) % levels);
     }
 

@@ -66,6 +66,148 @@ namespace Promzona
             }
         }
 
+        std::uint32_t plotHash(std::uint32_t seed, std::uint32_t i, std::uint32_t j)
+        {
+            std::uint32_t h = seed * 0x9e3779b9u ^ (i * 0x85ebca6bu + 0x27d4eb2fu) ^ (j * 0xc2b2ae35u);
+            h ^= h >> 16;
+            h *= 0x7feb352du;
+            h ^= h >> 15;
+            h *= 0x846ca68bu;
+            return h ^ (h >> 16);
+        }
+
+        // Revision 5 blocks. Plans are in the plot's own metres before the wide-street scale
+        // (x 0.73): everything stays within 11.5 m of the plot centre. Heights are whole storeys
+        // of three metres, from four-storey brick to the 18-storey towers of the centre.
+        void varied_plot(std::vector<Building> &out, District district, Vec2 centre, std::uint32_t h)
+        {
+            using K = BuildingKind;
+            auto bits = [&](int shift, int count) { return int((h >> shift) % std::uint32_t(count)); };
+            auto storeys = [&](int low, int high, int salt)
+            { return 3. * (low + int(((h >> salt) ^ (h >> (salt + 7))) % std::uint32_t(high - low + 1))); };
+            int facade = bits(3, 8);
+            auto place = [&](double x, double z, double hx, double hz, double height, K kind = K::apartment,
+                             int front = 1)
+            {
+                // Neighbouring buildings of one block are seldom of one finish.
+                const int style = kind == K::apartment ? facade : facade % 4;
+                facade = (facade + 3) % 8;
+                out.push_back({centre + Vec2{x, z}, {hx, hz}, height, style, kind, front});
+            };
+            switch (district)
+            {
+            case District::cottages:
+            {
+                // One to four houses of different sizes, set back from the street at random.
+                const int houses = 1 + bits(6, 4);
+                static constexpr std::array<Vec2, 4> spots{{{-6, -5.5}, {6, 5.5}, {6, -6}, {-6, 6}}};
+                for (int k = 0; k < houses; ++k)
+                {
+                    const double hx = 3.2 + .3 * bits(9 + k * 3, 5), hz = 3.4 + .3 * bits(12 + k * 3, 5);
+                    place(spots[k].x + (bits(17 + k, 3) - 1) * .6, spots[k].z, hx, hz,
+                          4.3 + .55 * bits(20 + k, 5), K::cottage, spots[k].z < 0 ? -1 : 1);
+                }
+                break;
+            }
+            case District::garages:
+            {
+                const int rows = 1 + bits(6, 2);
+                for (int n : {-1, 0, 1})
+                    for (int side = 0; side < rows; ++side)
+                        place(n * 6.7, rows == 1 ? 0 : (side ? 7 : -7), 3.1, 4, 3.2 + .3 * bits(9, 3), K::garage,
+                              side ? -1 : 1);
+                if (rows == 1)
+                    place(0, 8.5, 9, 1.6, 6 + 3 * bits(11, 2));
+                break;
+            }
+            case District::courtyard:
+                switch (bits(6, 5))
+                {
+                case 0: // a U of four- or five-storey brick round its yard
+                    place(0, -8.5, 11, 3, storeys(4, 5, 9));
+                    place(-8.5, 2.5, 3, 6.5, storeys(4, 5, 11));
+                    place(8.5, 2.5, 3, 6.5, storeys(4, 5, 13));
+                    break;
+                case 1: // two parallel houses
+                    place(0, -6.5, 10.5, 3.2, storeys(4, 6, 9));
+                    place(0, 6.5, 10.5, 3.2, storeys(4, 6, 11));
+                    break;
+                case 2: // an L and a small school-like block
+                    place(-2, -8, 9, 3, storeys(4, 5, 9));
+                    place(8, 2, 3, 6.5, storeys(4, 5, 11));
+                    place(-5, 5, 4.5, 3.5, storeys(2, 3, 13));
+                    break;
+                case 3: // corner houses of different heights
+                    place(-5, -7, 6, 3.5, storeys(5, 7, 9));
+                    place(6, -6, 4, 4.5, storeys(3, 5, 11));
+                    place(-6, 6, 4, 4, storeys(4, 6, 13));
+                    break;
+                default: // a long house with a taller corner section
+                    place(-3, 0, 8, 3.4, storeys(5, 5, 9));
+                    place(8.3, 0, 3.1, 5, storeys(7, 9, 11));
+                }
+                break;
+            case District::centre:
+                switch (bits(6, 5))
+                {
+                case 0: // twin towers
+                    place(-5.5, 0, 4.6, 8.5, storeys(10, 14, 9));
+                    place(5.5, 0, 4.6, 8.5, storeys(9, 12, 11));
+                    break;
+                case 1: // a tower between two lower wings
+                    place(0, 0, 4.4, 6, storeys(14, 18, 9));
+                    place(-8, 0, 3.4, 6.5, storeys(6, 8, 11));
+                    place(8, 0, 3.4, 6.5, storeys(6, 8, 13));
+                    break;
+                case 2: // a mid-rise block and a slender tower
+                    place(-4, -4, 7, 6.5, storeys(7, 9, 9));
+                    place(7, 6, 4, 4, storeys(12, 15, 11));
+                    break;
+                case 3: // stepped sections
+                    place(-7, 0, 3.5, 8, storeys(8, 10, 9));
+                    place(0, 0, 3.5, 8, storeys(11, 14, 11));
+                    place(7, 0, 3.5, 8, storeys(8, 10, 13));
+                    break;
+                default: // an office slab with a low podium
+                    place(0, -3, 10, 4.5, storeys(9, 12, 9));
+                    place(0, 7.5, 9, 3, storeys(2, 3, 11));
+                }
+                break;
+            case District::estate:
+                switch (bits(6, 6))
+                {
+                case 0: // two nine-storey slabs
+                    place(0, -7, 11, 3.6, storeys(9, 9, 9));
+                    place(0, 7, 11, 3.6, storeys(9, 12, 11));
+                    break;
+                case 1: // a point tower with a shop at its foot
+                    place(0, -1.5, 5.5, 5.5, storeys(12, 16, 9));
+                    place(0, 8.5, 6, 2, 4.2);
+                    break;
+                case 2: // an L of a twelve-storey slab and a nine-storey wing
+                    place(0, -7, 11, 3.4, storeys(10, 12, 9));
+                    place(-7.6, 3, 3.4, 6, storeys(9, 9, 11));
+                    break;
+                case 3: // three point towers of different heights
+                    place(-6, -6, 4.5, 4.5, storeys(9, 10, 9));
+                    place(6, -6, 4.5, 4.5, storeys(10, 12, 11));
+                    place(0, 6, 4.5, 4.5, storeys(12, 14, 13));
+                    break;
+                case 4: // a long stepped slab
+                    place(-7.3, 0, 3.6, 4.2, storeys(9, 9, 9));
+                    place(0, 0, 3.6, 4.2, storeys(11, 12, 11));
+                    place(7.3, 0, 3.6, 4.2, storeys(9, 9, 13));
+                    break;
+                default: // a five-storey block of the sixties and its twin
+                    place(-5, 0, 5.5, 9, storeys(5, 5, 9));
+                    place(6.5, 0, 3.5, 9, storeys(5, 5, 11));
+                }
+                break;
+            case District::industry:
+                break;
+            }
+        }
+
         void industrialPlot(CityLayout &l, int i, int j, Vec2 centre)
         {
             using K = BuildingKind;
@@ -181,13 +323,13 @@ namespace Promzona
     }
     bool CityLayout::industrial(int i, int j) const
     {
-        return revision_ == districtRevision && i >= yardWest() && i < yardEast() && j >= yardRow() &&
+        return districts() && i >= yardWest() && i < yardEast() && j >= yardRow() &&
                j < yardRow() + 5;
     }
     bool CityLayout::railEdge(int i, int j, int d) const
     {
         const int from = d == 1 ? i : i - 1;
-        return revision_ == districtRevision && d % 2 == 1 && j == yardRow() + 2 && from >= yardWest() &&
+        return districts() && d % 2 == 1 && j == yardRow() + 2 && from >= yardWest() &&
                from < yardEast() - 1;
     }
     District CityLayout::district(int i, int j) const
@@ -202,9 +344,18 @@ namespace Promzona
         static constexpr Centre centres[] = {{12, 12, District::cottages},  {39, 36, District::cottages},
                                              {22, 25, District::centre},    {9, 34, District::garages},
                                              {36, 11, District::courtyard}, {24, 41, District::estate}};
+        // The varied city is a patchwork: a centre with old courtyards round it, estates of
+        // different ages, two garden suburbs and garage belts by the industry.
+        static constexpr Centre patchwork[] = {
+            {24, 24, District::centre},    {19, 20, District::centre},    {29, 27, District::courtyard},
+            {17, 29, District::courtyard}, {28, 17, District::courtyard}, {11, 11, District::cottages},
+            {41, 39, District::cottages},  {6, 24, District::cottages},   {8, 36, District::garages},
+            {38, 8, District::estate},     {35, 33, District::estate},    {12, 41, District::estate},
+            {42, 22, District::estate},    {24, 8, District::estate},     {31, 41, District::courtyard},
+            {5, 5, District::garages}};
         double best = std::numeric_limits<double>::max(), scale = (nodes_ - 1) / 48.;
         District result = District::estate;
-        for (auto c : centres)
+        for (auto c : variety() ? std::span<const Centre>(patchwork) : std::span<const Centre>(centres))
         {
             Vec2 delta{i - (c.i + seed_ % 5 - 2) * scale, j - (c.j + (seed_ / 5) % 5 - 2) * scale};
             if (delta.length2() < best)
@@ -314,7 +465,7 @@ namespace Promzona
     {
         if (n != 33 && n != 49)
             throw std::invalid_argument("City size must be 33 or 49 nodes");
-        if (revision != 0 && (revision != districtRevision || n != 49 || !wide))
+        if (revision != 0 && (revision < districtRevision || revision > latestRevision || n != 49 || !wide))
             throw std::invalid_argument("Unsupported city layout revision");
 
         seed_ = seed;
@@ -381,7 +532,15 @@ namespace Promzona
                     auto f = direction(d);
                     int x = i + int(f.x), z = j + int(f.z);
                     bool artery = d == 0 ? (i % 8 == 0 || i == n / 2) : (j % 8 == 0 || j == n / 2);
-                    if (x < n && z < n && allowedEdge(i, j, d) && (artery || random.next() < .61) &&
+                    // The varied city has a dense grid in its centre and fewer through streets in
+                    // the estates and the suburbs, whose blocks run together into larger ones.
+                    const double chance = !variety()                               ? .61
+                                          : district(i, j) == District::centre    ? .82
+                                          : district(i, j) == District::courtyard ? .66
+                                          : district(i, j) == District::cottages  ? .38
+                                          : district(i, j) == District::garages   ? .45
+                                                                                  : .5;
+                    if (x < n && z < n && allowedEdge(i, j, d) && (artery || random.next() < chance) &&
                         !railEdge(i, j, d))
                         link(i, j, d);
                 }
@@ -485,7 +644,11 @@ namespace Promzona
                 {
                     buildings.resize(begin);
                     unsigned variant = (std::uint32_t(seed) + i * 7919u + j * 104729u) % 4;
-                    residential_plot(buildings, district(i, j), {x, z}, variant);
+                    if (variety())
+                        varied_plot(buildings, district(i, j), {x, z},
+                                    plotHash(std::uint32_t(seed), std::uint32_t(i), std::uint32_t(j)));
+                    else
+                        residential_plot(buildings, district(i, j), {x, z}, variant);
                 }
                 report(.25 + .16 * (i + j * (n - 1) + 1) / ((n - 1) * (n - 1)));
             }
@@ -567,7 +730,7 @@ namespace Promzona
     void CityLayout::planCourtyards()
     {
         yards_.clear();
-        if (revision_ != districtRevision)
+        if (!districts())
             return;
         yards_.resize(nodes_ * nodes_);
         std::vector<std::vector<const Building *>> plots(yards_.size());

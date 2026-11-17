@@ -253,7 +253,8 @@ void validateJson(const json &j, int depth = 0)
         throw std::runtime_error("Save nesting limit");
     if (j.is_number() && (!std::isfinite(j.get<double>()) || std::abs(j.get<double>()) > 1e12))
         throw std::runtime_error("Invalid numeric save value");
-    if (j.is_array() && j.size() > 10000)
+    // The largest list is the people of the maximum population (14 000).
+    if (j.is_array() && j.size() > 20000)
         throw std::runtime_error("Save collection limit");
     if (j.is_structured())
         for (auto &value : j)
@@ -451,7 +452,8 @@ void World::save(const std::filesystem::path &path) const
 
 void World::load(const std::filesystem::path &path)
 {
-    if (std::filesystem::file_size(path) > 16 * 1024 * 1024)
+    // The maximum population saves to about twenty megabytes.
+    if (std::filesystem::file_size(path) > 64 * 1024 * 1024)
         throw std::runtime_error("Save exceeds size limit");
     std::ifstream in(path, std::ios::binary);
     auto j = json::parse(in);
@@ -462,7 +464,7 @@ void World::load(const std::filesystem::path &path)
     validateJson(j);
     // Saves made before the density setting hold the low population and no such field.
     const int population = j.value("density", 0);
-    if (population < 0 || population > std::to_underlying(Density::full))
+    if (population < 0 || population > std::to_underlying(Density::max))
         throw std::runtime_error("Invalid saved density");
     World next;
     next.generate(j.at("seed").get<std::uint32_t>(), {}, j.value("layoutRevision", 0), Density(population));

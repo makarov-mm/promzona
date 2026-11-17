@@ -44,7 +44,7 @@ namespace Promzona
                 box({x - layout.bankHalf(), -beach}, {x + layout.bankHalf(), beach}, water);
             }
 
-        if (layout.revision() == CityLayout::districtRevision)
+        if (layout.districts())
         {
             // Only the coastal strip needs terrain sampling. Use the same water datum as the mesh.
             const int inner = static_cast<int>(std::floor(city * scale));
@@ -87,7 +87,7 @@ namespace Promzona
                     box(p - Vec2{h, h}, p + Vec2{layout.spacing + h, h}, 0x5c5e58);
             }
 
-        if (layout.revision() == CityLayout::districtRevision)
+        if (layout.districts())
             box({layout.railStart(), layout.railZ() - 1}, {layout.railEnd(), layout.railZ() + 1}, 0x786a54);
 
         for (const auto &b : world.buildings)

@@ -381,7 +381,7 @@ namespace Promzona
                 notify(directionTo(ServiceKind::market, L"Рынок — "));
                 break;
             case 2:
-                notify(layout.revision() == CityLayout::districtRevision
+                notify(layout.districts()
                            ? L"Слышал, на промзоне тупик — вагоны загнали и бросили."
                            : L"Нормально всё. Живём.");
                 break;

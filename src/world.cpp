@@ -56,7 +56,7 @@ namespace Promzona
         size_ = static_cast<int>(-2 * origin_) + 1;
         heights_.resize(static_cast<size_t>(size_) * size_);
         double phase = seed % 10007 * .002;
-        const bool revised = layout && layout->revision() == CityLayout::districtRevision;
+        const bool revised = layout && layout->districts();
 
         auto natural = [&](double x, double z)
         {

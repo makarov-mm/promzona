@@ -103,8 +103,12 @@ namespace Promzona
         static constexpr float canalDeckThickness = .38f;
         std::vector<Building> buildings, furniture;
         void generate(std::int32_t seed, int nodes = 49, bool wide = true, std::function<void(float)> progress = {}, int revision = 0);
-        static constexpr int districtRevision = 4;
+        // 4: districts, the rail yard and nine road levels. 5: varied blocks and skyline, a
+        // patchwork of districts, streets that thin out in the suburbs and fifteen road levels.
+        static constexpr int districtRevision = 4, varietyRevision = 5, latestRevision = varietyRevision;
         int revision() const { return revision_; }
+        bool districts() const { return revision_ >= districtRevision; }
+        bool variety() const { return revision_ >= varietyRevision; }
         District district(int i, int j) const;
         bool industrial(int i, int j) const;
         bool railEdge(int i, int j, int direction) const;

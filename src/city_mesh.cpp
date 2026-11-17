@@ -248,7 +248,7 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
             int material = distance < l.roadHalf() ? Road : distance < l.roadHalf() + 2.8 ? Pavement : Grass;
             if (l.sandyGround(p, distance))
                 material = Sand;
-            else if (material == Grass && l.revision() == CityLayout::districtRevision)
+            else if (material == Grass && l.districts())
             {
                 const int blockX = int(std::floor((p.x - l.coordinate(0)) / l.spacing));
                 const int blockZ = int(std::floor((p.z - l.coordinate(0)) / l.spacing));
@@ -386,7 +386,7 @@ CityChunk city_chunk(const World &w, double x0, double z0, double size, std::vec
             water.indices.insert(water.indices.end(), {ia, ib, ic, ia, ic, id});
         }
     }
-    if (l.revision() == CityLayout::districtRevision)
+    if (l.districts())
     {
         const double z = l.railZ();
         if (z >= z0 && z < z0 + size)

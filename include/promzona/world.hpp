@@ -232,7 +232,9 @@ enum class Density
     low,
     medium,
     high,
-    full
+    full,
+    // Beyond the managed game: a city that looks lived in from a helicopter.
+    max
 };
 struct PopulationSize
 {
@@ -240,7 +242,8 @@ struct PopulationSize
 };
 constexpr PopulationSize populationSize(Density density)
 {
-    return density == Density::full     ? PopulationSize{1485, 5265}
+    return density == Density::max      ? PopulationSize{4000, 14000}
+           : density == Density::full   ? PopulationSize{1485, 5265}
            : density == Density::high   ? PopulationSize{1080, 3240}
            : density == Density::medium ? PopulationSize{540, 1800}
                                         : PopulationSize{260, 720};

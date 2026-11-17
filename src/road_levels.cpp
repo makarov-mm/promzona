@@ -79,7 +79,7 @@ std::vector<RoadLevel> planRoadLevels(const CityLayout &l, std::uint32_t seed)
     std::vector<RoadLevel> levels;
     if (l.nodes() != 49)
         return levels;
-    const bool districts = l.revision() == CityLayout::districtRevision;
+    const bool districts = l.districts();
     LayoutRandom random(std::bit_cast<std::int32_t>(seed ^ (districts ? 0x4c371u : 0x64726177u)));
     auto add = [&](int col, int row)
     {
@@ -93,7 +93,19 @@ std::vector<RoadLevel> planRoadLevels(const CityLayout &l, std::uint32_t seed)
         s.rightNode = col + 4 + row * l.nodes();
         levels.push_back(s);
     };
-    if (districts)
+    if (l.variety())
+    {
+        // Fourteen: an overpass or a tunnel every eight rows or so in each of the three bands
+        // between the canals and the city edge. The middle band keeps clear of the militia
+        // station at (21, 13), whose plot a corridor would take.
+        for (int row : {6, 14, 22, 30, 38})
+            add(8, row);
+        for (int row : {5, 20, 29, 38})
+            add(24, row);
+        for (int row : {6, 14, 22, 30, 38})
+            add(40, row);
+    }
+    else if (districts)
         for (int col : {8, 24, 40})
             for (int row : {8, 23, 38})
                 add(col, row);
