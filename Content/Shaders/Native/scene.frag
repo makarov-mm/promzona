@@ -8,7 +8,7 @@ uniform sampler2D uColor, uNormal, uOrm, uRug;
 uniform int uHasNormal, uHasOrm, uSkin, uSurface, uDetail;
 uniform int uPaintIndex, uPaintMask;
 // 1 on the body of a car, 2 on its glass: the clear coat that mirrors the city.
-// -1 on a wreck, which mirrors nothing.
+// -1 on a wreck, which mirrors nothing and is burnt out.
 uniform int uCoat;
 // 1 while a face of the reflection probe is rendered: linear light is kept.
 uniform int uProbePass;
@@ -456,6 +456,10 @@ void main() {
         if (uSurface == 14) paint *= smoothstep(.57,.79,bakedFinish);
         if (uPaintIndex > 0) baseColor = mix(baseColor,colors[uPaintIndex-1]*(.50+.75*lightness),paint);
     }
+    // The wreck of the managed game (Vehicle.frag, uDamage above 1.5): burnt out, every part
+    // of it the same matt soot, glass and lamps included. Without this a car that had blown
+    // up stood there looking as it did before.
+    if (uCoat < 0) baseColor = vec3(.055,.050,.045);
     int tunnel = uTunnelCount > 0 ? tunnelAt(vWorld) : -1;
     // Wet asphalt of the managed game: the street does not wet evenly. Patches of it
     // darken, turn smooth and mirror the city for as long as the street stays wet.
@@ -497,6 +501,7 @@ void main() {
     if (vehicleMaterial == 22) rough = .12;
     else if (vehicleMaterial == 34) { rough = .25; metal = .82; }
     else if (vehicleMaterial == 1) rough = mix(.43, .25, rainExposure);
+    if (uCoat < 0) { rough = .94; metal = 0.; }
     vec3 v = normalize(uEye-vWorld), l = normalize(uSun), h = normalize(v+l);
     float nl = max(dot(n,l),0), nv = max(dot(n,v),.001), nh = max(dot(n,h),0);
     float a = rough*rough, a2 = a*a, denom = nh*nh*(a2-1.0)+1.0;
@@ -553,7 +558,7 @@ void main() {
         float film = .021 + .46*graze;
         color = mix(color,cityReflection(vWorld,reflect(-v,n),rough,false),damp*film);
     }
-    if (vehicleMaterial == 8) {
+    if (vehicleMaterial == 8 && uCoat >= 0) {
         bool blue = tex.b > tex.r * 1.4;
         if (blue && uEmissive > 0.) {
             float pulse = smoothstep(.52, .85, sin(uTime*12.));
@@ -573,5 +578,6 @@ void main() {
         fragColor = vec4(mix(fromDisplay(uFog),color,air),1.);
         return;
     }
-    fragColor = vec4(mix(uFog,toDisplay(color),air),tex.a*uAlpha);
+    // The glass of a wreck is sooted over.
+    fragColor = vec4(mix(uFog,toDisplay(color),air),uCoat < 0 ? max(tex.a*uAlpha,.78) : tex.a*uAlpha);
 }

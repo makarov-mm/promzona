@@ -232,6 +232,43 @@ int main()
             w.cars[0].destroyed = true;
             check(!w.gun_sight(0), "a wreck has no gun sight");
         }
+        // The sight of the weapon in the hand stands where its shot lands, and a shot fired
+        // along the same look does land there.
+        w = empty();
+        {
+            check(!w.hand_sight(0, 0), "empty hands have no sight");
+            w.inventory.give(WeaponId::pistol);
+            const double muzzle = w.player.height + .47, reach = weapon(WeaponId::pistol)->range;
+            auto sight = w.hand_sight(0, 0);
+            check(sight && std::abs(sight->x) < 1e-3 && std::abs(sight->y - muzzle) < 1e-3 &&
+                      std::abs(sight->z - reach) < 1e-3,
+                  "with nothing in the way the sight is at the end of the weapon's range");
+            sight = w.hand_sight(pi * .5, .1);
+            check(sight && std::abs(sight->x - reach) < 1e-3 &&
+                      std::abs(sight->y - (muzzle + std::tan(.1) * reach)) < 1e-3,
+                  "the sight follows the look");
+            w.people.push_back(person({.2, 12}));
+            sight = w.hand_sight(0, 0);
+            check(sight && sight->z > 11.6 && sight->z < 12 && std::abs(sight->x) < 1e-3,
+                  "the sight stops on the passer-by the shot would hit");
+            w.shoot(0, 0);
+            check(w.people[0].health < 1, "the shot lands where the sight stood");
+            w.people[0].body.p = {.9, 12};
+            sight = w.hand_sight(0, 0);
+            check(sight && std::abs(sight->z - reach) < 1e-3, "the sight passes whom the shot would miss");
+            w.inventory.give(WeaponId::flamethrower);
+            w.inventory.select(WeaponId::flamethrower);
+            sight = w.hand_sight(0, .4);
+            check(sight && std::abs(sight->y - muzzle) < 1e-3 &&
+                      std::abs(sight->z - weapon(WeaponId::flamethrower)->range) < 1e-3,
+                  "the sight of the flamethrower stays on its level jet");
+            w.cars.push_back(car({0, 0}));
+            w.controlledCar = 0;
+            check(!w.hand_sight(0, 0), "there is no sight of the hand at the wheel");
+            w.controlledCar = -1;
+            w.health = 0;
+            check(!w.hand_sight(0, 0), "the dead have no sight");
+        }
         w = empty();
         w.inventory.give(WeaponId::bazooka);
         w.cars.push_back(car({0, 25}));

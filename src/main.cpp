@@ -301,8 +301,9 @@ namespace
         }
         v.distance = std::max(.1f, offset.length());
         v.heading = a.cameraYaw;
-        // The sight of a vehicle's gun is drawn over this view, where the gun is laid.
-        v.gun_sight = w.gun_sight(a.look);
+        // The sight is drawn over this view where the shot would land: that of a vehicle's gun
+        // where the gun is laid, that of a weapon in the hand on its own line of fire.
+        v.gun_sight = aim ? w.hand_sight(a.look, pitch) : w.gun_sight(a.look);
         return v;
     }
 

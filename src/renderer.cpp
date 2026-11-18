@@ -391,7 +391,8 @@ struct Renderer::Impl
     GLuint effectShader{};
     EffectBatch effects;
     bool weaponSight{};
-    // Where the gun of the player's vehicle is laid, in window pixels; empty off the screen.
+    // Where a shot of the player's would land, in window pixels: that of the gun of the vehicle
+    // or, with `weaponSight`, of the weapon in the hand. Empty off the screen.
     std::optional<std::pair<int, int>> gunSight;
     // The sky, and the local reflection probe: the cube in use and the one being taken.
     static constexpr int probeUnit = 7;
@@ -4025,8 +4026,12 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
         const bool sights = !console && !jobsOpen && world->openMarket < 0;
         if (r.weaponSight && sights)
         {
-            r.rect(w / 2 - 2, h / 2 - 2, 5, 5, rgb(28, 32, 29));
-            r.rect(w / 2 - 1, h / 2 - 1, 3, 3, rgb(243, 235, 209));
+            // The dot lies where the shot will land, as the reticle of the managed game does.
+            // In the middle of the screen it showed where the camera looks from over the
+            // shoulder, and a shot at anything near went to the left of it.
+            const auto [sightX, sightY] = r.gunSight.value_or(std::pair{w / 2, h / 2});
+            r.rect(sightX - 2, sightY - 2, 5, 5, rgb(28, 32, 29));
+            r.rect(sightX - 1, sightY - 1, 3, 3, rgb(243, 235, 209));
         }
         else if (r.gunSight && sights)
         {

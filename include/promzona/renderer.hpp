@@ -15,8 +15,9 @@ namespace Promzona
         double heading{};
         bool shadows{true};
         bool weapon_sight{};
-        // The point the gun of an armoured vehicle is laid on. The camera stays where it is
-        // when such a gun fires; the sight is drawn where this point falls on the screen.
+        // The point a shot fired now would land on: that of the gun of an armoured vehicle,
+        // which is laid apart from the camera, or, with `weapon_sight`, that of the weapon in
+        // the hand. The sight is drawn where this point falls on the screen.
         std::optional<Vec3> gun_sight;
     };
 

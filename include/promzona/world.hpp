@@ -814,6 +814,9 @@ namespace Promzona
         // Where a shot from the gun of the armoured vehicle the player drives would land, laid
         // on this heading: the point the sight on the screen marks. Empty without such a gun.
         std::optional<Vec3> gun_sight(double heading) const;
+        // The same for the weapon in the hand of the player on foot, who looks along `heading`
+        // and `pitch`. Empty with empty hands and wherever the player cannot shoot from.
+        std::optional<Vec3> hand_sight(double heading, double pitch) const;
         void explode(Vec2 p, double y, double strength = 1, bool vehicleBlast = false, bool playerCaused = false);
         void destroyCar(Car &car);
         void damageCar(Car &car, double amount, bool playerCaused = false);

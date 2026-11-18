@@ -416,6 +416,25 @@ std::optional<Vec3> World::gun_sight(double heading) const
     const Vec2 at = start + dir * reach;
     return Vec3{float(at.x), float(y + slope * reach), float(at.z)};
 }
+// The managed AimHit for the player on foot. The camera stands over the shoulder, to the side of
+// the line of fire and above it, so the middle of the screen is on that line at one distance
+// only: nearer than that a shot went to the left of a dot drawn there and below it. The sight is
+// drawn on this point instead, which is where the shot lands.
+std::optional<Vec3> World::hand_sight(double heading, double pitch) const
+{
+    if (health <= 0 || controlledCar >= 0 || transitPassenger())
+        return {};
+    const Weapon *w = inventory.active();
+    if (!w)
+        return {};
+    // The ray shoot() sends; the jet of the flamethrower is level wherever the player looks.
+    const Vec2 start = position(), dir = forward(heading);
+    const double y = player.height + .47,
+                 slope = w->id == WeaponId::flamethrower ? 0. : std::tan(clamp(pitch, -1.2, 1.2));
+    const double reach = traceAttack(start, dir, y, slope, w->range, controlledCar).distance;
+    const Vec2 at = start + dir * reach;
+    return Vec3{float(at.x), float(y + slope * reach), float(at.z)};
+}
 void World::shoot(double heading, double pitch)
 {
     if (shotCooldown > 0 || health <= 0)
