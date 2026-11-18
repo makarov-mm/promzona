@@ -200,6 +200,38 @@ int main()
             check(blocked > 400 && blocked < 3600 && struck > 400 && struck < 3600,
                   "the rays of the comparison both hit and miss");
         }
+        // The sight of a vehicle's gun stands where a shot along the look heading would land.
+        w = empty();
+        {
+            check(!w.gun_sight(0), "nobody on foot has a gun sight");
+            w.cars.push_back(car({0, 0}));
+            w.controlledCar = 0;
+            check(!w.gun_sight(0), "an ordinary car has no gun sight");
+            w.cars[0].kind = 14;
+            const double muzzle = w.cars[0].body.height + 1.45, reach = weapon(WeaponId::automatic)->range;
+            auto sight = w.gun_sight(0);
+            check(sight && std::abs(sight->x) < 1e-3 && std::abs(sight->y - muzzle) < 1e-3 &&
+                      std::abs(sight->z - reach) < 1e-3,
+                  "with nothing in the way the carrier's sight is at the end of its gun's range");
+            w.staticBodies.push_back(box({0, 30}, {5, .5}, 2, 6));
+            sight = w.gun_sight(0);
+            check(sight && std::abs(sight->z - 29.5) < 1e-3,
+                  "the sight stops at the wall the shot would hit");
+            sight = w.gun_sight(pi * .5);
+            check(sight && std::abs(sight->x - reach) < 1e-3 && std::abs(sight->z) < 1e-3,
+                  "the sight follows the heading the gun is laid on");
+            w.cars[0].turretPitch = .2;
+            sight = w.gun_sight(pi * .5);
+            check(sight && std::abs(sight->y - (muzzle + std::tan(.2) * reach)) < 1e-3,
+                  "the sight rises with the barrel");
+            w.cars[0].kind = 11;
+            w.cars[0].turretPitch = 0;
+            sight = w.gun_sight(pi);
+            check(sight && std::abs(sight->z + weapon(WeaponId::bazooka)->range) < 1e-3,
+                  "the tank's sight is at the range of its shell");
+            w.cars[0].destroyed = true;
+            check(!w.gun_sight(0), "a wreck has no gun sight");
+        }
         w = empty();
         w.inventory.give(WeaponId::bazooka);
         w.cars.push_back(car({0, 25}));

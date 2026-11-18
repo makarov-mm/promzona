@@ -215,14 +215,13 @@ namespace
             };
         }
 
-        const bool mounted = w.controlledCar >= 0 && !w.transitPassenger() && w.cars[w.controlledCar].mounted_gun();
         const bool on_foot = w.controlledCar < 0 && w.playerScooter < 0 && a.cameraMode == 0;
-        const bool aim = w.health > 0 && ((on_foot && w.inventory.active()) || (a.cameraMode == 0 && mounted && a.firing));
 
-        if (aim && mounted)
-            v.target.y = y + 2.3f;
-
-        const double pitch = aim && mounted ? w.cars[w.controlledCar].turretPitch : a.lookPitch;
+        // A weapon in the hand brings the camera to the shoulder. The gun of a tank or a carrier
+        // leaves it where it is, as in the managed game: taken to the barrel for as long as the
+        // button was down, the camera jumped there and back with every shot.
+        const bool aim = w.health > 0 && on_foot && w.inventory.active();
+        const double pitch = a.lookPitch;
 
         Vec3 sight {
             static_cast<float>(std::sin(a.look) * std::cos(pitch)),
@@ -233,10 +232,6 @@ namespace
         if (on_foot)
         {
             v.eye = v.target - sight * 5.3f + Vec3{static_cast<float>(-std::cos(a.look) * .58), .62f, static_cast<float>(std::sin(a.look) * .58)};
-        }
-        else if (aim)
-        {
-            v.eye = v.target - sight * 7.f + Vec3{static_cast<float>(-std::cos(a.look) * .35), .12f, static_cast<float>(std::sin(a.look) * .35)};
         }
 
         // Sweep the camera segment; stop before roofs, facades or terrain, including a small clearance.
@@ -255,7 +250,7 @@ namespace
 
         Vec3 offset = clear_offset(v.eye - v.target, .6f);
 
-        if ((!aim || on_foot) && offset.length() < 2.f)
+        if (offset.length() < 2.f)
         {
             // A stop can put the passenger on a narrow pavement with a facade behind.
             // Try the sides before falling back to a view from the character's eyes.
@@ -275,8 +270,7 @@ namespace
         if (aim)
         {
             // Keep the reticle aligned to the firing line, even if a wall shifts the camera sideways.
-            const double muzzleY = mounted ? w.cars[w.controlledCar].body.height + 1.45 : w.player.height + .47;
-            v.target = Vec3{float(p.x), float(muzzleY), float(p.z)} + sight * 45.f;
+            v.target = Vec3{float(p.x), float(w.player.height + .47), float(p.z)} + sight * 45.f;
             v.weapon_sight = true;
         }
         else if (on_foot && offset.length() >= .4f)
@@ -289,6 +283,8 @@ namespace
         }
         v.distance = std::max(.1f, offset.length());
         v.heading = a.cameraYaw;
+        // The sight of a vehicle's gun is drawn over this view, where the gun is laid.
+        v.gun_sight = w.gun_sight(a.look);
         return v;
     }
 
@@ -2527,7 +2523,7 @@ int main(int argc, char *argv[])
                         if (smoke && recoveryScenario && backOnWheels)
                             input.car = {.85, 0, false, false};
                         if (smoke && scenario == L"tank")
-                            input.shooting = frames >= 150;
+                            input.shooting = app.firing = frames >= 150;
                         // The hero dies at frame 30: the caption and the hovering camera, then
                         // the clinic out of the black six seconds later.
                         if (smoke && scenario == L"death" && frames == 30)
@@ -2664,6 +2660,11 @@ int main(int argc, char *argv[])
                     auto view = camera(*world, app, dt);
                     if (smoke && passengerScenario && (view.eye - view.target).length() < .39f)
                         throw std::runtime_error("Passenger camera lost its look direction");
+                    // The tank fires with the button held: the camera stays behind the hull, and
+                    // the sight is the point the gun is laid on.
+                    if (smoke && scenario == L"tank" && frames >= 150 &&
+                        (view.weapon_sight || !view.gun_sight))
+                        throw std::runtime_error("The tank's gun moved the camera or has no sight");
                     if (smoke && arrestScenario && world->arrests > 0)
                         reviewView.reset();
                     if (smoke && reviewView)

@@ -391,6 +391,8 @@ struct Renderer::Impl
     GLuint effectShader{};
     EffectBatch effects;
     bool weaponSight{};
+    // Where the gun of the player's vehicle is laid, in window pixels; empty off the screen.
+    std::optional<std::pair<int, int>> gunSight;
     // The sky, and the local reflection probe: the cube in use and the one being taken.
     static constexpr int probeUnit = 7;
     GLuint sky{}, skyVao{}, probeFbo{}, probeDepth{};
@@ -2609,6 +2611,18 @@ void Renderer::render(const World &world, const View &view, int w, int h)
     const float farPlane = std::max(650.f, range + view.distance + 100.f);
     const auto projection = Mat4::perspective(float(pi / 3), float(w) / h, nearPlane, farPlane);
     auto vp = projection * Mat4::look_at(view.eye, view.target);
+    r.gunSight.reset();
+    if (view.gun_sight)
+    {
+        const Vec3 laid = *view.gun_sight;
+        const auto &matrix = vp.m;
+        const float clipX = matrix[0] * laid.x + matrix[4] * laid.y + matrix[8] * laid.z + matrix[12],
+                    clipY = matrix[1] * laid.x + matrix[5] * laid.y + matrix[9] * laid.z + matrix[13],
+                    clipW = matrix[3] * laid.x + matrix[7] * laid.y + matrix[11] * laid.z + matrix[15];
+        if (clipW > 0 && std::abs(clipX) < clipW && std::abs(clipY) < clipW)
+            r.gunSight = {int(std::lround((clipX / clipW * .5f + .5f) * w)),
+                          int(std::lround((.5f - clipY / clipW * .5f) * h))};
+    }
     Vec3 sun{float(std::cos((world.clock.hour - 6) * pi / 12)), float(world.clock.sun_height()), .3f};
     const Vec3 shadowFocus = view.weapon_sight ? view.eye : view.target;
     auto shadow = sunShadow(shadowFocus, sun);
@@ -4008,10 +4022,27 @@ void Renderer::overlay(const World *world, int w, int h, double fps, bool menu, 
             r.text(left + 12, 26, title, rgb(133, 225, 208));
             r.text(left + 12, 53, status);
         }
-        if (r.weaponSight && !console && !jobsOpen && world->openMarket < 0)
+        const bool sights = !console && !jobsOpen && world->openMarket < 0;
+        if (r.weaponSight && sights)
         {
             r.rect(w / 2 - 2, h / 2 - 2, 5, 5, rgb(28, 32, 29));
             r.rect(w / 2 - 1, h / 2 - 1, 3, 3, rgb(243, 235, 209));
+        }
+        else if (r.gunSight && sights)
+        {
+            // The gun of a vehicle is laid apart from the view, so its mark moves about the
+            // screen: the same dot, with four ticks round it to find it by.
+            const auto [sightX, sightY] = *r.gunSight;
+            auto tick = [&](int left, int top, int width, int height)
+            {
+                r.rect(left - 1, top - 1, width + 2, height + 2, rgb(28, 32, 29));
+                r.rect(left, top, width, height, rgb(243, 235, 209));
+            };
+            tick(sightX - 11, sightY - 1, 7, 3);
+            tick(sightX + 5, sightY - 1, 7, 3);
+            tick(sightX - 1, sightY - 11, 3, 7);
+            tick(sightX - 1, sightY + 5, 3, 7);
+            tick(sightX - 1, sightY - 1, 3, 3);
         }
         const auto hints = jobsOpen
             ? std::vector<ControlHint>{{L"1–8", L"Выбрать заказ"}, {L"J / Esc", L"Закрыть"}}

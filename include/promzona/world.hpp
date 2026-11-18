@@ -772,6 +772,9 @@ namespace Promzona
         std::optional<Vec2> player_vehicle_exit(const Car &car) const;
         bool safe_exit_point(const Car &car, Vec2 at) const;
         void shoot(double heading, double pitch = 0);
+        // Where a shot from the gun of the armoured vehicle the player drives would land, laid
+        // on this heading: the point the sight on the screen marks. Empty without such a gun.
+        std::optional<Vec3> gun_sight(double heading) const;
         void explode(Vec2 p, double y, double strength = 1, bool vehicleBlast = false, bool playerCaused = false);
         void destroyCar(Car &car);
         void damageCar(Car &car, double amount, bool playerCaused = false);

@@ -400,6 +400,22 @@ void World::explode(Vec2 p, double y, double strength, bool vehicleBlast, bool p
             wound_player(6 * effect(player.p, player.height, 8));
     }
 }
+// Port of the managed AimHit for the carrier's gun, here for the tank as well: the line is the
+// one shoot() fires along, so the mark stands where the shot goes.
+std::optional<Vec3> World::gun_sight(double heading) const
+{
+    if (health <= 0 || controlledCar < 0 || transitPassenger())
+        return {};
+    const Car &c = cars[controlledCar];
+    if (!c.mounted_gun() || c.destroyed)
+        return {};
+    const auto *w = weapon(c.kind == 11 ? WeaponId::bazooka : WeaponId::automatic);
+    const Vec2 start = position(), dir = forward(heading);
+    const double y = c.body.height + 1.45, slope = std::tan(clamp(c.turretPitch, -1.2, 1.2));
+    const double reach = traceAttack(start, dir, y, slope, w->range, controlledCar).distance;
+    const Vec2 at = start + dir * reach;
+    return Vec3{float(at.x), float(y + slope * reach), float(at.z)};
+}
 void World::shoot(double heading, double pitch)
 {
     if (shotCooldown > 0 || health <= 0)
