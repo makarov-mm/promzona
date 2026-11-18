@@ -1,7 +1,18 @@
 #include "promzona/world.hpp"
+#include <bit>
 
 namespace Promzona
 {
+namespace
+{
+// Bit for bit: what is read back is then the very number worked out at that place.
+bool same_place(Vec2 a, Vec2 b)
+{
+    return std::bit_cast<std::uint64_t>(a.x) == std::bit_cast<std::uint64_t>(b.x) &&
+           std::bit_cast<std::uint64_t>(a.z) == std::bit_cast<std::uint64_t>(b.z);
+}
+} // namespace
+
 const RoadLevel *World::levelById(int id) const
 {
     for (const auto &s : roadLevels)
@@ -9,8 +20,70 @@ const RoadLevel *World::levelById(int id) const
             return &s;
     return nullptr;
 }
+void World::LevelCells::build(std::span<const RoadLevel> levels)
+{
+    *this = {};
+
+    if (levels.empty())
+        return;
+
+    // The box RoadLevel::contains keeps a point in when asked with `margin`, a millimetre
+    // wider: rounding in that test cannot put a point of the level outside the box.
+    struct Box
+    {
+        double x0, x1, z0, z1;
+    };
+    const auto box = [](const RoadLevel &s)
+    {
+        const double along = RoadLevel::length + margin + .001, reach = RoadLevel::half_width + margin + .001;
+        return Box{s.x - along, s.x + along, s.z - reach, s.z + RoadLevel::bend + reach};
+    };
+
+    Box all = box(levels.front());
+
+    for (const RoadLevel &s : levels)
+    {
+        const Box b = box(s);
+        all = {std::min(all.x0, b.x0), std::max(all.x1, b.x1), std::min(all.z0, b.z0),
+               std::max(all.z1, b.z1)};
+    }
+
+    // The same rounding as in none_near(): a point between two others never falls in a cell
+    // outside theirs.
+    const auto index = [](double at, double from) { return int((at - from) / cell); };
+
+    x = all.x0;
+    z = all.z0;
+    columns = index(all.x1, x) + 1;
+    rows = index(all.z1, z) + 1;
+    occupied.assign(size_t(columns) * rows, 0);
+
+    for (const RoadLevel &s : levels)
+    {
+        const Box b = box(s);
+
+        for (int row = index(b.z0, z); row <= index(b.z1, z); ++row)
+            for (int column = index(b.x0, x); column <= index(b.x1, x); ++column)
+                occupied[size_t(row) * columns + column] = 1;
+    }
+}
+
+bool World::LevelCells::none_near(Vec2 p) const
+{
+    const double u = (p.x - x) / cell, v = (p.z - z) / cell;
+
+    // Written so that a position that is not a number lies beyond the cells as well.
+    if (!(u >= 0 && v >= 0 && u < columns && v < rows))
+        return true;
+
+    return !occupied[size_t(int(v)) * columns + int(u)];
+}
+
 const RoadLevel *World::levelAt(Vec2 p, double margin) const
 {
+    if (margin <= LevelCells::margin && level_cells.none_near(p))
+        return nullptr;
+
     for (const auto &s : roadLevels)
         if (s.contains(p, margin))
             return &s;
@@ -97,7 +170,7 @@ bool World::vehicleSpace(Vec2 at, double height, const Car *ignore, bool include
     const bool blocked =
         nearby ? std::ranges::any_of(nearbyStaticBodies, [&](size_t i) { return solidProp(staticBodies[i]); })
                : std::ranges::any_of(staticBodies, solidProp);
-    return !(scenerySolid(at, height, .35) || insideBuilding(at, height, .35) || blocked ||
+    return !(scenerySolid(at, height, .35) || inside_building(at, height, .35) || blocked ||
              std::ranges::any_of(cars, [&](const Car &other)
                                  { return &other != ignore && overlaps(other.body); }) ||
              std::ranges::any_of(people, [&](const Person &p)
@@ -120,12 +193,35 @@ std::optional<Vec2> World::vehicleExit(const Car &car, std::optional<Vec2> towar
     return std::nullopt;
 }
 
-void World::supportCar(Car &c, Vec2 previousPosition, double dt)
+double World::floor_under(Vec2 p, int level, Footing *footing) const
+{
+    if (!footing)
+        return surface(p, level);
+
+    if (!footing->known || footing->level != level || !same_place(footing->at, p))
+        *footing = {p, level, surface(p, level), true};
+
+    return footing->floor;
+}
+
+Vec2 World::slope_under(Vec2 p, int level, Slope &slope) const
+{
+    if (!slope.known || slope.level != level || !same_place(slope.at, p))
+    {
+        const Vec2 gradient{(surface(p + Vec2{.25, 0}, level) - surface(p - Vec2{.25, 0}, level)) * 2,
+                            (surface(p + Vec2{0, .25}, level) - surface(p - Vec2{0, .25}, level)) * 2};
+        slope = {p, level, gradient, true};
+    }
+
+    return slope.gradient;
+}
+
+void World::supportCar(Car &c, Vec2 previousPosition, double dt, Footing *footing)
 {
     auto &b = c.body;
-    double previousFloor = surface(previousPosition, b.roadLevel), foot = b.height - .8;
+    double previousFloor = floor_under(previousPosition, b.roadLevel, footing), foot = b.height - .8;
     b.roadLevel = selectLevel(b.p, b.roadLevel, foot);
-    double floor = surface(b.p, b.roadLevel);
+    double floor = floor_under(b.p, b.roadLevel, footing);
     if (c.kind == 12 && c.destroyed)
     {
         double roof = flightFloor(b.p);
@@ -177,11 +273,11 @@ void World::supportCar(Car &c, Vec2 previousPosition, double dt)
     c.wreckSupported = c.lift < .03 && c.verticalVelocity <= 0;
     b.height = foot + .8;
 }
-void World::supportPerson(Body &b, Vec2 previousPosition, double dt)
+void World::supportPerson(Body &b, Vec2 previousPosition, double dt, Footing *footing)
 {
-    double previousFloor = surface(previousPosition, b.roadLevel), foot = b.height - .85;
+    double previousFloor = floor_under(previousPosition, b.roadLevel, footing), foot = b.height - .85;
     b.roadLevel = selectLevel(b.p, b.roadLevel, foot);
-    double floor = surface(b.p, b.roadLevel);
+    double floor = floor_under(b.p, b.roadLevel, footing);
     if (std::abs(foot - previousFloor) < .2 && std::abs(floor - previousFloor) < .45 && b.verticalSpeed <= 0)
         foot = floor;
     else

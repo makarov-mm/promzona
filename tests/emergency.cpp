@@ -127,19 +127,19 @@ int main()
             c.body.roadLevel = 0;
             c.body.height = city.surface(stop, 0) + .8;
             c.planned_to = -1;
-            city.indexTraffic();
+            city.index_traffic();
             // Coming from the west the car travels along +x: direction 1 of the lights.
             while (CityLayout::green(node % World::nodes, node / World::nodes, 1, city.time))
                 city.time += .5;
             for (auto &idle : city.rescues)
                 idle = {};
-            check(!city.intersectionClear(c), "an ambulance without a call went through a red light");
+            check(!city.intersection_clear(c), "an ambulance without a call went through a red light");
             city.rescues[0].car = int(c.id);
             city.rescues[0].patient = 15;
             city.rescues[0].stage = World::RescueStage::driving;
-            check(city.intersectionClear(c), "an ambulance on a call waited for the lights");
+            check(city.intersection_clear(c), "an ambulance on a call waited for the lights");
             city.rescues[0].stage = World::RescueStage::returning;
-            check(!city.intersectionClear(c), "an ambulance on its way back went through a red light");
+            check(!city.intersection_clear(c), "an ambulance on its way back went through a red light");
             // A patient the crew cannot stop beside: he lies where no car stands, here on
             // a level that does not exist. The crew used to drive round him until the call
             // ran out. Driving past him it now has a ninth of the time; standing in a queue

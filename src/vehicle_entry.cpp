@@ -11,7 +11,7 @@ namespace Promzona
         }
     }
 
-    Vec2 World::driver_door(const Car &car, int side)
+    Vec2 World::driver_door(const Car &car, const int side)
     {
         return car.body.p + rotate({
             .x = side * (car.body.halfW + .9), 
@@ -19,7 +19,7 @@ namespace Promzona
             car.body.angle);
     }
 
-    bool World::entry_path(const Car &car, Vec2 door) const
+    bool World::entry_path(const Car &car, const Vec2 door) const
     {
         Vec2 delta = door - player.p;
         int samples = std::max(1, static_cast<int>(std::ceil(delta.length() / .32)));
@@ -48,11 +48,11 @@ namespace Promzona
     {
         if (car.driverless || car.personal || car.summoned || car.id == 0)
             return true;
-        const int index = int(car.id);
+        const int index = static_cast<int>(car.id);
         const bool police = car.kind == 3 || car.kind == 6 || car.kind == 7 || car.kind == 13 || car.kind == 14;
         int count = std::max(0, crew_size(car) - car.crewLost);
         std::vector<int> occupants;
-        auto includeCrew = [&](int actor)
+        auto includeCrew = [&](const int actor)
         {
             if (actor < 0)
                 return;
@@ -68,7 +68,7 @@ namespace Promzona
 
         // The native population has stable IDs shared by saves, routes and missions.
         // Materialise anonymous occupants using off-screen walkers with no commitments.
-        for (int i = 0; int(occupants.size()) < count && i < int(people.size()); ++i)
+        for (int i = 0; static_cast<int>(occupants.size()) < count && std::cmp_less(i, people.size()); ++i)
         {
             const Person &p = people[i];
             if (p.dead || p.riding >= 0 || p.ownedScooter >= 0 || p.courier || p.inCompany ||
@@ -79,7 +79,7 @@ namespace Promzona
                 continue;
             occupants.push_back(i);
         }
-        if (int(occupants.size()) < count)
+        if (static_cast<int>(occupants.size()) < count)
             return false;
         std::vector<Vec2> positions;
         for (int seat = 0; seat < count; ++seat)
@@ -156,7 +156,7 @@ namespace Promzona
         return police          ? (car.kind == 7 || car.kind == 14 ? 4 : 2)
                : car.kind == 4 ? 2
                : car.line >= 0 ? 1
-                               : 1 + int(car.id) % 3;
+                               : 1 + static_cast<int>(car.id) % 3;
     }
 
     void World::enter_exit()
@@ -239,7 +239,7 @@ namespace Promzona
         if (vehicleEntry.car < 0)
             return;
 
-        if (vehicleEntry.car >= static_cast<int>(cars.size()) || controlledCar >= 0 || drone.active || playerScooter >= 0 || health <= 0 || openMarket >= 0 || time > vehicleEntry.deadline || input.walking.length2() > .01 || input.shooting)
+        if (std::cmp_greater_equal(vehicleEntry.car, cars.size()) || controlledCar >= 0 || drone.active || playerScooter >= 0 || health <= 0 || openMarket >= 0 || time > vehicleEntry.deadline || input.walking.length2() > .01 || input.shooting)
         {
             vehicleEntry = {};
             return;

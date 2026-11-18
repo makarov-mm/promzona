@@ -3,6 +3,7 @@
 #include "promzona/audio.hpp"
 #include "promzona/architecture.hpp"
 #include "promzona/fleet.hpp"
+#include "promzona/frame_blend.hpp"
 #include "promzona/sector_stream.hpp"
 #include <atomic>
 #include <chrono>
@@ -33,6 +34,10 @@ namespace
         bool keys[256]{}, pressed[256]{}, firing{};
         int width{1280}, height{720}, wheel{}, cameraMode{};
         double look{}, lookPitch{}, cameraYaw{}, zoom{20};
+
+        // How far from its target the camera stands. It comes in at once and goes back out
+        // gently; so far away at first that the first frame only brings it in.
+        float camera_reach{1e9f};
         bool jobsOpen{};
         int mouseX{}, mouseY{};
         bool pointerMoved{}, clicked{}, mouseLookReady{};
@@ -242,7 +247,7 @@ namespace
             {
                 float t = static_cast<float>(i) / steps;
                 auto q = v.target + offset * t;
-                if (w.scenerySolid({q.x, q.z}, q.y, radius) || w.insideBuilding({q.x, q.z}, q.y, radius))
+                if (w.scenerySolid({q.x, q.z}, q.y, radius) || w.inside_building({q.x, q.z}, q.y, radius))
                     return offset * (static_cast<float>(i - 1) / steps);
             }
             return offset;
@@ -263,6 +268,19 @@ namespace
                 if (offset.length() >= 3.f)
                     break;
             }
+
+            a.camera_reach = offset.length();
+        }
+        else
+        {
+            // As in the managed game: the camera comes in at once when something gets in the
+            // way and goes back out gently when the view clears. Put back out at once, it
+            // jumped with every bridge and every corner of a building that passed between.
+            const float clear = offset.length();
+            a.camera_reach = clear < a.camera_reach
+                                 ? clear
+                                 : a.camera_reach + (clear - a.camera_reach) * float(1 - std::exp(-dt * 3));
+            offset = offset * (a.camera_reach / clear);
         }
 
         v.eye = v.target + offset;
@@ -416,6 +434,10 @@ int main(int argc, char *argv[])
     const auto exeDirectory = executable_directory();
     logPath = exeDirectory / "native.log";
     bool windowed = false;
+
+    // Show whole steps of the simulation only, as the game did before frames were drawn
+    // between them: for comparing the two.
+    bool raw_frames = false;
     // SDL hands over the command line as UTF-8 on every system.
     for (int i = 1; i < argc; i++)
     {
@@ -455,6 +477,8 @@ int main(int argc, char *argv[])
         }
         else if (arg == L"--windowed")
             windowed = true;
+        else if (arg == L"--raw-frames")
+            raw_frames = true;
         else if (arg == L"--frames" && i + 1 < argc)
             smokeFrames = std::max(1, std::atoi(argv[++i]));
         else if (arg == L"--screenshot" && i + 1 < argc)
@@ -735,6 +759,13 @@ int main(int argc, char *argv[])
             Timer::time_point clearNoticeAt{};
             std::wstring savedNotice;
             double accumulator = 0, fps = 60, frameAverage = 1. / 60;
+
+            // What a frame shows between two steps of the simulation, and how far from the
+            // one before the last to the last. A smoke run draws whole steps: its frames are
+            // then the same from run to run.
+            FrameBlend blend;
+            const bool blend_frames = !smoke && !raw_frames;
+            double shown_part = 0;
             int frames = 0;
             std::vector<double> frameTimes;
             std::vector<FrameTrace::Sample> phases;
@@ -1999,7 +2030,7 @@ int main(int argc, char *argv[])
                                         {
                                             const Vec3 at = front + n * along + side * across;
                                             const Vec2 p{at.x, at.z};
-                                            if (world->insideBuilding(p, world->terrain.height(p) + 3, 2.4) ||
+                                            if (world->inside_building(p, world->terrain.height(p) + 3, 2.4) ||
                                                 world->levelAt(p, 3))
                                                 return false;
                                         }
@@ -2205,7 +2236,7 @@ int main(int argc, char *argv[])
                                         const double floor = world->terrain.height(p);
                                         if (floor <= CityLayout::waterLevel + 1 || world->openCut(p, 1) ||
                                             world->scenerySolid(p, floor + .85, .55) ||
-                                            world->insideBuilding(p, floor + .85, .55))
+                                            world->inside_building(p, floor + .85, .55))
                                             continue;
                                         observer = p;
                                         break;
@@ -2606,6 +2637,12 @@ int main(int argc, char *argv[])
                         while (accumulator >= 1. / 120 && steps < maxSteps)
                         {
                             ++steps;
+
+                            // The frame is drawn between its last two steps: keep what the
+                            // last one starts from.
+                            if (blend_frames && (accumulator < 2. / 120 || steps == maxSteps))
+                                blend.remember(*world);
+
                             world->step(input, 1. / 120);
                             if (world->arrests != arrestsBefore)
                                 input.lookHeading = -world->player.angle;
@@ -2649,11 +2686,21 @@ int main(int argc, char *argv[])
                         }
                         if (steps == maxSteps && accumulator >= 1. / 120)
                             accumulator = std::fmod(accumulator, 1. / 120);
+
+                        shown_part = accumulator * 120;
                     }
                 }
                 else
                     accumulator = 0;
                 audio.pause(!app.active && !smoke, !world || app.loading || app.menu || app.console);
+
+                // From here until the picture is complete the world stands between its last two
+                // steps; it is put back before anything else looks at it.
+                std::optional<FrameBlend::Shown> between_steps;
+
+                if (blend_frames && world && !app.loading && !app.menu)
+                    between_steps.emplace(blend, *world, shown_part);
+
                 if (world && !app.loading && !app.menu)
                 {
                     frame_trace.enter(FrameTrace::camera);
@@ -2837,6 +2884,7 @@ int main(int argc, char *argv[])
                 renderer.overlay(world.get(), app.width, app.height, fps, app.menu,
                                  app.console ? &app.terminal : nullptr, app.message, levels,
                                  app.loading ? progress.load() * .95f : -1, app.jobsOpen, &menus);
+                between_steps.reset();
                 frame_trace.enter(FrameTrace::other);
                 if (smoke && scenario == L"save-slots" && !world && app.menu && !app.loading)
                 {

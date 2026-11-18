@@ -382,9 +382,13 @@ namespace Promzona
         random = Random(seed);
         buildings.clear();
         cars.clear();
+        car_footing.clear();
+        car_slope.clear();
         trafficCells.clear();
         trafficIndexAt = 0;
         people.clear();
+        people_footing.clear();
+        player_footing = {};
         pickups.clear();
         particles.clear();
         scuffs.clear();
@@ -452,11 +456,12 @@ namespace Promzona
             layoutRevision);
         roadLevels = generate_road_levels(layout, seed);
         buildings = layout.buildings;
-        indexRoofs();
+        index_roofs();
         report(.4f);
         terrain.generate(seed, nodes, buildings, true, &layout);
         for (auto &s : roadLevels)
             s.bake(terrain);
+        level_cells.build(roadLevels);
         generatePuddles();
         generatePotholes();
         report(.55f);
@@ -747,7 +752,7 @@ namespace Promzona
         auto focus = position();
         if (time >= trafficIndexAt || trafficCells.empty() || nextTrafficCar.size() != cars.size() ||
             nextTrafficPerson.size() != people.size())
-            indexTraffic();
+            index_traffic();
         if (time >= nextPlatformScan)
             updatePlatforms();
         std::vector<Vec2> previousCars, previousPeople;
@@ -758,6 +763,9 @@ namespace Promzona
         for (auto &p : people)
             previousPeople.push_back(p.body.p);
         auto previousPlayer = player.p;
+        car_footing.resize(cars.size());
+        car_slope.resize(cars.size());
+        people_footing.resize(people.size());
         std::vector<Body *> bodies;
         bodies.reserve(600);
         std::vector<size_t> localTrams;
@@ -799,9 +807,7 @@ namespace Promzona
                 local = false;
             car.distant = !local;
             car.terrainActive = car.lift < .15;
-            car.terrainGradient = {
-                (surface(b.p + Vec2{.25, 0}, b.roadLevel) - surface(b.p - Vec2{.25, 0}, b.roadLevel)) * 2,
-                (surface(b.p + Vec2{0, .25}, b.roadLevel) - surface(b.p - Vec2{0, .25}, b.roadLevel)) * 2};
+            car.terrainGradient = slope_under(b.p, b.roadLevel, car_slope[i]);
             auto f = forward(car.heading());
             if (car.kind != 12)
                 car.wheelTravel += dot(b.v, f) * dt;
@@ -866,12 +872,12 @@ namespace Promzona
                 if (time >= car.sense_at)
                     senseTraffic(car, false);
                 cruise = std::min(cruise, car.traffic_limit);
-                planExit(car);
+                plan_exit(car);
                 // A long vehicle waits further back, so that its nose stays off the crossing
                 // as an ordinary car's does.
                 const double setBack = std::max(0., b.halfH - 2.3);
                 bool clear =
-                    car.routeDistance + cruise * dt < car.route->length() - setBack || intersectionClear(car);
+                    car.routeDistance + cruise * dt < car.route->length() - setBack || intersection_clear(car);
                 const double from = car.routeDistance;
                 car.routeDistance =
                     std::min(car.route->length(),
@@ -899,7 +905,7 @@ namespace Promzona
                 b.angle = -sample.second;
                 b.v = forward(sample.second) * speed;
                 b.roadLevel = car.routeLevel;
-                b.height = surface(b.p, b.roadLevel) + .8;
+                b.height = floor_under(b.p, b.roadLevel, &car_footing[i]) + .8;
                 car.lift = car.verticalVelocity = 0;
                 previousCars[i] = b.p;
                 continue;
@@ -911,8 +917,8 @@ namespace Promzona
                 car.routeDistance = car.route->closest_distance(b.p);
                 if (time >= car.sense_at)
                     senseTraffic(car, true);
-                planExit(car);
-                bool clear = intersectionClear(car);
+                plan_exit(car);
+                bool clear = intersection_clear(car);
                 auto end = car.route->sample(car.route->length());
                 auto beyond = b.p - end.first;
                 bool reached = beyond.length() < 1.1 || (car.routeDistance > car.route->length() - 1.5 &&
@@ -1026,7 +1032,7 @@ namespace Promzona
                         // and anywhere behind the middle of the car counted: a van that stood
                         // across the flank of a unit, its nose at the rear door, kept the unit
                         // against a post for good.
-                        if (&other == &car || !onSameSurface(b, other.body))
+                        if (&other == &car || !on_same_surface(b, other.body))
                             continue;
                         const Vec2 centre = b.p - dir * (b.halfH + .75), facing = forward(other.heading()),
                                    gap = other.body.p - centre;
@@ -1044,7 +1050,7 @@ namespace Promzona
                     {
                         const Vec2 gap = walker.body.p - b.p;
                         if (walker.riding < 0 && dot(gap, dir) < 0 && dot(gap, dir) > -b.halfH - 3 &&
-                            std::abs(cross(gap, dir)) < b.halfW + .6 && onSameSurface(b, walker.body))
+                            std::abs(cross(gap, dir)) < b.halfW + .6 && on_same_surface(b, walker.body))
                             return true;
                     }
                     return false;
@@ -1334,7 +1340,7 @@ namespace Promzona
             }
             if (local && p.sidearm != WeaponId::none && (p.alertUntil > time || p.aimSeconds > 0))
             {
-                if (coverAllowsAim(p, carsNearWalkers, dir, speed))
+                if (cover_allows_aim(p, carsNearWalkers, dir, speed))
                     civilianCombat(p, dt);
                 else
                 {
@@ -1469,18 +1475,18 @@ namespace Promzona
             auto &c = cars[i];
             if (c.recovering || (c.kind == 12 && !c.destroyed))
                 continue;
-            supportCar(c, previousCars[i], dt);
+            supportCar(c, previousCars[i], dt, &car_footing[i]);
             if (int(i) == controlledCar || (c.body.p - focus).length2() < 110 * 110)
                 c.settle_attitude(dt, int(i) == controlledCar && !transitPassenger());
         }
-        for (auto &&[p, previous] : std::views::zip(people, previousPeople))
+        for (auto &&[p, previous, footing] : std::views::zip(people, previousPeople, people_footing))
         {
             if (p.riding >= 0)
             {
                 seatPassenger(p);
                 continue;
             }
-            supportPerson(p.body, previous, dt);
+            supportPerson(p.body, previous, dt, &footing);
             // Port of the drowned branch of WaterStep: the body hangs half a metre under the
             // surface and sinks to the bed at 0.6 m/s.
             if (p.dead && p.drowned && !p.body.roadLevel)
@@ -1495,7 +1501,7 @@ namespace Promzona
             }
         }
         if (controlledCar < 0)
-            supportPerson(player, previousPlayer, dt);
+            supportPerson(player, previousPlayer, dt, &player_footing);
         else if (transitPassenger())
             player.angle = -placeTransitRider(player, cars[controlledCar], playerTransitSeat);
         updateTireMarks(focus, dt);
@@ -1530,7 +1536,10 @@ namespace Promzona
             }
             else if (pickup.weapon != WeaponId::none)
             {
-                inventory.give(pickup.weapon);
+                // Left on the ground when no more of its ammunition can be carried, as in
+                // the managed game.
+                if (!inventory.give(pickup.weapon))
+                    continue;
                 sounds.push_back({"weapon_pickup", position(), .8, true});
             }
             else

@@ -2,6 +2,7 @@
 #include "promzona/fleet.hpp"
 #include <queue>
 #include <stdexcept>
+#include <utility>
 
 namespace Promzona
 {
@@ -17,6 +18,7 @@ constexpr int node(int x, int z)
 Graph serviceStreets(const World &w)
 {
     Graph edges;
+
     for (int a = 0; a < N * N; ++a)
         for (int b : w.layout.neighbours(a))
         {
@@ -24,18 +26,22 @@ Graph serviceStreets(const World &w)
                 continue;
             Vec2 p = World::nodePoint(a), f = (World::nodePoint(b) - p).unit();
             bool clear = true;
+
             for (int d = 0; d <= 36 && clear; d += 3)
             {
-                auto at = p + f * d, outer = perpendicular(f) * 5.2;
+                Vec2 at = p + f * d;
+                const auto outer = perpendicular(f) * 5.2;
                 clear = !w.levelAt(at, 14) && w.terrain.height(at + outer) > CityLayout::waterLevel + .05 &&
                         w.terrain.height(at - outer) > CityLayout::waterLevel + .05;
             }
+
             if (clear)
             {
                 edges[a].push_back(b);
                 edges[b].push_back(a);
             }
         }
+
     return edges;
 }
 
@@ -95,7 +101,7 @@ double platformRoughness(const World &world, Vec2 road, Vec2 direction, int kind
     const auto right = perpendicular(direction);
     const double width = kind == 9 ? 7.2 : 3.9;
     const auto curb = road + right * width;
-    if (!world.layout.urbanSite(curb, .6) || world.insideBuilding(curb, world.terrain.height(curb) + 1, 1))
+    if (!world.layout.urbanSite(curb, .6) || world.inside_building(curb, world.terrain.height(curb) + 1, 1))
         return 100.;
     double worst = 0;
     // A flat foundation can end in a steep cut between the vehicle and the pavement.
@@ -318,7 +324,12 @@ double World::placeTransitRider(Body &body, const Car &car, int seat)
 {
     const bool tram = car.kind == 9;
     const double side = seat % 2 ? 1. : -1.;
-    Vec2 local{side * (tram ? .83 : .74), (tram ? -2.25 : -3.05) + (seat / 2) * (tram ? 1.5 : 1.65)};
+
+    const Vec2 local{
+        .x = side * (tram ? .83 : .74), 
+        .z = (tram ? -2.25 : -3.05) + (seat / 2) * (tram ? 1.5 : 1.65)
+    };
+
     body.p = car.body.p + rotate(local, car.body.angle);
     body.height = car.body.height + (tram ? .81 : .85);
     body.roadLevel = car.body.roadLevel;
@@ -330,13 +341,16 @@ double World::placeTransitRider(Body &body, const Car &car, int seat)
 int World::freeTransitSeat(const Car &car) const
 {
     std::array<bool, 8> used{};
-    if (transitPassenger() && controlledCar == int(car.id))
+
+    if (transitPassenger() && std::cmp_equal(controlledCar, car.id))
         used[playerTransitSeat] = true;
+
     for (const auto &person : people)
-        if (person.riding == int(car.id))
+        if (person.riding == static_cast<int>(car.id))
             used[person.seat] = true;
-    auto seat = std::ranges::find(used, false);
-    return seat == used.end() ? -1 : int(seat - used.begin());
+
+    const std::ranges::borrowed_iterator_t<std::array<bool, 8> &> seat = std::ranges::find(used, false);
+    return seat == used.end() ? -1 : static_cast<int>(seat - used.begin());
 }
 
 int World::boardableTransit() const
@@ -403,7 +417,7 @@ std::optional<Vec2> World::platformExit(const Car &car, int stop) const
     {
         auto p = centre + tangent * offset;
         double y = terrain.height(p) + .85;
-        if (!layout.urbanSite(p, .4) || scenerySolid(p, y, .35) || insideBuilding(p, y, .35))
+        if (!layout.urbanSite(p, .4) || scenerySolid(p, y, .35) || inside_building(p, y, .35))
             continue;
         auto overlaps = [&](const Body &b)
         {
@@ -461,7 +475,7 @@ void World::updatePlatforms()
 {
     nextPlatformScan = time + .5;
     if (trafficCells.empty())
-        indexTraffic();
+        index_traffic();
     for (const auto &car : cars)
     {
         if (car.line < 0 || (!car.driverless && car.fireTime <= 0) || car.destroyed || car.falling ||
@@ -509,7 +523,7 @@ void World::updatePlatforms()
         for (int s = 0; s < int(line.stops.size()); ++s)
         {
             const auto curb = line.curb(s);
-            walkersNear(curb, 14, candidates);
+            walkers_near(curb, 14, candidates);
             const auto tangent = forward(line.pose(line.stops[s]).second);
             Car *car = arrivals[s];
             if (car && (car->body.p - curb).length2() > 100)
@@ -551,7 +565,7 @@ void World::updatePlatforms()
                     first = i;
             }
             if (first >= 0 && queued < 3 && layout.urbanSite(curb, .4) &&
-                !insideBuilding(curb, terrain.height(curb) + .85, .4))
+                !inside_building(curb, terrain.height(curb) + .85, .4))
             {
                 auto &p = people[first];
                 p.waitingLine = l;
@@ -639,7 +653,7 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
                     // On the same street, however steep: a tram that came down a hill at one
                     // standing at the lights below saw it when the two were a few metres apart
                     // and stopped inside it. Neither could move again.
-                    if (&c == &other || gap.length2() > 40 * 40 || !onSameSurface(b, other.body))
+                    if (&c == &other || gap.length2() > 40 * 40 || !on_same_surface(b, other.body))
                         continue;
                     const Vec2 spine =
                         forward(other.heading()) * std::max(0., other.body.halfH - other.body.halfW);
@@ -686,7 +700,7 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
                 auto yield = [&](const Body &walker)
                 {
                     const Vec2 d = walker.p - b.p;
-                    if (d.length2() > 36 * 36 || !onSameSurface(b, walker))
+                    if (d.length2() > 36 * 36 || !on_same_surface(b, walker))
                         return;
                     if (dot(d, f) > 0 && dot(d, f) < 18 && std::abs(cross(d, f)) < b.halfW + .4)
                         slow(dot(d, f) - b.halfH - 1.);
@@ -739,7 +753,7 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
                     {
                         const auto &other = cars[k];
                         if (&other == &c || other.line < 0 || other.destroyed || other.driverless ||
-                            !onSameSurface(b, other.body))
+                            !on_same_surface(b, other.body))
                             continue;
                         const Vec2 there = other.body.p - junction;
                         wait = other.claimed == node(x, z) || std::max(std::abs(there.x), std::abs(there.z)) <
@@ -751,7 +765,7 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
                         for (const auto &other : cars)
                         {
                             const auto gap = other.body.p - b.p;
-                            if (&c != &other && onSameSurface(b, other.body) && dot(gap, f) > d &&
+                            if (&c != &other && on_same_surface(b, other.body) && dot(gap, f) > d &&
                                 dot(gap, f) - other.body.halfH < need &&
                                 std::abs(cross(gap, f)) <= b.halfW + other.body.halfW &&
                                 dot(other.body.v, f) < 1)
@@ -766,7 +780,7 @@ void World::runTransit(Car &c, Input controls, bool driving, bool local, double 
                     if (!wait && c.dwell <= 0 && toStop > d &&
                         clearRail > d - b.halfH + 2 * layout.roadHalf() + 2)
                         c.claimed = node(x, z);
-                    if (wait || junctionHeld(node(x, z), &c))
+                    if (wait || junction_held(node(x, z), &c))
                         slow(d - b.halfH - 4.4);
                     break;
                 }

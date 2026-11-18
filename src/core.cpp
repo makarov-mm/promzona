@@ -204,7 +204,7 @@ namespace Promzona
         pitch_rate += clamp(dot(change, f) * (destroyed ? .09 : .11), -2., 2.);
     }
 
-    void Car::settle_attitude(double dt, bool playerDriving)
+    void Car::settle_attitude(double dt, bool player_driving)
     {
         if (recovering)
         {
@@ -238,7 +238,7 @@ namespace Promzona
             roll = roll_rate = 0;
         if (std::abs(pitch) + std::abs(pitch_rate) < .0001)
             pitch = pitch_rate = 0;
-        const bool stuck = playerDriving && !destroyed && !falling && fireTime <= 0 && lift < .12 &&
+        const bool stuck = player_driving && !destroyed && !falling && fireTime <= 0 && lift < .12 &&
                            body.v.length2() < .7 * .7 && std::cos(roll) * std::cos(pitch) < -.45;
         overturned_time = stuck ? overturned_time + dt : 0.;
         if (overturned_time > 4.)

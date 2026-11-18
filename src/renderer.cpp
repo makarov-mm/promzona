@@ -1708,7 +1708,7 @@ struct Renderer::Impl
                                 continue;
                             const auto y = tile.height(x, z);
                             const Vec2 at{x, z};
-                            if (y < CityLayout::waterLevel + .12f || world.insideBuilding(at, y + .1, .25) ||
+                            if (y < CityLayout::waterLevel + .12f || world.inside_building(at, y + .1, .25) ||
                                 (world.layout.districts() &&
                                  x >= world.layout.railStart() && x <= world.layout.railEnd() &&
                                  std::abs(z - world.layout.railZ()) < 1.95))
@@ -2345,7 +2345,7 @@ Renderer::~Renderer() = default;
 void Renderer::scene_mode(SceneMode mode)
 {
     if (mode == SceneMode::original)
-        impl_->post.releaseTargets();
+        impl_->post.release_targets();
     impl_->mode = mode;
 }
 void Renderer::language(Language language)
@@ -2819,7 +2819,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
         ActiveTexture(TEXTURE0);
         BindFramebuffer(FRAMEBUFFER, depthPass   ? r.shadowFbo[cascade]
                                      : probePass ? r.probeFbo
-                                                 : (post ? r.post.sceneTarget() : 0));
+                                                 : (post ? r.post.scene_target() : 0));
         if (probePass)
             FramebufferTexture2D(FRAMEBUFFER, COLOR_ATTACHMENT0, TEXTURE_CUBE_MAP_POSITIVE_X + probeFace,
                                  r.probeCubes[1 - r.probeFront], 0);
@@ -3692,7 +3692,7 @@ void Renderer::render(const World &world, const View &view, int w, int h)
                                     return dot(delta, delta) < 34.f * 34.f && camera.sphere(centre, 2.5f);
                                 });
         if (post)
-            r.post.beginEffects(9, reflectPuddles);
+            r.post.begin_effects(9, reflectPuddles);
         Uniform1i(r.reflectPuddlesUniform, reflectPuddles);
         Uniform1i(r.effectUniforms.softDepth, post);
         Uniform2f(r.effectUniforms.clip, nearPlane, farPlane);

@@ -1,12 +1,13 @@
 #include "promzona/world.hpp"
 #include <optional>
+#include <utility>
 
 namespace Promzona
 {
     namespace
     {
         // People with a habit pace along one line through their place: so far from it, metres.
-        constexpr double reach(Person::Role role)
+        constexpr double reach(const Person::Role role)
         {
             return role == Person::Role::beach ? 5 : role == Person::Role::vagrant ? 7 : 2.3;
         }
@@ -15,7 +16,7 @@ namespace Promzona
         constexpr double lostDistance = 60;
 
         // Managed night shift: from nine in the evening until five in the morning.
-        constexpr bool nightShift(double hour)
+        constexpr bool night_shift(const double hour)
         {
             return hour >= 21 || hour < 5;
         }
@@ -58,7 +59,7 @@ namespace Promzona
     {
         const double floor = terrain.height(at), street = layout.roadDistance(at);
         if (floor < CityLayout::waterLevel + .6 || street < layout.roadHalf() + .6 || openCut(at, .5) ||
-            levelAt(at, 2) || insideBuilding(at, floor + .85, .4))
+            levelAt(at, 2) || inside_building(at, floor + .85, .4))
             return false;
         if (role != Person::Role::beach)
             return layout.urbanSite(at, .5);
@@ -133,7 +134,7 @@ namespace Promzona
     // other street simply carries on. Ramps cut into the ground and water leave legs out.
     void World::buildWalkLegs()
     {
-        walkLegs.assign(size_t(nodes * nodes), 0);
+        walkLegs.assign(nodes * nodes, 0);
         auto clear = [&](Vec2 a, Vec2 b)
         {
             for (int k = 0; k <= 18; ++k)
@@ -151,11 +152,9 @@ namespace Promzona
             for (int side : {-1, 1})
             {
                 const bool upper = side > 0;
-                if (((upper ? north : south) || (west && east)) &&
-                    clear(corner(n, -1, side), corner(n, 1, side)))
+                if (((upper ? north : south) || (west && east)) && clear(corner(n, -1, side), corner(n, 1, side)))
                     legs |= walkLegBit(acrossNorthSouth, upper);
-                if (((upper ? east : west) || (north && south)) &&
-                    clear(corner(n, side, -1), corner(n, side, 1)))
+                if (((upper ? east : west) || (north && south)) && clear(corner(n, side, -1), corner(n, side, 1)))
                     legs |= walkLegBit(acrossEastWest, upper);
                 if (east && clear(corner(n, 1, side), corner(n + 1, -1, side)))
                     legs |= walkLegBit(blockEast, upper);
@@ -208,7 +207,7 @@ namespace Promzona
         if ((p.sz > 0 || j > 0) && (walkLegs[p.sz > 0 ? n : n - nodes] & walkLegBit(blockNorth, p.sx > 0)))
             options[count++] = 3;
         if (count > 1)
-            count = int(std::remove(options, options + count, p.lastWalk) - options);
+            count = static_cast<int>(std::remove(options, options + count, p.lastWalk) - options);
         p.next = n;
         p.nextSx = p.sx;
         p.nextSz = p.sz;
@@ -244,8 +243,10 @@ namespace Promzona
     {
         if (from == to)
             return false;
+
         const bool alongX = std::abs(to - from) == 1;
         const int way = to > from ? 1 : -1, low = std::min(from, to);
+
         for (int s : {side, -side})
         {
             if (!(walkLegs[low] & walkLegBit(alongX ? WalkLeg::blockEast : WalkLeg::blockNorth, s > 0)))
@@ -263,15 +264,17 @@ namespace Promzona
             p.body.p = start + (p.target - start) * along;
             return true;
         }
+
         return false;
     }
 
     // From a place beside a street, the way to its middle.
     Vec2 World::roadward(Vec2 at)
     {
-        const Vec2 beside = at - nodePoint(nearestNode(at));
-        return std::abs(beside.x) < std::abs(beside.z) ? Vec2{beside.x > 0 ? -1. : 1., 0}
-                                                       : Vec2{0, beside.z > 0 ? -1. : 1.};
+        const auto [x, z] = at - nodePoint(nearest_node(at));
+        return std::abs(x) < std::abs(z)
+            ? Vec2{.x = x > 0 ? -1. : 1., .z = 0}
+            : Vec2{.x = 0, .z = z > 0 ? -1. : 1.};
     }
 
     // Where a walker heads. Port of the managed walking path, which bows to the right of the
@@ -297,7 +300,8 @@ namespace Promzona
             bow = dot(right, kerb) > 0 ? .52 : 0;
         }
 
-        return (from + along * ahead + right * (bow * std::sin(pi * clamp(ahead / length, 0., 1.))) - p.body.p).unit();
+        return (from + along * ahead + right * (bow * std::sin(pi * clamp(ahead / length, 0., 1.))) - p.body.p)
+            .unit();
     }
 
     void World::leave_role(Person &p)
@@ -318,7 +322,8 @@ namespace Promzona
     // place they happen to be.
     bool World::take_role(int actor, Person::Role role, bool unseen)
     {
-        auto &p = people[actor];
+        Person &p = people[actor];
+
         if (role == Person::Role::vagrant)
         {
             if (!role_ground(role, p.body.p))
@@ -328,6 +333,7 @@ namespace Promzona
             ++rolesTaken;
             return true;
         }
+
         for (int attempt = 0; attempt < 12; ++attempt)
         {
             Vec2 at;
@@ -392,6 +398,7 @@ namespace Promzona
             ++rolesTaken;
             return true;
         }
+
         return false;
     }
 
@@ -401,29 +408,36 @@ namespace Promzona
     {
         if (p.role == Person::Role::none || p.fear > 0)
             return;
+
         const double far = reach(p.role);
         const double phase = std::fmod(time + p.body.id * 2., p.role == Person::Role::vagrant ? 35. : 22.);
         Vec2 goal = p.roleHome;
+
         if (phase >= 10)
         {
-            const double angle = static_cast<double>(p.body.id);
+            const double angle = p.body.id;
             const Vec2 step = Vec2{std::sin(angle), std::cos(angle)} * (std::sin(phase * .3) * far);
             if (role_ground(p.role, p.roleHome + step))
                 goal = p.roleHome + step;
         }
+
         const Vec2 delta = goal - p.body.p;
         const double distance = delta.length();
+
         // Standing time is spent wherever it finds the person, unless a fright took them away.
         if (distance < .3 || (phase < 10 && distance < far + 1.5))
         {
             speed = 0;
             if (p.role == Person::Role::vagrant)
                 return;
+
             // Sunbathers look at the water, the night shift at the passing cars.
             Vec2 view{};
+
             if (p.role == Person::Role::beach)
-                view = std::abs(p.roleHome.x) > std::abs(p.roleHome.z) ? Vec2{p.roleHome.x, 0}
-                                                                       : Vec2{0, p.roleHome.z};
+                view = std::abs(p.roleHome.x) > std::abs(p.roleHome.z)
+                    ? Vec2{.x = p.roleHome.x, .z = 0}
+                    : Vec2{.x = 0, .z = p.roleHome.z};
             else
             {
                 double nearest = 1e9;
@@ -468,112 +482,127 @@ namespace Promzona
             c.signalled = w.crossingLights(p.node, c.alongX, c.alongX ? p.sz : p.sx);
             return c;
         }
-        } // namespace
+    }
 
-        // Port of the managed walk signal (CityTraffic.ChooseWalk asks for four seconds of it;
-        // the native streets are wider): nobody steps off the kerb while the cross traffic has
-        // green or gets it within eight seconds.
-        double World::kerb_wait(const Person &p) const
+    // Port of the managed walk signal (CityTraffic.ChooseWalk asks for four seconds of it;
+    // the native streets are wider): nobody steps off the kerb while the cross traffic has
+    // green or gets it within eight seconds.
+    double World::kerb_wait(const Person &p) const
+    {
+        const std::optional<Crossing> c = crossing_of(*this, p);
+        const double kerb = layout.roadHalf();
+        // The wait begins a good step back from the kerb: a truck that turns the corner takes
+        // its flank over the edge of the pavement.
+        if (!c || !c->signalled || c->offset > -kerb || c->offset < -kerb - 1.6)
+            return 0;
+        const double phase = CityLayout::signal_phase(c->i, c->j, time);
+
+        // Cars along z have green for 14..26, cars along x for 0..12.
+        const double start = c->alongX ? 14 : 0, end = c->alongX ? 26 : 12;
+        const double until_green = std::fmod(start - phase + 28, 28.);
+
+        if (phase >= start && phase < end)
+            return end - phase;
+
+        return until_green >= 8 ? 0 : until_green + (end - start);
+    }
+
+    // In the road of a crossing with lights; `caught` when they changed halfway across.
+    bool World::on_crossing(const Person &p, bool caught) const
+    {
+        const std::optional<Crossing> c = crossing_of(*this, p);
+        return c && c->signalled && std::abs(c->offset) < layout.roadHalf() && (!caught || CityLayout::green(c->i, c->j, c->alongX ? 0 : 1, time));
+    }
+
+    // The first inhabitants of the beach and the homeless corners. Uses its own sequence:
+    // the seeded city of every earlier save stays what it was.
+    void World::settle_roles()
+    {
+        roleRandom = Random(seed ^ 0x524f4c45u);
+        nextRoleStep = 0;
+        roleCursor = 0;
+        towelGuests = 0;
+
+        for (int i = static_cast<int>(people.size()) - 1; i >= 0; --i)
+            if (people[i].homeless() && role_candidate(i))
+                take_role(i, Person::Role::vagrant, false);
+
+        size_t places = role_quota(Person::Role::beach);
+
+        for (int i = static_cast<int>(people.size()) - 1; i >= 0 && places; --i)
         {
-            const auto c = crossing_of(*this, p);
-            const double kerb = layout.roadHalf();
-            // The wait begins a good step back from the kerb: a truck that turns the corner takes
-            // its flank over the edge of the pavement.
-            if (!c || !c->signalled || c->offset > -kerb || c->offset < -kerb - 1.6)
-                return 0;
-            const double phase = CityLayout::signal_phase(c->i, c->j, time);
-            // Cars along z have green for 14..26, cars along x for 0..12.
-            const double start = c->alongX ? 14 : 0, end = c->alongX ? 26 : 12;
-            const double untilGreen = std::fmod(start - phase + 28, 28.);
-            if (phase >= start && phase < end)
-                return end - phase;
-            return untilGreen >= 8 ? 0 : untilGreen + (end - start);
+            if (const Person &p = people[i]; p.elder() || p.drunk() || p.homeless() || !role_candidate(i))
+                continue;
+
+            if (take_role(i, Person::Role::beach, false))
+                --places;
         }
 
-        // In the road of a crossing with lights; `caught` when they changed halfway across.
-        bool World::on_crossing(const Person &p, bool caught) const
-        {
-            const auto c = crossing_of(*this, p);
-            return c && c->signalled && std::abs(c->offset) < layout.roadHalf() &&
-                   (!caught || CityLayout::green(c->i, c->j, c->alongX ? 0 : 1, time));
-        }
+        rolesTaken = rolesLeft = dutiesEnded = 0;
+    }
 
-        // The first inhabitants of the beach and the homeless corners. Uses its own sequence:
-        // the seeded city of every earlier save stays what it was.
-        void World::settle_roles()
+    // Port of the managed RolesStep. Night workers leave at dawn, a squad whose chase is
+    // over goes off duty, and the beach and the night shift fill up again -- all of it where
+    // the player cannot see.
+    void World::step_roles()
+    {
+        nextRoleStep = time + 2;
+        const bool night = night_shift(clock.hour);
+        const bool calm = wantedLevel() == 0;
+        size_t beach = 0, shift = 0;
+
+        for (size_t i = 0; i < people.size(); ++i)
         {
-            roleRandom = Random(seed ^ 0x524f4c45u);
-            nextRoleStep = 0;
-            roleCursor = 0;
-            towelGuests = 0;
-            for (int i = int(people.size()) - 1; i >= 0; --i)
-                if (people[i].homeless() && role_candidate(i))
-                    take_role(i, Person::Role::vagrant, false);
-            size_t places = role_quota(Person::Role::beach);
-            for (int i = int(people.size()) - 1; i >= 0 && places; --i)
+            Person &p = people[i];
+
+            if (p.role != Person::Role::none)
             {
-                const auto &p = people[i];
-                if (p.elder() || p.drunk() || p.homeless() || !role_candidate(i))
-                    continue;
-                if (take_role(i, Person::Role::beach, false))
-                    --places;
+                const bool lost = (p.body.p - p.roleHome).length2() > lostDistance * lostDistance;
+                const bool over = p.role == Person::Role::night && !night && outOfSight(p.body.p);
+                if (p.dead || p.riding >= 0 || p.uniform != Person::Uniform::none || lost || over)
+                    leave_role(p);
             }
-            rolesTaken = rolesLeft = dutiesEnded = 0;
-        }
 
-        // Port of the managed RolesStep. Night workers leave at dawn, a squad whose chase is
-        // over goes off duty, and the beach and the night shift fill up again -- all of it where
-        // the player cannot see.
-        void World::step_roles()
-        {
-            nextRoleStep = time + 2;
-            const bool night = nightShift(clock.hour);
-            const bool calm = wantedLevel() == 0;
-            size_t beach = 0, shift = 0;
-            for (size_t i = 0; i < people.size(); ++i)
-            {
-                auto &p = people[i];
-                if (p.role != Person::Role::none)
-                {
-                    const bool lost = (p.body.p - p.roleHome).length2() > lostDistance * lostDistance;
-                    const bool over = p.role == Person::Role::night && !night && outOfSight(p.body.p);
-                    if (p.dead || p.riding >= 0 || p.uniform != Person::Uniform::none || lost || over)
-                        leave_role(p);
-                }
-                beach += p.role == Person::Role::beach;
-                shift += p.role == Person::Role::night;
-                if (p.homeless() && p.role == Person::Role::none && role_candidate(int(i)))
-                    take_role(int(i), Person::Role::vagrant, false);
-                // Before this rule every pursuit left two to four armed officers walking the
-                // streets as citizens for the rest of the session (managed RolesStep).
-                if (p.uniform != Person::Uniform::none && !p.dead && p.riding < 0 && outOfSight(p.body.p) &&
-                    (p.officer() ? calm && int(i) != patrol.officer : !paramedic_call(int(i))) &&
-                    !personEngaged(int(i)))
-                {
-                    p.uniform = Person::Uniform::none;
-                    p.sidearm = Person::civilianWeapon(seed, p.body.id);
-                    p.alertUntil = p.aimSeconds = 0;
-                    p.burstLeft = 0;
-                    p.cover = {};
-                    ++dutiesEnded;
-                }
-            }
-            const Person::Role open = night && shift < role_quota(Person::Role::night) ? Person::Role::night
-                                      : beach < role_quota(Person::Role::beach)        ? Person::Role::beach
-                                                                                       : Person::Role::none;
-            if (open == Person::Role::none)
-                return;
+            beach += p.role == Person::Role::beach;
+            shift += p.role == Person::Role::night;
 
-            // One newcomer per pass, as in the managed game; elders, drunks and the homeless
-            // keep their own manners.
-            for (size_t n = 0; n < people.size(); ++n)
+            if (p.homeless() && p.role == Person::Role::none && role_candidate(static_cast<int>(i)))
+                take_role(static_cast<int>(i), Person::Role::vagrant, false);
+
+            // Before this rule every pursuit left two to four armed officers walking the
+            // streets as citizens for the rest of the session (managed RolesStep).
+            if (p.uniform != Person::Uniform::none && !p.dead && p.riding < 0 && outOfSight(p.body.p) && (p.officer() ? calm && std::cmp_not_equal(i, patrol.officer) : !paramedic_call(static_cast<int>(i))) && !personEngaged(static_cast<int>(i)))
             {
-                const size_t i = (roleCursor + n) % people.size();
-                if (const auto &p = people[i]; p.elder() || p.drunk() || p.homeless() || !role_candidate(int(i)) || !outOfSight(p.body.p))
-                    continue;
-                take_role(static_cast<int>(i), open, true);
-                roleCursor = (i + 131) % people.size();
-                break;
+                p.uniform = Person::Uniform::none;
+                p.sidearm = Person::civilianWeapon(seed, p.body.id);
+                p.alertUntil = p.aimSeconds = 0;
+                p.burstLeft = 0;
+                p.cover = {};
+                ++dutiesEnded;
             }
         }
+
+        const Person::Role open = night && shift < role_quota(Person::Role::night)
+            ? Person::Role::night
+            : beach < role_quota(Person::Role::beach)
+                ? Person::Role::beach
+                : Person::Role::none;
+
+        if (open == Person::Role::none)
+            return;
+
+        // One newcomer per pass, as in the managed game; elders, drunks and the homeless
+        // keep their own manners.
+        for (size_t n = 0; n < people.size(); ++n)
+        {
+            const size_t i = (roleCursor + n) % people.size();
+
+            if (const Person &p = people[i]; p.elder() || p.drunk() || p.homeless() || !role_candidate(static_cast<int>(i)) || !outOfSight(p.body.p))
+                continue;
+
+            take_role(static_cast<int>(i), open, true);
+            roleCursor = (i + 131) % people.size();
+            break;
+        }
+    }
 }

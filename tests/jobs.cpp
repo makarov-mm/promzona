@@ -228,9 +228,9 @@ void peacePlaces(const std::filesystem::path &path)
     const auto &spots = w.job.route.spots;
     check(route[0] == int(w.sites.size()) + stop, "the bus stop next to the player is not the first place");
     // The mark is not on the stop itself but on free pavement a few steps from it.
-    check(std::abs(World::peaceOffset(0).z - 2.8) < 1e-9 && std::abs(World::peaceOffset(0).x) < 1e-9 &&
-              std::abs(World::peaceOffset(10).x - 4) < 1e-9 && std::abs(World::peaceOffset(10).z) < 1e-9 &&
-              std::abs(World::peaceOffset(23).length() - 5.2) < 1e-9 && World::peaceOffset(-1).length() == 0,
+    check(std::abs(World::peace_offset(0).z - 2.8) < 1e-9 && std::abs(World::peace_offset(0).x) < 1e-9 &&
+              std::abs(World::peace_offset(10).x - 4) < 1e-9 && std::abs(World::peace_offset(10).z) < 1e-9 &&
+              std::abs(World::peace_offset(23).length() - 5.2) < 1e-9 && World::peace_offset(-1).length() == 0,
           "the rings about a place are not those of the managed game");
     check((w.jobTarget() - w.peaceSpot(route[0], spots[0])).length() < 1e-9,
           "the route does not point at the chosen spot");

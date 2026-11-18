@@ -185,8 +185,8 @@ namespace Promzona
 
         // Where and since when the car has not moved a metre: a driver who has waited two
         // minutes for nothing gives up out of sight (World::renewCity). Not saved.
-        Vec2 stallAnchor{};
-        double stallSince{};
+        Vec2 stall_anchor{};
+        double stall_since{};
 
         // A driver pushed off the route who cannot go on backs up a little and tries again
         // (the managed CityCar.Stuck and ReverseFor). Saved while rejoining traffic.
@@ -210,8 +210,8 @@ namespace Promzona
         double heading() const { return -body.angle; }
         double roll_rate{}, pitch_rate{}, overturned_time{}, righting_time{}, righting_roll{}, righting_pitch{};
         void begin_righting();
-        void apply_impact_rotation(Vec2 velocityChange);
-        void settle_attitude(double dt, bool playerDriving);
+        void apply_impact_rotation(Vec2 velocity_change);
+        void settle_attitude(double dt, bool player_driving);
         bool mounted_gun() const { return kind == 11 || kind == 14; }
         bool grounded() const { return lift < .12 && std::cos(roll) * std::cos(pitch) > .45; }
         void destroy();

@@ -29,7 +29,7 @@ namespace Promzona
 
         std::vector<Quad> quads_;
         std::vector<Vertex> vertices_;
-        std::array<RainCell, 32 * 32> rainCells_{};
+        std::array<RainCell, 32 * 32> rain_cells_{};
         GLuint vao_{}, vbo_{};
         GLint matrix_{};
         Vec3 eye_{}, forward_{}, right_{}, up_{};
@@ -46,7 +46,7 @@ namespace Promzona
         EffectBatch &operator=(const EffectBatch &) = delete;
         ~EffectBatch();
         void initialize(GLuint shader);
-        void clear_weather_cache() { rainCells_.fill({}); }
+        void clear_weather_cache() { rain_cells_.fill({}); }
         void draw(GLuint shader, const World &w, const View &view, const Mat4 &vp, bool particles);
         size_t size() const { return quads_.size(); }
     };

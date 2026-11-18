@@ -40,7 +40,7 @@ namespace Promzona
                 Vec2 heading = (lead->target - lead->body.p).unit();
                 Vec2 at = lead->body.p - heading * (.9 * (n - i));
 
-                if (openCut(at, .4) || insideBuilding(at, terrain.height(at) + .8, .35))
+                if (openCut(at, .4) || inside_building(at, terrain.height(at) + .8, .35))
                     continue;
 
                 lead->inCompany = p.inCompany = true;
@@ -184,7 +184,7 @@ namespace Promzona
         {
             auto at = p.body.p + d * .7;
             return dryGround(at) && (p.body.roadLevel || !openCut(at, .4)) &&
-                   !insideBuilding(at, surface(at, p.body.roadLevel) + .8, .36);
+                   !inside_building(at, surface(at, p.body.roadLevel) + .8, .36);
         };
         if (speed > .01 && !clear(dir))
         {

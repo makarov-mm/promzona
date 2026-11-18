@@ -7,14 +7,14 @@ namespace Promzona
     std::vector<TreePlant> planTrees(const World &w)
     {
         std::vector<TreePlant> trees;
-        const auto &l = w.layout;
+        const CityLayout &l = w.layout;
         // Index padded footprints once. Candidate saplings can share a very small planting pocket.
         const int cells = l.nodes() - 1;
-        auto indexSites = [&](const std::vector<Building> &sites, double margin)
+        auto index_sites = [&](const std::vector<Building> &sites, double margin)
         {
-            std::vector<std::vector<const Building *>> bins(size_t(cells) * cells);
+            std::vector<std::vector<const Building *>> bins(static_cast<size_t>(cells) * cells);
             auto cell = [&](double x)
-            { return clamp(int(std::floor((x - l.coordinate(0)) / l.spacing)), 0, cells - 1); };
+            { return clamp(int(std::floor((x - l.coordinate(0)) / CityLayout::spacing)), 0, cells - 1); };
             for (const auto &site : sites)
                 for (int z = cell(site.p.z - site.half.z - margin); z <= cell(site.p.z + site.half.z + margin);
                      ++z)
@@ -23,7 +23,7 @@ namespace Promzona
                         bins[x + cells * z].push_back(&site);
             return bins;
         };
-        const auto buildings = indexSites(w.buildings, 4.5), furniture = indexSites(l.furniture, 1.8);
+        const auto buildings = index_sites(w.buildings, 4.5), furniture = index_sites(l.furniture, 1.8);
         for (int j = 0; j < l.nodes() - 1; ++j)
             for (int i = 0; i < l.nodes() - 1; ++i)
             {
@@ -41,7 +41,7 @@ namespace Promzona
                     // Leave the continuous sidewalk clear; use courtyards and park interiors.
                     Vec2 p{l.coordinate(i) + 12 + r.next() * 12, l.coordinate(j) + 12 + r.next() * 12};
                     float h = float(5.8 + r.next() * 4.5);
-                    TreeKind kind = TreeKind(r.index(3));
+                    TreeKind kind = static_cast<TreeKind>(r.index(3));
                     if (yard)
                     {
                         if (trees.size() >= first + 2)
@@ -53,8 +53,8 @@ namespace Promzona
                         const double step = (l.spacing - 2 * inset) / plantingGrid;
                         p = {l.coordinate(i) + inset + (cell % plantingGrid + r.next()) * step,
                              l.coordinate(j) + inset + (cell / plantingGrid + r.next()) * step};
-                        h = float(3.6 + r.next() * 3.1);
-                        kind = TreeKind((firstSpecies + int(trees.size() - first)) % 3);
+                        h = static_cast<float>(3.6 + r.next() * 3.1);
+                        kind = static_cast<TreeKind>((firstSpecies + static_cast<int>(trees.size() - first)) % 3);
                         if (yard->edge_distance(p) < .78)
                             continue;
                         double room = 10.;
@@ -62,9 +62,9 @@ namespace Promzona
                             room = std::min(room, std::max(std::abs(p.x - b->p.x) - b->half.x,
                                                            std::abs(p.z - b->p.z) - b->half.z) -
                                                       1.41);
-                        h = std::min(h, float(room) / (kind == TreeKind::linden  ? .28f
-                                                       : kind == TreeKind::birch ? .24f
-                                                                                 : .22f));
+                        h = std::min(h, static_cast<float>(room) / (kind == TreeKind::linden  ? .28f
+                                                                        : kind == TreeKind::birch ? .24f
+                                                                        : .22f));
                         if (h < 3.05f)
                             continue;
                     }
@@ -102,7 +102,7 @@ namespace Promzona
                         }
                     }
                     if (!blocked)
-                        trees.push_back({{float(p.x), float(w.terrain.height(p) - .06), float(p.z)},
+                        trees.push_back({{.x = static_cast<float>(p.x), .y = static_cast<float>(w.terrain.height(p) - .06), .z = static_cast<float>(p.z)},
                                          h,
                                          crown,
                                          kind,

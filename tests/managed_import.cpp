@@ -158,7 +158,7 @@ int main()
                 const Vec2 p = plan.position() + Vec2{dx, dz};
                 const double centre = plan.terrain.height(p) + .85;
                 if (plan.layout.urbanSite(p, 3) && !plan.levelAt(p, 4) &&
-                    !plan.insideBuilding(p, centre, 2) && plan.vehicleSpace(p, centre, nullptr, false))
+                    !plan.inside_building(p, centre, 2) && plan.vehicleSpace(p, centre, nullptr, false))
                     spot = p, found = true;
             }
         require(found, "no free ground near the start");
@@ -343,13 +343,13 @@ int main()
                 free = plan.layout.urbanSite(pavement, 2) && !plan.levelAt(pavement, 6) &&
                        !plan.openCut(pavement, 1) &&
                        plan.layout.roadDistance(pavement) > plan.layout.roadHalf() + .5 &&
-                       !plan.insideBuilding(pavement, centre, .6) &&
+                       !plan.inside_building(pavement, centre, .6) &&
                        plan.vehicleSpace(pavement, centre, nullptr, true) &&
                        // Out of reach of the player's car: nobody there is asked to hail a taxi.
                        (lanes[2].at - pavement).length() > 400;
             }
             require(free, "no free pavement in the old plan");
-            const Vec2 junction = World::nodePoint(World::nearestNode(lanes[0].at));
+            const Vec2 junction = World::nodePoint(World::nearest_node(lanes[0].at));
             const Vec2 carriageway = lanes[2].at + Vec2{.4, .4};
 
             ManagedSave town = old;

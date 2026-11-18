@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstdlib>
 #include <fstream>
 #include <stdexcept>
 #include <unordered_map>
@@ -46,7 +45,7 @@ namespace
         return (mix(ur, r) << 16) | (mix(ug, g) << 8) | mix(ub, b);
     }
 
-    std::uint32_t pixel(Color color)
+    std::uint32_t pixel(const Color color)
     {
         return ((color & 0xFF) << 16) | (color & 0xFF00) | ((color >> 16) & 0xFF);
     }
@@ -61,7 +60,7 @@ namespace
 
     unsigned read16(const unsigned char *p)
     {
-        return unsigned(p[0]) << 8 | p[1];
+        return static_cast<unsigned>(p[0]) << 8 | p[1];
     }
 }
 
@@ -78,28 +77,28 @@ struct Font::Impl
         const int offset = stbtt_GetFontOffsetForIndex(file.data(), 0);
         if (offset < 0 || !stbtt_InitFont(&info, file.data(), offset))
             throw std::runtime_error("Unreadable font: " + path.string());
-        scale = stbtt_ScaleForMappingEmToPixels(&info, float(em));
+        scale = stbtt_ScaleForMappingEmToPixels(&info, static_cast<float>(em));
         // GDI sizes the text cell by the Windows metrics of the OS/2 table.
-        if (const stbtt_uint32 os2 = stbtt__find_table(file.data(), stbtt_uint32(offset), "OS/2"))
+        if (const stbtt_uint32 os2 = stbtt__find_table(file.data(), static_cast<stbtt_uint32>(offset), "OS/2"))
         {
-            ascent = int(std::ceil(read16(file.data() + os2 + 74) * scale));
-            descent = int(std::ceil(read16(file.data() + os2 + 76) * scale));
+            ascent = static_cast<int>(std::ceil(read16(file.data() + os2 + 74) * scale));
+            descent = static_cast<int>(std::ceil(read16(file.data() + os2 + 76) * scale));
         }
         else
         {
             int a = 0, d = 0, gap = 0;
             stbtt_GetFontVMetrics(&info, &a, &d, &gap);
-            ascent = int(std::ceil(a * scale));
-            descent = int(std::ceil(-d * scale));
+            ascent = static_cast<int>(std::ceil(a * scale));
+            descent = static_cast<int>(std::ceil(-d * scale));
         }
     }
 
     const Glyph &glyph(char32_t c) const
     {
-        if (auto found = glyphs.find(c); found != glyphs.end())
+        if (const std::unordered_map<char32_t, Glyph>::iterator found = glyphs.find(c); found != glyphs.end())
             return found->second;
         Glyph g;
-        const int index = stbtt_FindGlyphIndex(&info, int(c));
+        const int index = stbtt_FindGlyphIndex(&info, static_cast<int>(c));
         int advance = 0, bearing = 0;
         stbtt_GetGlyphHMetrics(&info, index, &advance, &bearing);
         g.advance = int(std::lround(advance * scale));
@@ -109,7 +108,7 @@ struct Font::Impl
         g.h = std::max(0, y1 - g.y0);
         if (g.w && g.h)
         {
-            g.coverage.resize(size_t(g.w) * g.h);
+            g.coverage.resize(static_cast<size_t>(g.w) * g.h);
             stbtt_MakeGlyphBitmap(&info, g.coverage.data(), g.w, g.h, g.w, scale, scale, index);
         }
         return glyphs.emplace(c, std::move(g)).first->second;

@@ -68,7 +68,7 @@ void passengerJourney(World &w, Car &car, const std::filesystem::path &save)
     walker.boardAfter = w.time;
     walker.body.p = line.curb(stop);
     walker.body.height = w.terrain.height(walker.body.p) + .85;
-    w.indexTraffic();
+    w.index_traffic();
     w.updatePlatforms();
     check(walker.waitingLine == car.line && walker.waitingStop == stop && walker.riding < 0,
           "pedestrian did not queue at the curb");
@@ -142,7 +142,7 @@ void test(std::uint32_t seed)
         auto road = route.pose(route.stops.at(3)).first;
         auto pavement = route.curb(3);
         check(std::abs(w.terrain.height(road) - w.terrain.height(pavement)) < 1. &&
-                  !w.insideBuilding(pavement, w.terrain.height(pavement) + 1., .6),
+                  !w.inside_building(pavement, w.terrain.height(pavement) + 1., .6),
               "trolley doors open onto an inaccessible pavement");
     }
     if (seed != 17)

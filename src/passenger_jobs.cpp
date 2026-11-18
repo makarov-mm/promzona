@@ -25,7 +25,7 @@ namespace Promzona
                p.knockedUntil <= time && p.ownedScooter < 0 && !p.courier && !p.inCompany && p.riding < 0 &&
                p.health > 0 && !p.body.roadLevel && p.burnUntil <= time && p.fear <= 0 &&
                layout.urbanSite(p.body.p) && !levelAt(p.body.p, 2) &&
-               !insideBuilding(p.body.p, p.body.height, .5);
+               !inside_building(p.body.p, p.body.height, .5);
     }
 
     bool World::waitingForTaxi(int actor) const

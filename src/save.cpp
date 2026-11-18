@@ -404,6 +404,11 @@ std::function<void()> World::captureSave(const std::filesystem::path &path) cons
               {"nextFlameSound", nextFlameSound}};
     j["drone"] = drone;
     j["transitStopLayout"] = 1;
+    // The death scene in progress. Without it the first step after loading began the scene
+    // anew: the fall, its sound and the whole wait for the clinic. Written only while the
+    // scene lasts.
+    if (dying())
+        j["death"] = {deathAt, deathPlace.x, deathPlace.z, deathHeight};
     auto &moved = j["streetFixtures"] = json::array();
     for (size_t i = 0; i < fixtures.size(); ++i)
     {
@@ -602,6 +607,20 @@ void World::load(const std::filesystem::path &path)
     j.at("money").get_to(next.money);
     j.at("wanted").get_to(next.wanted);
     j.at("time").get_to(next.time);
+    if (j.contains("death"))
+    {
+        const auto &death = j.at("death");
+        next.deathAt = death.at(0).get<double>();
+        next.deathPlace = {death.at(1).get<double>(), death.at(2).get<double>()};
+        next.deathHeight = death.at(3).get<double>();
+        // The scene belongs to a dead player and began in the past.
+        if (!(next.health <= 0) || !(next.deathAt >= 0 && next.deathAt <= next.time) ||
+            !std::isfinite(next.deathPlace.x) || !std::isfinite(next.deathPlace.z) ||
+            !std::isfinite(next.deathHeight))
+            throw std::runtime_error("Invalid saved death scene");
+        // Lying still until the clinic takes over, as beginDeath() leaves the player.
+        next.playerKnockedUntil = next.deathAt + deathSeconds + 1;
+    }
     next.recoveryReadyAt = j.value("recoveryReadyAt", 0.);
     if (!(next.recoveryReadyAt >= 0 && next.recoveryReadyAt <= next.time + 8.01))
         throw std::runtime_error("Invalid vehicle recovery cooldown");

@@ -277,17 +277,33 @@ namespace Promzona
         CityLayout layout;
         Terrain terrain;
         std::vector<RoadLevel> roadLevels;
+
+        // The cells of the city a road level comes near. Nearly every actor stands in a cell
+        // none comes near, and is spared the search through the levels that levelAt would
+        // otherwise make for it on every step. Built with the levels in generate().
+        struct LevelCells
+        {
+            // The side of a cell, and how far beyond a level a question may reach.
+            static constexpr double cell = 8, margin = 2;
+            double x{}, z{};
+            int columns{}, rows{};
+            std::vector<char> occupied;
+            void build(std::span<const RoadLevel> levels);
+            // No level holds `p`, whatever margin up to `margin` it is asked with.
+            bool none_near(Vec2 p) const;
+        } level_cells;
+
         Clock clock;
         bool dayNightCycle{true};
         double simulationSpeed{1};
         Inventory inventory;
         std::vector<Building> buildings;
         std::vector<std::vector<unsigned>> roofCells;
-        void indexRoofs();
+        void index_roofs();
         double flightFloor(Vec2 pos) const;
         double precipitationSurface(Vec2 pos) const;
         double highestRoof(Vec2 pos, double floor, double margin) const;
-        bool insideBuilding(Vec2 pos, double y, double radius) const;
+        bool inside_building(Vec2 pos, double y, double radius) const;
         std::vector<TreePlant> trees;
         std::vector<Car> cars;
         std::vector<Person> people;
@@ -331,7 +347,7 @@ namespace Promzona
         void rider_intent(Person &person, Vec2 &direction, double &speed);
         void update_scooters(double dt);
         void step_wildlife(double dt);
-        void scare_wildlife(Vec2 origin, double height, double lethalRadius);
+        void scare_wildlife(const Vec2& origin, double height, double lethalRadius);
         // A place for an animal, and whether it is a pavement rather than the lawn of a park.
         struct Perch
         {
@@ -346,7 +362,7 @@ namespace Promzona
         // files along a pavement.
         static Vec2 flock_offset(int member, bool pavement);
         Perch landing_site(Vec2 near, Vec2 away);
-        void take_flight(int flock, Vec2 from, Vec2 away);
+        void take_flight(int flock, const Vec2& from, const Vec2& away);
         std::vector<TransitLine> lines;
         // When the driver of a trolleybus that has left its wires is told so again.
         double wiresNoticeAt{};
@@ -362,7 +378,7 @@ namespace Promzona
         static double placeTransitRider(Body &body, const Car &car, int seat);
         std::optional<Vec2> platformExit(const Car &car, int stop) const;
         int freeTransitSeat(const Car &car) const;
-        void walkersNear(Vec2 pos, double radius, std::vector<int> &out) const;
+        void walkers_near(Vec2 pos, double radius, std::vector<int> &out) const;
         void generateTransit();
         void runTransit(Car &car, Input controls, bool driving, bool local, double dt);
         void alignTram(Car &car, double dt);
@@ -612,8 +628,31 @@ namespace Promzona
         int selectLevel(Vec2 p, int previous, double foot) const;
         bool scenerySolid(Vec2 p, double y, double radius = .03) const;
         bool openCut(Vec2 p, double margin = 0) const;
-        void supportCar(Car &car, Vec2 previousPosition, double dt);
-        void supportPerson(Body &body, Vec2 previousPosition, double dt);
+        // The floor under an actor where it was last supported. The floor of a step ago, and
+        // the floor under whoever stands still, are then read back and not worked out again.
+        // Not saved.
+        struct Footing
+        {
+            Vec2 at{};
+            int level{};
+            double floor{};
+            bool known{};
+        };
+        // The slope of the ground under a car, kept the same way for a car that stands.
+        struct Slope
+        {
+            Vec2 at{};
+            int level{};
+            Vec2 gradient{};
+            bool known{};
+        };
+        std::vector<Footing> car_footing, people_footing;
+        std::vector<Slope> car_slope;
+        Footing player_footing;
+        double floor_under(Vec2 p, int level, Footing *footing) const;
+        Vec2 slope_under(Vec2 p, int level, Slope &slope) const;
+        void supportCar(Car &car, Vec2 previousPosition, double dt, Footing *footing = nullptr);
+        void supportPerson(Body &body, Vec2 previousPosition, double dt, Footing *footing = nullptr);
         void appendLevelContacts(std::uint32_t &id);
         // `source` replaces the city's own sequence where a choice must not disturb it.
         int chooseWalkNext(int n, int previous, Random *source = nullptr);
@@ -661,10 +700,10 @@ namespace Promzona
         // The managed game marks not the kiosk or the stop itself but the first free point of
         // pavement on three rings of eight about it (CityTraffic.StartPeaceJob).
         static constexpr int peaceSpots = 24;
-        static Vec2 peaceOffset(int spot);
-        Vec2 peaceSpot(int place, int spot) const { return peacePoint(place) + peaceOffset(spot); }
+        static Vec2 peace_offset(int spot);
+        Vec2 peaceSpot(int place, int spot) const { return peacePoint(place) + peace_offset(spot); }
         // Dry land of the city, clear of its edge and of the canals by the margin.
-        bool peaceGround(Vec2 at, double margin) const;
+        bool peace_ground(Vec2 at, double margin) const;
         int market_in_reach() const;
         int garage_in_reach() const;
         int ownedGarage{-1}, openMarket{-1};
@@ -688,10 +727,10 @@ namespace Promzona
         void releasePassenger(const Job &trip, bool delivered);
         static Vec2 passengerDoor(const Car &car, Vec2 from);
         void resumeWalk(Person &person, Vec2 position, int level);
-        bool startPeaceJob(JobKind kind);
-        void interactPeaceJob();
-        void stepPeaceJob(double dt);
-        bool validPeaceJob() const;
+        bool start_peace_job(JobKind kind);
+        void interact_peace_job();
+        void step_peace_job(double dt);
+        bool valid_peace_job() const;
         bool startContract(JobKind kind);
         bool startSeries();
         double deliveryHealth() const { return job.series ? (50 + 10 * seriesStage) / 100. : .5; }
@@ -786,7 +825,7 @@ namespace Promzona
                               bool includePlayer = false, const Person *shooter = nullptr) const;
         bool blastVisible(Vec2 from, double y, Vec2 to, double targetY) const;
         void combatStep(double dt);
-        bool coverAllowsAim(Person &person, std::span<const Car *const> traffic, Vec2 &direction, double &speed);
+        bool cover_allows_aim(Person &person, std::span<const Car *const> traffic, Vec2 &direction, double &speed) const;
         void civilianCombat(Person &person, double dt);
         void alarmWitnesses(Vec2 origin, double height, bool playerCaused);
         void flame(Vec2 direction, double y);
@@ -798,7 +837,7 @@ namespace Promzona
         void load(const std::filesystem::path &path);
         ManagedImport importManaged(const std::filesystem::path &file, Density population = Density::low);
         std::wstring command(const std::string &text);
-        static int nearestNode(Vec2 p);
+        static int nearest_node(Vec2 p);
         static Vec2 nodePoint(int n)
         {
             return {(n % nodes - (nodes - 1) * .5) * spacing, (n / nodes - (nodes - 1) * .5) * spacing};
@@ -808,13 +847,13 @@ namespace Promzona
         int degree(int n) const;
         int choose_next(int n, int previous);
         void new_route(Car &car);
-        bool intersectionClear(const Car &car) const;
-        void planExit(Car &car);
+        bool intersection_clear(const Car &car) const;
+        void plan_exit(Car &car);
         // A car is crossing this junction (the one reservation it has); `except` is not asked.
-        bool junctionHeld(int node, const Car *except) const;
+        bool junction_held(int node, const Car *except) const;
         // Whether two bodies stand on one surface: the same street however steep, not the
         // deck above it or the tunnel below.
-        bool onSameSurface(const Body &a, const Body &b) const;
+        bool on_same_surface(const Body &a, const Body &b) const;
         // Actors are binned by city block for nearby drivers' periodic perception.
         struct TrafficCell
         {
@@ -823,7 +862,7 @@ namespace Promzona
         std::vector<TrafficCell> trafficCells;
         std::vector<int> nextTrafficCar, nextTrafficPerson;
         double trafficIndexAt{};
-        void indexTraffic();
+        void index_traffic();
         void senseTraffic(Car &car, bool local);
         void sensePursuit(Car &car, bool local);
         void standDown(Car &car);

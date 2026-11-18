@@ -77,7 +77,7 @@ namespace Promzona
                        (z + fraction(key >> 16)) * spacing};
                 if (!frustum.sphere(p, .7f))
                     continue;
-                auto &cell = rainCells_[(uint32_t(x) & 31u) + 32 * (uint32_t(z) & 31u)];
+                auto &cell = rain_cells_[(uint32_t(x) & 31u) + 32 * (uint32_t(z) & 31u)];
                 if (!cell.valid || cell.x != x || cell.z != z)
                     cell = {x, z, true, float(w.precipitationSurface({p.x, p.z}))};
                 float halfLength = std::min(.36f, (p.y - cell.ground - .02f));

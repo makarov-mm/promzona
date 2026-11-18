@@ -49,13 +49,18 @@ namespace Promzona
 
     // Store the real strip for bounds and mesh checks. The colour pass expands its
     // centreline in screen space and integrates the physical width over each pixel.
-    inline void appendThinRail(MeshData &mesh, Vec3 a, Vec3 b, float radius)
+    inline void appendThinRail(MeshData& mesh, const Vec3& a, const Vec3& b, const float radius)
     {
-        const auto tangent = (b - a).unit();
+        const Vec3 tangent = (b - a).unit();
+
         if (tangent.length() < .5f)
             return;
-        const auto side = cross(tangent, std::abs(tangent.y) < .9f ? Vec3{0, 1, 0} : Vec3{1, 0, 0}).unit();
-        const auto first = static_cast<std::uint32_t>(mesh.vertices.size());
+
+        const Vec3 side = cross(tangent, std::abs(tangent.y) < .9f 
+            ? Vec3{.x = 0, .y = 1, .z = 0} 
+            : Vec3{.x = 1, .y = 0, .z = 0}).unit();
+
+        const uint32_t first = static_cast<std::uint32_t>(mesh.vertices.size());
 
         for (auto [centre, sign] : {std::pair{a, -1.f}, {b, -1.f}, {b, 1.f}, {a, 1.f}})
         {
@@ -76,7 +81,7 @@ namespace Promzona
     {
         float x0, z0, x1, z1, sw, se, nw, ne;
 
-        float height(float x, float z) const
+        float height(const float x, const float z) const
         {
             const float u = (x - x0) / (x1 - x0), v = (z - z0) / (z1 - z0);
 

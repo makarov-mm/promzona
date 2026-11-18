@@ -183,17 +183,17 @@ void coverTest(const std::filesystem::path &path)
     std::array<const Car *, 1> traffic{&car};
     double speed = 1;
     Vec2 dir;
-    w.coverAllowsAim(p, traffic, dir, speed);
+    w.cover_allows_aim(p, traffic, dir, speed);
     w.time += 1.2;
-    check(!w.coverAllowsAim(p, traffic, dir, speed) && p.cover.found && p.cover.vehicle == 1,
+    check(!w.cover_allows_aim(p, traffic, dir, speed) && p.cover.found && p.cover.vehicle == 1,
           "shooter could not find a screened position behind a stationary vehicle");
     p.body.p = p.cover.hide;
-    check(!w.coverAllowsAim(p, traffic, dir, speed) && speed == 0, "shooter fired from concealment");
+    check(!w.cover_allows_aim(p, traffic, dir, speed) && speed == 0, "shooter fired from concealment");
     w.time += 1.2;
-    w.coverAllowsAim(p, traffic, dir, speed);
-    check(p.cover.peeking && !w.coverAllowsAim(p, traffic, dir, speed), "shooter fired while moving to peek");
+    w.cover_allows_aim(p, traffic, dir, speed);
+    check(p.cover.peeking && !w.cover_allows_aim(p, traffic, dir, speed), "shooter fired while moving to peek");
     p.body.p = p.cover.peek;
-    check(w.coverAllowsAim(p, traffic, dir, speed), "shooter did not aim from the exposed side");
+    check(w.cover_allows_aim(p, traffic, dir, speed), "shooter did not aim from the exposed side");
     auto saved =
         std::ranges::find_if(w.people, [](const Person &civilian)
                              { return !civilian.dead && civilian.riding < 0 && civilian.ownedScooter < 0; });
@@ -208,7 +208,7 @@ void coverTest(const std::filesystem::path &path)
               (resumed.peek - p.cover.peek).length2() == 0,
           "lost armed witness cover on reload");
     car.body.v = {4, 0};
-    w.coverAllowsAim(p, traffic, dir, speed);
+    w.cover_allows_aim(p, traffic, dir, speed);
     check(!p.cover.found, "shooter used a departed car as cover");
 }
 
@@ -426,7 +426,7 @@ void pavementAnimals()
     for (const auto &a : w.animals)
     {
         check(fromRoad(a.p) > 0, "an animal was put on the roadway");
-        check(!w.insideBuilding(a.p, w.terrain.height(a.p) + .4, .2), "an animal was put inside a wall");
+        check(!w.inside_building(a.p, w.terrain.height(a.p) + .4, .2), "an animal was put inside a wall");
         if (a.flock >= 0)
             continue;
         ++strays;
@@ -477,7 +477,7 @@ void pavementAnimals()
         const double step = (stray.p - before).length();
         walked += step;
         check(step <= pace * .1 + 1e-9, "a stray strolls at the pace of the managed game");
-        check(!w.insideBuilding(stray.p, w.terrain.height(stray.p) + .4, .2), "a stray walked into a wall");
+        check(!w.inside_building(stray.p, w.terrain.height(stray.p) + .4, .2), "a stray walked into a wall");
         if ((stray.goal - stray.p).length2() > 1e-12)
         {
             const double gx = (stray.goal.x - l.coordinate(0) - l.sidewalk()) / World::spacing,

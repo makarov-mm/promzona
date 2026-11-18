@@ -105,7 +105,7 @@ int main()
             require(away(w, p.body.p) > 245 && !p.body.roadLevel && p.next != p.node,
                     "new walker placed in view");
             require(w.terrain.height(p.body.p) > CityLayout::waterLevel &&
-                        !w.insideBuilding(p.body.p, p.body.height, .2) && !w.openCut(p.body.p, .3),
+                        !w.inside_building(p.body.p, p.body.height, .2) && !w.openCut(p.body.p, .3),
                     "new walker placed on bad ground");
             require(p.uniform == Person::Uniform::none && p.fear == 0 && p.knockedUntil == 0,
                     "new walker kept old state");

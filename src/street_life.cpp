@@ -56,7 +56,7 @@ namespace Promzona
 
                 Vec2 centre = nodePoint(j * nodes + i) + Vec2{spacing * .5, spacing * .5};
 
-                if (layout.urbanSite(centre, 4) && !levelAt(centre, 5) && !insideBuilding(centre, terrain.height(centre) + .4, 4))
+                if (layout.urbanSite(centre, 4) && !levelAt(centre, 5) && !inside_building(centre, terrain.height(centre) + .4, 4))
                     habitat.push_back(centre);
             }
 
@@ -111,7 +111,7 @@ namespace Promzona
                 for (int n = 1; n < members && fits; ++n)
                 {
                     const Vec2 at = perch->at + flock_offset(n, perch->pavement);
-                    fits = layout.urbanSite(at, .3) && !insideBuilding(at, terrain.height(at) + .4, .3) &&
+                    fits = layout.urbanSite(at, .3) && !inside_building(at, terrain.height(at) + .4, .3) &&
                            (!perch->pavement || layout.roadDistance(at) > layout.roadHalf() + .2);
                 }
 
@@ -166,7 +166,7 @@ namespace Promzona
             const Vec2 at = nodePoint(j * nodes + i) + Vec2{park ? 10 + source.next() * 16 : layout.sidewalk(), 10 + source.next() * 16};
             const double radius = park ? .6 : .45;
 
-            if (!layout.urbanSite(at, radius) || levelAt(at, 2) || insideBuilding(at, terrain.height(at) + .4, radius))
+            if (!layout.urbanSite(at, radius) || levelAt(at, 2) || inside_building(at, terrain.height(at) + .4, radius))
                 continue;
 
             if (!park)

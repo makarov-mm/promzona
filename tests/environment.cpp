@@ -835,6 +835,68 @@ void shoreEntry()
     check(w.dying() && w.wanted == 0 && !w.ripples.empty() && (w.ripples.back().centre - canal).length() < .1,
           "deep water kills the player and leaves a splash at the point of entry");
     check(w.screenDarkness() < .01, "the picture stays visible while the hero has just died");
+    // Saved in the middle of the death scene, the game comes back in the middle of it. The
+    // first step after loading used to begin the scene anew.
+    {
+        const auto file = std::filesystem::temp_directory_path() /
+                          std::format("promzona-death-{}.json",
+                                      std::chrono::steady_clock::now().time_since_epoch().count());
+        w.save(file);
+        World again;
+        again.load(file);
+        check(again.dying() && again.deathAt == w.deathAt && again.deathPlace.x == w.deathPlace.x &&
+                  again.deathPlace.z == w.deathPlace.z && again.deathHeight == w.deathHeight &&
+                  again.playerKnockedUntil == w.playerKnockedUntil,
+              "the death scene survives saving");
+        again.time += 2;
+        again.step({}, 1. / 120);
+        check(again.dying() && again.deathAt == w.deathAt && again.deathSince() > 2,
+              "the loaded death scene goes on from where it was saved");
+        again.time = again.deathAt + World::deathSeconds;
+        again.step({}, 1. / 120);
+        check(!again.dying() && again.health > .99, "the loaded death scene ends at the clinic");
+
+        // A scene of the living, or one that begins in the future, is refused; the living are
+        // saved without one.
+        nlohmann::json scene;
+        {
+            std::ifstream in(file);
+            in >> scene;
+        }
+        const auto refused = [&](const nlohmann::json &broken)
+        {
+            {
+                std::ofstream out(file);
+                out << broken;
+            }
+            try
+            {
+                World unread;
+                unread.load(file);
+            }
+            catch (const std::exception &)
+            {
+                return true;
+            }
+            return false;
+        };
+        auto late = scene, alive = scene;
+        late["death"][0] = w.time + 5;
+        alive["health"] = 1.;
+        check(scene.contains("death") && scene.at("death").size() == 4 && !refused(scene) && refused(late) &&
+                  refused(alive),
+              "a death scene that cannot be is refused");
+        again.save(file);
+        {
+            std::ifstream in(file);
+            in >> scene;
+        }
+        check(!scene.contains("death"), "the living are saved without a death scene");
+        std::filesystem::remove(file);
+        auto backup = file;
+        backup += ".bak";
+        std::filesystem::remove(backup);
+    }
     w.time += World::deathSeconds - World::deathFadeSeconds / 2;
     w.step({}, 1. / 120);
     check(w.dying() && w.screenDarkness() > .3 && w.screenDarkness() < .7 && w.screenDrain() == 1,
@@ -873,7 +935,7 @@ void placement()
             for (const auto &level : world.roadLevels)
                 check(!level.reserved(p, .3), "furniture clears bridge and tunnel approaches");
             if ((fixture.body % 31) == 0)
-                check(!world.insideBuilding(p, world.terrain.height(p) + .3, .10),
+                check(!world.inside_building(p, world.terrain.height(p) + .3, .10),
                       "street prop clears walls");
         }
         for (const auto &puddle : world.puddles)

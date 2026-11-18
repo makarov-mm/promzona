@@ -221,7 +221,7 @@ void World::interactJob()
     }
     if (job.peace())
     {
-        interactPeaceJob();
+        interact_peace_job();
         return;
     }
     if (int actor = hailerInReach();
@@ -298,7 +298,7 @@ bool World::startContract(JobKind kind)
     if (kind == JobKind::taxi || kind == JobKind::patient)
         return startPassengerJob(kind);
     if (kind == JobKind::leaflets || kind == JobKind::broadcast)
-        return startPeaceJob(kind);
+        return start_peace_job(kind);
     int actor = -1, destination = -1;
     double best = 1e10;
     if (kind == JobKind::vehicle)
@@ -472,7 +472,7 @@ void World::servicesStep(double dt)
     }
     if (job.peace())
     {
-        stepPeaceJob(dt);
+        step_peace_job(dt);
         return;
     }
     if (job.kind == JobKind::elimination)
@@ -528,7 +528,7 @@ bool World::validJob() const
                job.destination < int(lines[job.ride.line].stops.size());
     case JobKind::leaflets:
     case JobKind::broadcast:
-        return validPeaceJob();
+        return valid_peace_job();
     case JobKind::courier:
         return job.actor == -1 && site(job.destination) && sites[job.destination].food();
     case JobKind::vehicle:

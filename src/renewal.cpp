@@ -204,14 +204,14 @@ void World::renewCity()
     for (size_t i = 1; i < std::min(cars.size(), trafficPopulation) && budget; ++i)
     {
         auto &c = cars[i];
-        if ((c.body.p - c.stallAnchor).length2() > 1 || c.stallSince > time)
+        if ((c.body.p - c.stall_anchor).length2() > 1 || c.stall_since > time)
         {
-            c.stallAnchor = c.body.p;
-            c.stallSince = time;
+            c.stall_anchor = c.body.p;
+            c.stall_since = time;
         }
         // The last resort against a standstill: nothing in the rules of the road should
         // produce one, and whatever still does must not freeze the city behind it.
-        if (!c.destroyed && !c.falling && !c.driverless && time - c.stallSince > jamSeconds &&
+        if (!c.destroyed && !c.falling && !c.driverless && time - c.stall_since > jamSeconds &&
             outOfSight(c.body.p) && !carEngaged(int(i)))
         {
             if (renewCar(int(i)))

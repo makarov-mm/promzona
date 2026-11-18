@@ -88,12 +88,12 @@ void looks()
     const auto grey = [](const Appearance &a) { return a.hair.x > .5f && a.hair.x < .55f; };
     const auto pensioner = appearance(901, 8), elder = appearance(901, 2);
     require(pensioner.outfit == Appearance::bagElder && pensioner.model == 1 && grey(pensioner) &&
-                pensioner.longTrousers,
+                pensioner.long_trousers,
             "the pensioner with bags is wrong");
-    require(elder.outfit == 901 % 9 && grey(elder) && elder.longTrousers && elder.longSleeves,
+    require(elder.outfit == 901 % 9 && grey(elder) && elder.long_trousers && elder.long_sleeves,
             "the elder is wrong");
     require(appearance(901, 9).outfit == Appearance::drunk &&
-                appearance(901, 10).outfit == Appearance::homeless && appearance(901, 10).longTrousers,
+                appearance(901, 10).outfit == Appearance::homeless && appearance(901, 10).long_trousers,
             "street personas are wrong");
     const std::pair<U, int> services[]{{U::medical, Appearance::medic},
                                        {U::police, Appearance::militia},
@@ -104,7 +104,7 @@ void looks()
     {
         // A uniform hides the persona and the habit of whoever wears it.
         const auto a = appearance(901, 9, uniform, R::beach);
-        require(a.outfit == outfit && a.longSleeves && a.longTrousers, "service outfit is wrong");
+        require(a.outfit == outfit && a.long_sleeves && a.long_trousers, "service outfit is wrong");
         require(a.officer() == (uniform != U::medical) && (!a.officer() || a.model == 0),
                 "service model is wrong");
     }
@@ -114,10 +114,10 @@ void looks()
             "forces share one cap");
     const auto night = appearance(901, 0, U::none, R::night), beach = appearance(901, 0, U::none, R::beach);
     require(night.outfit == Appearance::nightWorker && night.model == 1, "night shift look is wrong");
-    require(beach.outfit == Appearance::beach && !beach.longTrousers && beach.model == 0,
+    require(beach.outfit == Appearance::beach && !beach.long_trousers && beach.model == 0,
             "beach look is wrong");
     const auto hero = hero_appearance();
-    require(hero.outfit == Appearance::hero && hero.longTrousers && hero.longSleeves && hero.flags() == 3 &&
+    require(hero.outfit == Appearance::hero && hero.long_trousers && hero.long_sleeves && hero.flags() == 3 &&
                 hero.model == 0,
             "the player has no look of his own");
     Person medic;

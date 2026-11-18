@@ -1,4 +1,5 @@
 #include "promzona/world.hpp"
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <print>
@@ -207,6 +208,28 @@ int main()
             for (int i = 0; i < 120 && w.health < .7; ++i)
                 w.step({}, frame);
             require(std::abs(w.health - .75) < 1e-9, "pills restore 35% of health");
+
+            // A weapon on the ground is left there when no more of its ammunition can be
+            // carried, as pills are left to the healthy; with room for it, it is taken.
+            const auto pistols = [&]
+            {
+                return std::ranges::count_if(w.pickups, [](const Pickup &p)
+                                             { return p.dropped && p.weapon == WeaponId::pistol; });
+            };
+            w.inventory.clear();
+            require(w.inventory.give(WeaponId::pistol, Inventory::ammo_limit),
+                    "a full load of rounds is taken");
+            w.pickups.push_back({.p = w.player.p,
+                                 .weapon = WeaponId::pistol,
+                                 .dropped = true,
+                                 .roadLevel = w.player.roadLevel});
+            w.step({}, frame);
+            require(pistols() == 1 && w.inventory.ammo(WeaponId::pistol) == Inventory::ammo_limit,
+                    "a weapon is left on the ground when its ammunition is full");
+            w.inventory.clear();
+            w.step({}, frame);
+            require(pistols() == 0 && w.inventory.ammo(WeaponId::pistol) > 0,
+                    "a weapon on the ground is taken when there is room for it");
         }
         {
             // The wanted level holds for 12 s, then fades; five times faster once the trail is cold.

@@ -7,6 +7,7 @@
 #include <source_location>
 #include <format>
 #include <iterator>
+#include <limits>
 using namespace Promzona;
 namespace
 {
@@ -163,6 +164,50 @@ void generated(World &w)
     for (int n = 0; n < World::nodes * World::nodes; ++n)
         counted = counted && w.degree(n) == int(w.neighbours(n).size());
     check(counted, "the neighbour count agrees with the neighbour list at every node");
+    // The cells that spare an actor the search through the levels answer as the search does:
+    // over a net of points on every level and round it, on the very edges of the levels, far
+    // away, at a position that is not a number, and for margins on both sides of the one the
+    // cells are built for.
+    {
+        const auto searched = [&](Vec2 p, double margin) -> const RoadLevel *
+        {
+            for (const auto &s : w.roadLevels)
+                if (s.contains(p, margin))
+                    return &s;
+            return nullptr;
+        };
+        const double nan = std::numeric_limits<double>::quiet_NaN();
+        long differ = 0, inside = 0, outside = 0;
+        const auto compare = [&](Vec2 p, double margin)
+        {
+            const RoadLevel *found = w.levelAt(p, margin);
+            if (found != searched(p, margin))
+                ++differ;
+            if (found)
+                ++inside;
+            else
+                ++outside;
+        };
+        for (double margin : {-1., 0., .001, .03, .6, 2., 2.5, 40.})
+        {
+            for (const auto &s : w.roadLevels)
+            {
+                for (double x = s.x - 170; x <= s.x + 170; x += .61)
+                    for (double z = s.z - 24; z <= s.z + 42; z += .47)
+                        compare({x, z}, margin);
+                const double along = RoadLevel::length + margin, reach = RoadLevel::half_width + margin;
+                for (double x : {s.x - along, s.x, s.x + along})
+                    for (double nudge : {-1e-9, 0., 1e-9})
+                        for (double side : {-reach, reach})
+                            for (double shift : {-1e-9, 0., 1e-9})
+                                compare({x + nudge, s.centre_z(x + nudge) + side + shift}, margin);
+            }
+            for (Vec2 p : {Vec2{nan, 0}, Vec2{0, nan}, Vec2{nan, nan}, Vec2{1e9, -1e9}, Vec2{-1e300, 1e300}})
+                compare(p, margin);
+        }
+        check(!differ && inside > 100000 && outside > 100000,
+              "the cells near road levels answer as the search through the levels");
+    }
     for (auto &s : w.roadLevels)
     {
         check(w.levelEdge(s.left_node, s.right_node) == &s && w.levelEdge(s.right_node, s.left_node) == &s,

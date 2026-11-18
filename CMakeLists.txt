@@ -30,7 +30,7 @@ target_sources(promzona_core PRIVATE
   include/promzona/city_mesh.hpp include/promzona/combat.hpp
   include/promzona/core.hpp include/promzona/layout.hpp include/promzona/minimap.hpp include/promzona/control_hints.hpp include/promzona/hud_damage.hpp include/promzona/road_levels.hpp
   include/promzona/math.hpp include/promzona/physics.hpp include/promzona/world.hpp include/promzona/fleet.hpp include/promzona/jobs.hpp include/promzona/game_console.hpp include/promzona/front_end.hpp include/promzona/transit.hpp
-  include/promzona/localization.hpp include/promzona/names.hpp include/promzona/text.hpp include/promzona/stop_thread.hpp src/localization_phrases.inc)
+  include/promzona/localization.hpp include/promzona/names.hpp include/promzona/text.hpp include/promzona/stop_thread.hpp include/promzona/frame_blend.hpp src/localization_phrases.inc)
 set_property(TARGET promzona_core PROPERTY FOLDER Libraries)
 target_include_directories(promzona_core PUBLIC include PRIVATE third_party)
 option(BUILD_TESTING "Build PROMZONA native tests" ON)
@@ -100,6 +100,9 @@ if(BUILD_TESTING)
   add_executable(promzona_level_tests tests/levels.cpp)
   target_link_libraries(promzona_level_tests PRIVATE promzona_core)
   add_test(NAME native_levels COMMAND promzona_level_tests)
+  add_executable(promzona_frame_blend_tests tests/frame_blend.cpp)
+  target_link_libraries(promzona_frame_blend_tests PRIVATE promzona_core)
+  add_test(NAME native_frame_blend COMMAND promzona_frame_blend_tests)
   add_executable(promzona_traffic_tests tests/traffic.cpp)
   target_link_libraries(promzona_traffic_tests PRIVATE promzona_core)
   add_test(NAME native_traffic COMMAND promzona_traffic_tests)
@@ -116,7 +119,7 @@ if(BUILD_TESTING)
     "\"${CMAKE_SOURCE_DIR}/tests/vehicle-reference.txt\"")
   set_property(TARGET promzona_layout_tests PROPERTY VS_DEBUGGER_COMMAND_ARGUMENTS
     "\"${CMAKE_SOURCE_DIR}/tests/layout-reference.txt\"")
-  set_target_properties(promzona_consequences_tests promzona_import_tests promzona_renewal_tests promzona_density_tests promzona_people_tests promzona_flow_tests promzona_bus_tests promzona_localization_tests promzona_front_end_tests promzona_emergency_tests promzona_street_tests promzona_drone_tests promzona_transit_tests promzona_pursuit_tests promzona_jobs_tests promzona_streaming_tests promzona_environment_tests promzona_architecture_tests promzona_level_tests promzona_tests promzona_traffic_tests promzona_layout_tests promzona_combat_tests
+  set_target_properties(promzona_frame_blend_tests promzona_consequences_tests promzona_import_tests promzona_renewal_tests promzona_density_tests promzona_people_tests promzona_flow_tests promzona_bus_tests promzona_localization_tests promzona_front_end_tests promzona_emergency_tests promzona_street_tests promzona_drone_tests promzona_transit_tests promzona_pursuit_tests promzona_jobs_tests promzona_streaming_tests promzona_environment_tests promzona_architecture_tests promzona_level_tests promzona_tests promzona_traffic_tests promzona_layout_tests promzona_combat_tests
     PROPERTIES FOLDER Tests VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 endif()
 # Image decoding (stb_image) and model loading work the same on every system.

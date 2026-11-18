@@ -43,9 +43,9 @@ Appearance appearance(std::uint32_t id, std::uint32_t style, Person::Uniform uni
     const bool old = civilian && type.elder();
     // The managed palette greys the two oldest everyday outfits; here the elders too.
     a.hair = old || (persona && id % 9 >= 7) ? greyHair : hairShades[(id / 3) % std::size(hairShades)];
-    a.longTrousers =
+    a.long_trousers =
         role != Person::Role::beach && (old || !persona || type.drunk() || type.homeless() || id % 4 != 0);
-    a.longSleeves = a.officer() || a.outfit == Appearance::medic || (persona && (old || id % 3 == 0));
+    a.long_sleeves = a.officer() || a.outfit == Appearance::medic || (persona && (old || id % 3 == 0));
     return a;
 }
 
@@ -61,7 +61,7 @@ Appearance hero_appearance()
     Appearance a;
     a.outfit = Appearance::hero;
     a.tone = 4;
-    a.longTrousers = a.longSleeves = true;
+    a.long_trousers = a.long_sleeves = true;
     a.hair = hairShades[0];
     a.width = .96f;
     return a;

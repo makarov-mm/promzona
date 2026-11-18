@@ -26,7 +26,7 @@ namespace Promzona
                 .z = building.front * (building.half.z + (stall ? .85 : 1.4))
             };
 
-            if (!layout.urbanSite(door, 1) || levelAt(door, 1) || insideBuilding(door, terrain.height(door) + .85, .35))
+            if (!layout.urbanSite(door, 1) || levelAt(door, 1) || inside_building(door, terrain.height(door) + .85, .35))
             {
                 continue;
             }
@@ -195,7 +195,7 @@ namespace Promzona
             return -1;
 
         Vec2 middle = (sites[i].entrance + player.p) * .5;
-        return insideBuilding(middle, ground() + .8, .05) ? -1 : i;
+        return inside_building(middle, ground() + .8, .05) ? -1 : i;
     }
 
     int World::garage_in_reach() const

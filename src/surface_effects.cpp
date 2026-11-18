@@ -126,7 +126,7 @@ void World::addScuffs(const Car &car)
     if (roofCells.empty())
         return;
     const Vec2 at = car.body.p;
-    for (auto index : roofCells[nearestNode(at)])
+    for (auto index : roofCells[nearest_node(at)])
     {
         const auto &b = buildings[index];
         const Vec2 nearest{clamp(at.x, b.p.x - b.half.x, b.p.x + b.half.x),

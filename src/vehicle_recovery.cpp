@@ -72,7 +72,7 @@ namespace Promzona
 
                 const double h = terrain.height(p);
 
-                if (layout.roadDistance(p) > layout.roadHalf() || h < CityLayout::waterLevel + .05 || insideBuilding(p, h + .8, .3))
+                if (layout.roadDistance(p) > layout.roadHalf() || h < CityLayout::waterLevel + .05 || inside_building(p, h + .8, .3))
                     return false;
 
                 low = std::min(low, h);
@@ -102,7 +102,7 @@ namespace Promzona
 
         std::vector<RoadPose> options;
 
-        auto add = [&](Vec2 at, double heading, double along)
+        auto add = [&](const Vec2 at, const double heading, const double along)
         {
             options.push_back({
                 .at = at, 
@@ -124,7 +124,7 @@ namespace Promzona
         }
         else
         {
-            int node = nearestNode(c.body.p), x = node % nodes, z = node / nodes;
+            int node = nearest_node(c.body.p), x = node % nodes, z = node / nodes;
 
             for (int j = std::max(1, z - 5); j <= std::min(nodes - 2, z + 5); ++j)
                 for (int i = std::max(1, x - 5); i <= std::min(nodes - 2, x + 5); ++i)
@@ -165,7 +165,7 @@ namespace Promzona
         recoveryReadyAt = time + 8;
         staticQueryCount = static_cast<size_t>(-1);
         physics.clear();
-        indexTraffic();
+        index_traffic();
 
         if (static_cast<size_t>(controlledCar) < tireContacts.size())
             tireContacts[controlledCar] = {};
@@ -187,9 +187,8 @@ namespace Promzona
 
         if (car.body.roadLevel)
         {
-            const auto *level = levelById(car.body.roadLevel);
 
-            if (!level || !level->contains(at, -.45))
+            if (const RoadLevel *level = levelById(car.body.roadLevel); !level || !level->contains(at, -.45))
                 return false;
         }
 
@@ -198,7 +197,7 @@ namespace Promzona
 
     std::optional<Vec2> World::player_vehicle_exit(const Car &car) const
     {
-        if (std::optional<Vec2> door = vehicleExit(car))
+        if (const std::optional<Vec2> door = vehicleExit(car))
             return door;
 
         if (car.destroyed || car.falling || car.body.v.length2() > 1.5 * 1.5)

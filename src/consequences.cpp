@@ -63,7 +63,7 @@ namespace Promzona
         {
             return layout.roadDistance(at) > layout.roadHalf() + 1.2 && !openCut(at, .5) && !levelAt(at, 2) &&
                    terrain.height(at) > CityLayout::waterLevel + .5 &&
-                   !insideBuilding(at, terrain.height(at) + .85, .4);
+                   !inside_building(at, terrain.height(at) + .85, .4);
         };
         if (fits(from))
             return from;
@@ -228,7 +228,7 @@ namespace Promzona
                 const auto at = centre + forward(n * 2 * pi / 24) * radius;
                 const double floor = surface(at, level);
 
-                if (std::max(std::abs(at.x), std::abs(at.z)) > landEdge - 12 || floor < CityLayout::waterLevel + .1 || std::abs(floor - ground()) > 1.5 || insideBuilding(at, floor + .8, .5) || scenerySolid(at, floor + .8, .4) || (!level && openCut(at, .6)))
+                if (std::max(std::abs(at.x), std::abs(at.z)) > landEdge - 12 || floor < CityLayout::waterLevel + .1 || std::abs(floor - ground()) > 1.5 || inside_building(at, floor + .8, .5) || scenerySolid(at, floor + .8, .4) || (!level && openCut(at, .6)))
                 {
                     continue;
                 }

@@ -5,7 +5,6 @@
 #include <mutex>
 #include <optional>
 #include "stop_thread.hpp"
-#include <thread>
 #include <exception>
 #include <memory>
 
@@ -59,7 +58,7 @@ namespace Promzona
 
         struct Stats
         {
-            size_t queued{}, ready{}, readyBytes{}, built{}, discarded{};
+            size_t queued{}, ready{}, ready_bytes{}, built{}, discarded{};
             bool busy{};
         };
 
@@ -82,7 +81,7 @@ namespace Promzona
         std::deque<size_t> jobs_;
         std::deque<std::unique_ptr<Packet>> ready_;
         std::optional<size_t> active_; // the cell in the making
-        size_t readyBytes_{}, built_{}, discarded_{};
+        size_t ready_bytes_{}, built_{}, discarded_{};
         std::exception_ptr error_;
         StopThread worker_;
         void run(StopToken stop);

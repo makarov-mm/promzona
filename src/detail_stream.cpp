@@ -108,7 +108,7 @@ void DetailStream::request(std::span<const size_t> ids)
                   {
                       if (wanted_[p->id])
                           return false;
-                      readyBytes_ -= p->bytes;
+                      ready_bytes_ -= p->bytes;
                       ++discarded_;
                       return true;
                   });
@@ -133,7 +133,7 @@ std::unique_ptr<DetailStream::Packet> DetailStream::poll()
         return {};
     auto result = std::move(ready_.front());
     ready_.pop_front();
-    readyBytes_ -= result->bytes;
+    ready_bytes_ -= result->bytes;
     wake_.notify_one();
     return result;
 }
@@ -142,7 +142,7 @@ DetailStream::Stats DetailStream::stats() const
     std::scoped_lock lock(mutex_);
     return {.queued = jobs_.size(),
             .ready = ready_.size(),
-            .readyBytes = readyBytes_,
+            .ready_bytes = ready_bytes_,
             .built = built_,
             .discarded = discarded_,
             .busy = active_.has_value()};
@@ -180,7 +180,7 @@ void DetailStream::run(StopToken stop)
                     return;
                 if (wanted_[id])
                 {
-                    readyBytes_ += packet->bytes;
+                    ready_bytes_ += packet->bytes;
                     ready_.push_back(std::move(packet));
                 }
                 else

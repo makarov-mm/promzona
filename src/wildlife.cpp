@@ -37,9 +37,7 @@ namespace Promzona
             if (delta.length2() < 20 * 20)
                 continue;
 
-            double merit = 55 * dot(delta.unit(), away) - std::abs(delta.length() - 110);
-
-            if (merit > score)
+            if (const double merit = 55 * dot(delta.unit(), away) - std::abs(delta.length() - 110); merit > score)
             {
                 score = merit;
                 best = perch;
@@ -57,14 +55,15 @@ namespace Promzona
         return best;
     }
 
-    void World::take_flight(int index, Vec2 from, Vec2 away)
+    void World::take_flight(const int index, const Vec2& from, const Vec2& away)
     {
         Flock &f = flocks[index];
+
         if (f.flying)
             return;
 
-        const Perch perch = landing_site(from, away);
-        f.landing = perch.at;
+        const auto [at, pavement] = landing_site(from, away);
+        f.landing = at;
         f.flying = true;
 
         // The flock forms up for where it is going: a spiral on a lawn, two files along a
@@ -73,7 +72,7 @@ namespace Promzona
 
         for (Animal &a : animals)
             if (a.flock == index)
-                a.offset = flock_offset(member++, perch.pavement);
+                a.offset = flock_offset(member++, pavement);
 
         if ((from - position()).length2() < 45 * 45)
             sounds.push_back({
@@ -83,7 +82,7 @@ namespace Promzona
             });
     }
 
-    void World::scare_wildlife(Vec2 origin, double height, double lethalRadius)
+    void World::scare_wildlife(const Vec2& origin, double height, double lethalRadius)
     {
         for (Animal &a : animals)
         {
@@ -93,15 +92,20 @@ namespace Promzona
             auto away = a.p - origin;
             double dy = a.altitude + .24 - height;
             double d2 = away.length2() + dy * dy;
+
             if (d2 > 24 * 24)
                 continue;
+
             if (d2 < lethalRadius * lethalRadius && blastVisible(origin, height, a.p, a.altitude + .24))
             {
                 a.deadUntil = time + 14;
                 a.velocity = {};
             }
+
             if (a.flock >= 0)
+            {
                 take_flight(a.flock, a.p, away.unit());
+            }
             else
             {
                 a.goal = a.p + away.unit() * 11;
@@ -148,7 +152,7 @@ namespace Promzona
                 a.velocity *= std::exp(-tick * (landed ? 4 : .25));
                 const Vec2 next = a.p + a.velocity * tick;
                 if (a.velocity.length2() < .0004 || !layout.urbanSite(next, .2) ||
-                    insideBuilding(next, a.altitude + .3, .28))
+                    inside_building(next, a.altitude + .3, .28))
                     a.velocity = {};
                 else
                 {
@@ -160,7 +164,7 @@ namespace Promzona
                 Vec2 respawn = a.flock >= 0 ? flocks[a.flock].landing + a.offset
                                             : habitat[streetRandom.index(int(habitat.size()))];
                 if (a.flock < 0)
-                    if (const auto perch = animal_perch(streetRandom, false))
+                    if (const std::optional<Perch> perch = animal_perch(streetRandom, false))
                         respawn = perch->at;
                 if ((respawn - focus).length2() < 105 * 105)
                     continue;
@@ -236,7 +240,7 @@ namespace Promzona
             }
             bool flying = a.flock >= 0 && flocks[a.flock].flying;
             if (a.species == Species::bird && !flying &&
-                time > flocks[a.flock].landedAt + 35 + int(a.heading * 2))
+                time > flocks[a.flock].landedAt + 35 + static_cast<int>(a.heading * 2))
             {
                 take_flight(a.flock, a.p, forward(a.heading));
                 flying = true;
@@ -254,9 +258,8 @@ namespace Promzona
                 if (time >= a.thinkAt)
                 {
                     Vec2 centre = flocks[a.flock].landing + a.offset;
-                    Vec2 candidate = centre + forward(streetRandom.next() * 2 * pi) * .9;
-                    if (layout.urbanSite(candidate, .3) && !openCut(candidate, .4) &&
-                        !insideBuilding(candidate, terrain.height(candidate) + .4, .35))
+                    if (Vec2 candidate = centre + forward(streetRandom.next() * 2 * pi) * .9; layout.urbanSite(candidate, .3) && !openCut(candidate, .4) &&
+                                                                                              !inside_building(candidate, terrain.height(candidate) + .4, .35))
                         a.goal = candidate;
                     a.thinkAt = time + 2. + streetRandom.next() * 6.;
                 }
@@ -272,11 +275,11 @@ namespace Promzona
                 {
                     const int last = layout.nodes() - 1;
                     const Vec2 step = CityLayout::direction(streetRandom.index(4));
-                    const int i = clamp(int(std::lround((a.p.x - layout.coordinate(0)) / spacing)) +
-                                            int(std::lround(step.x)),
+                    const int i = clamp(static_cast<int>(std::lround((a.p.x - layout.coordinate(0)) / spacing)) +
+                                            static_cast<int>(std::lround(step.x)),
                                         0, last),
-                              j = clamp(int(std::lround((a.p.z - layout.coordinate(0)) / spacing)) +
-                                            int(std::lround(step.z)),
+                              j = clamp(static_cast<int>(std::lround((a.p.z - layout.coordinate(0)) / spacing)) +
+                                            static_cast<int>(std::lround(step.z)),
                                         0, last);
                     a.goal = {layout.coordinate(i) + layout.sidewalk(), layout.coordinate(j) + layout.sidewalk()};
                     a.thinkAt = time + 12. + streetRandom.next() * 20.;
@@ -288,7 +291,7 @@ namespace Promzona
             Vec2 next = a.p + delta.unit() * std::min(delta.length(), speed * tick);
             double floor = terrain.height(next);
             if (!flying &&
-                (!layout.urbanSite(next, .2) || openCut(next, .25) || insideBuilding(next, floor + .4, .28)))
+                (!layout.urbanSite(next, .2) || openCut(next, .25) || inside_building(next, floor + .4, .28)))
             {
                 next = a.goal = a.p;
                 a.thinkAt = time;

@@ -144,7 +144,7 @@ void laneChecks(World &w)
     auto destination = start + right * (CityLayout::laneOffset(1) - CityLayout::laneOffset(0));
     auto change = [&]
     {
-        w.indexTraffic();
+        w.index_traffic();
         return w.tryChangeLane(driver, 1);
     };
 

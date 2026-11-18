@@ -40,8 +40,8 @@ namespace Promzona
         {
             for (int x = 0; x < size; ++x)
             {
-                const float u = (x + .5f) / size;
-                const float v = (y + .5f) / size;
+                const float u = (.5f + x) / size;
+                const float v = (.5f + y) / size;
                 float density = 0, amplitude = .53f;
 
                 for (const int period : {8, 16, 32, 64})

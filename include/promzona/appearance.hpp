@@ -30,7 +30,7 @@ namespace Promzona
         int tone{};   // 0 dark .. 5 light
 
         // The man of the people skin wears shorts and a T-shirt; most men of the city do not.
-        bool longTrousers{}, longSleeves{};
+        bool long_trousers{}, long_sleeves{};
 
         // a negative red keeps the colour of the palette
         Vec3 hair {
@@ -53,7 +53,7 @@ namespace Promzona
         // Bit 1: trouser legs, bit 2: sleeves; the shader reads them from uOutfit.z.
         int flags() const
         {
-            return (longTrousers ? 1 : 0) + (longSleeves ? 2 : 0);
+            return (long_trousers ? 1 : 0) + (long_sleeves ? 2 : 0);
         }
     };
 

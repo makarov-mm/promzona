@@ -89,7 +89,7 @@ void worker()
     until([&] { return stream.stats().ready == DetailStream::max_ready; });
     auto stats = stream.stats();
     check(stats.queued <= DetailStream::max_queued &&
-              stats.readyBytes <= DetailStream::max_ready * DetailStream::max_packet_bytes,
+              stats.ready_bytes <= DetailStream::max_ready * DetailStream::max_packet_bytes,
           "worker backpressure bounds queued geometry");
     auto packet = stream.poll();
     check(packet && packet->bytes > 0, "background job returns geometry");

@@ -44,11 +44,12 @@ namespace Promzona
 
         for (double z = low; z < -low; z += Sector::size)
             for (double x = low; x < -low; x += Sector::size)
-                sectors_.push_back(
-         {
-                    .x = x, 
+            {
+                sectors_.push_back({
+                    .x = x,
                     .z = z
                 });
+            }
 
         wanted_.resize(sectors_.size());
         worker_ = StopThread([this](StopToken stop) { run(std::move(stop)); });
@@ -63,11 +64,12 @@ namespace Promzona
             // Taking the lock once orders the request before the worker's next look at it.
             std::scoped_lock lock(mutex_);
         }
+
         wake_.notify_all();
         worker_.join();
     }
 
-    SectorStream::Packet SectorStream::Packet::pack(size_t id, const CityChunk &geometry)
+    SectorStream::Packet SectorStream::Packet::pack(const size_t id, const CityChunk &geometry)
     {
         static_assert(stride == 48 && offsetof(Vertex, joints) == 32);
         Packet packet;
@@ -81,7 +83,7 @@ namespace Promzona
 
             surface.narrow = mesh.vertices.size() <= 65536;
             const size_t width = surface.narrow ? 2 : 4;
-            index_bytes = (index_bytes + width - 1) & ~(width - 1);
+            index_bytes = index_bytes + width - 1 & ~(width - 1);
             surface.first_vertex = vertex_bytes / stride;
             surface.first_index_byte = index_bytes;
             surface.count = mesh.indices.size();

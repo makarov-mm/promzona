@@ -70,7 +70,7 @@ int quietStop(World &w, Vec2 from, double least)
         for (auto &p : w.people)
             if ((p.body.p - sign).length() < 40)
                 p.body.p += Vec2{0, 90};
-        w.indexTraffic();
+        w.index_traffic();
         return n;
     }
     throw std::runtime_error("no ordinary bus stop");
@@ -128,7 +128,7 @@ void fleetAndCity()
                     std::abs(sign.z - (node.z + half)) < 1e-9,
                 "a stop is not half-way along the block it belongs to");
         require(w.layout.roadDistance(centre) > w.layout.roadHalf() + 1.5 && !w.levelAt(sign, 4) &&
-                    !w.insideBuilding(centre, w.terrain.height(centre) + .85, .3) &&
+                    !w.inside_building(centre, w.terrain.height(centre) + .85, .3) &&
                     w.terrain.height(centre) > CityLayout::waterLevel + .5,
                 "a shelter stands in the road, in a house or in the water");
         for (const auto &t : w.trees)
@@ -177,7 +177,7 @@ void stopping(bool near)
     require(bus.kind == 5 && bus.routePhase == 0 && bus.body.p.z < sign.z - 6 &&
                 std::abs(bus.body.p.x - (sign.x + w.layout.sidewalk() - CityLayout::laneOffset(1))) < .3,
             "the bus does not start in the lane by the stop");
-    w.indexTraffic();
+    w.index_traffic();
     double stoodAt = 0, stood = 0, furthest = 0;
     bool stopped = false;
     for (int i = 0; i < 60 * 40 && bus.routePhase == 0 && bus.routeFrom == node; ++i)
@@ -203,7 +203,7 @@ void stopping(bool near)
     // The next stop within the half minute is passed by.
     auto &second = place(w, 9, busModel, node, north, 1, 0);
     second.next_bus_stop = w.time + 30;
-    w.indexTraffic();
+    w.index_traffic();
     for (int i = 0; i < 60 * 12 && second.routePhase == 0 && second.routeFrom == node; ++i)
     {
         w.step({}, frame);
@@ -211,10 +211,10 @@ void stopping(bool near)
     }
     // In the inner lane, or the other way, the shelter is not this bus's stop.
     auto &inner = place(w, 9, busModel, node, north, 0, 0);
-    w.indexTraffic();
+    w.index_traffic();
     require(w.busStopLimit(inner) == 100, "a bus stops from the middle of the road");
     auto &south = place(w, 9, busModel, north, node, 1, 0);
-    w.indexTraffic();
+    w.index_traffic();
     require(w.busStopLimit(south) == 100, "a bus stops for the shelter across the road");
 }
 
@@ -235,7 +235,7 @@ void overtaking()
     bus.bus_until = w.time + 6;
     bus.next_bus_stop = bus.bus_until + 34;
     auto &follower = place(w, 1, 0, node, north, 1, 0);
-    w.indexTraffic();
+    w.index_traffic();
     require(follower.body.p.z < bus.body.p.z - 8, "the follower does not start behind the bus");
     for (int i = 0; i < 60 * 3; ++i)
         w.step({}, frame);
@@ -254,7 +254,7 @@ void overtaking()
     auto &behind = place(w, 1, 0, node, north, 1, 0);
     behind.routeDistance = queued.routeDistance - 9.5;
     behind.body.p = behind.route->sample(behind.routeDistance).first;
-    w.indexTraffic();
+    w.index_traffic();
     w.senseTraffic(behind, false);
     require(behind.blocked_since < 0 && behind.traffic_limit < 3 && behind.laneIndex == 1,
             "a bus at the lights is taken for a bus at its stop");
@@ -284,11 +284,11 @@ void deadEnds()
             for (int draw = 0; draw < 40; ++draw)
             {
                 auto &bus = place(w, 9, busModel, from, junction, 1, 0);
-                w.planExit(bus);
+                w.plan_exit(bus);
                 require(bus.planned_to >= 0 && bus.planned_to != end && bus.planned_to != from,
                         "a bus turns into a street that ends");
                 auto &car = place(w, 1, 0, from, junction, 1, 0);
-                w.planExit(car);
+                w.plan_exit(car);
                 entered = entered || car.planned_to == end;
             }
             require(entered, "no car ever takes the street that ends");

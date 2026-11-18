@@ -195,6 +195,9 @@
     <ClInclude Include="include/promzona\stop_thread.hpp">
       <Filter>Headers</Filter>
     </ClInclude>
+    <ClInclude Include="include/promzona\frame_blend.hpp">
+      <Filter>Headers</Filter>
+    </ClInclude>
     <ClInclude Include="include/promzona\text.hpp">
       <Filter>Headers</Filter>
     </ClInclude>

@@ -385,7 +385,7 @@ void stuckTest()
                 const Vec2 q = at + Vec2{s, side};
                 open = open &&
                        (std::abs(s) < 2.5 ||
-                        (w.layout.urbanSite(q, 1) && !w.insideBuilding(q, w.terrain.height(q) + .8, 1.2) &&
+                        (w.layout.urbanSite(q, 1) && !w.inside_building(q, w.terrain.height(q) + .8, 1.2) &&
                          !w.levelAt(q, 3) && w.layout.roadDistance(q) > w.layout.roadHalf() + 1));
             }
         for (size_t other = 0; other < w.trees.size() && open; ++other)
@@ -469,7 +469,7 @@ void stage(World &w, Vec2 at, Vec2 centre)
     for (auto &p : w.people)
         if ((p.body.p - centre).length() < 60)
             p.body.p += Vec2{0, 140};
-    w.indexTraffic();
+    w.index_traffic();
 }
 // On the straight that leads from one junction into the next, `back` metres before its end.
 Car &onStreet(World &w, Car &car, int from, int to, double back)
@@ -538,7 +538,7 @@ void trafficTest()
         park(1, node - 1, node, 1);
         park(2, node - 1, node, 6.5);
         onStreet(w, car, node - 2, node - 1, 6);
-        w.indexTraffic();
+        w.index_traffic();
         const Vec2 street = (centre - World::nodePoint(node - 1)).unit();
         double passed = -1;
         for (int tick = 0; tick < 60 * 25 && passed < 0; ++tick)
@@ -567,7 +567,7 @@ void trafficTest()
         onStreet(w, car, node, node + 1, 13);
         car.body.p = centre + Vec2{10.05, .57};
         car.body.angle = -std::atan2(.52, -.85);
-        w.indexTraffic();
+        w.index_traffic();
         const Vec2 start = car.body.p;
         double left = -1;
         bool seen = false;
@@ -593,7 +593,7 @@ void trafficTest()
         park(1, node - 1, node, 1);
         park(2, node - 1, node, 6.5);
         onStreet(w, car, node - 2, node - 1, 6);
-        w.indexTraffic();
+        w.index_traffic();
         const Vec2 street = (centre - World::nodePoint(node - 1)).unit();
         double pulledOut = 0, passed = -1;
         for (int tick = 0; tick < 60 * 12 && passed < 0; ++tick)
@@ -632,7 +632,7 @@ void trafficTest()
         car.body.angle = -std::atan2(1., 1.); // away from the junction
         car.body.height = w.surface(lawn, 0) + .8;
         car.seesSuspect = true;
-        w.indexTraffic();
+        w.index_traffic();
         w.wanted = 0;
         w.updateDispatch();
         check(!car.responding && !car.seesSuspect, "a unit kept its call after the stars had gone");
@@ -709,7 +709,7 @@ void trafficTest()
         other.body.p = centre + Vec2{17.6, .2};
         other.body.angle = -std::atan2(-1., .5); // west and a little south, at the first
         car.responding = other.responding = true;
-        w.indexTraffic();
+        w.index_traffic();
         w.standDown(car);
         w.standDown(other);
         check(car.rejoining && other.rejoining, "the units were not given a way back to the street");

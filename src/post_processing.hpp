@@ -21,15 +21,16 @@ namespace Promzona
         std::array<GLuint, 4> fb_{}, color_{};
         GLint pass_{}, threshold_{}, conditions_{}, bloom_{}, lens_{}, samples_{}, clip_{}, shaded_{}, mourning_{};
         float drain_{}, darkness_{};
-        int w_{}, h_{}, glowW_{}, glowH_{};
+        int w_{}, h_{}, glow_w_{}, glow_h_{};
 
     public:
-        void initialize(GLuint glowProgram, GLuint resolveProgram, GLuint occlusionProgram);
+        void initialize(GLuint glow_program, GLuint resolve_program, GLuint occlusion_program);
         void resize(int width, int height);
-        void releaseTargets();
-        void beginEffects(unsigned depthUnit, bool reflectPuddles);
-        GLuint sceneTarget() const { return fb_[0]; }
-        void present(int width, int height, float day, float rain, float sunHeight, bool bloom, const ContactShading &contact);
+        void release_targets();
+        void begin_effects(unsigned depth_unit, bool reflect_puddles);
+        GLuint scene_target() const { return fb_[0]; }
+        void present(int width, int height, float day, float rain, float sunHeight, bool bloom, const ContactShading &contact) const;
+
         // The colour drained out of the picture (0..1) and how dark it is (0 clear .. 1 black),
         // for the hero's death and the fade back in at the clinic.
         void mourning(float drain, float darkness)
@@ -37,13 +38,14 @@ namespace Promzona
             drain_ = drain;
             darkness_ = darkness;
         }
+
         ~PostProcessing();
     };
 
     // Opt-in elapsed queries. Never wait for an unavailable GPU result on the frame path.
     class SceneTimer
     {
-      public:
+    public:
         enum Stage
         {
             shadows,
@@ -54,15 +56,17 @@ namespace Promzona
             finish
         };
 
-      private:
+    private:
         std::array<std::array<GLuint, finish + 1>, 8> ids_{};
         std::array<bool, 8> pending_{};
+
         struct FrameSample
         {
             unsigned frame;
             bool refreshed;
             double elapsed;
         };
+
         std::array<unsigned, 8> frameIds_{};
         std::array<bool, 8> refreshed_{};
         std::vector<FrameSample> samples_;
@@ -73,8 +77,14 @@ namespace Promzona
       public:
         void enable();
         void begin();
-        void mark(Stage stage);
-        void farRefresh(bool refreshed) { if (active_) refreshed_[cursor_] = refreshed; }
+        void mark(Stage stage) const;
+
+        void farRefresh(const bool refreshed)
+        {
+            if (active_) 
+                refreshed_[cursor_] = refreshed;
+        }
+
         void end();
         [[nodiscard]] std::string report() const;
         ~SceneTimer();

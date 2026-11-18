@@ -18,6 +18,8 @@ Roads, terrain and the main building volumes are kept in memory within the draw 
 Update 13.11.2026: a sky with clouds, sun, moon and stars; haze towards the horizon; reflections of the city in windows, water, puddles,
 wet asphalt and on cars; ambient occlusion (SSAO). After rain the streets stay wet and slippery for several minutes.
 On low quality reflections and SSAO are disabled. Launching with --quality 0|1|2 sets the quality for one session.
+Update 18.11.2026: a frame is drawn between two steps of the simulation, so movement is even at any refresh rate.
+Launching with --raw-frames draws whole steps only, as before, to compare.
 The city has six wanted levels, pursuit with armoured vehicles and a helicopter,
 trams and trolleybuses with passengers, food kiosks and clinics.
 Buses drive the streets and stop at shelters; gas service vans can be seen as well.
