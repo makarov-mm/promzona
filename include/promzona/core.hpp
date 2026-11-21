@@ -218,5 +218,8 @@ namespace Promzona
     };
 
     void step_vehicle(Car &car, Input input, double dt, double traction = 1);
+    // The pedals and the wheel under the driver of a burning car, who is out of his mind:
+    // full throttle towards wherever he happens to turn. `time` is that of the world.
+    Input panic_drive(Car &car, double time, double dt);
     void step_wreck(Car &car, double dt);
 }

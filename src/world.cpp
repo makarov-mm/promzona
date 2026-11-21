@@ -862,6 +862,9 @@ namespace Promzona
                      car.kind == 11 ||
                      ((job.kind == JobKind::vehicle || job.kind == JobKind::broadcast) && int(i) == job.actor))
                 step_vehicle(car, {0, 0, true, false}, dt, 1 - wetness * .2);
+            else if (local && car.fireTime > 0)
+                // The driver of a burning car leaves the rules of the road behind.
+                step_vehicle(car, panic_drive(car, time, dt), dt, 1 - wetness * .2);
             else if (!local)
             {
                 if (!car.route)

@@ -275,6 +275,43 @@ namespace Promzona
             b.wake();
     }
 
+    // Nobody sits out the traffic in a burning car. The driver picks a way at random, any way,
+    // turns the car to it with the pedal on the floor and goes, and a few seconds later picks
+    // another; a car that this has driven into something backs off and goes again. Each car
+    // has its own run of ways, found from its number and the time: nothing is kept for it
+    // between steps, and nothing is added to a saved game.
+    Input panic_drive(Car &car, double time, double dt)
+    {
+        constexpr double dashSeconds = 3.2;
+        // Cars do not all change their minds at the same moment.
+        const double dash = std::floor(time / dashSeconds + car.id % 16 / 16.);
+        std::uint32_t bits =
+            car.id * 0x9E3779B9u + static_cast<std::uint32_t>(static_cast<std::int64_t>(dash)) * 0x85EBCA6Bu;
+        bits = (bits ^ (bits >> 15)) * 0x2C1B3C6Du;
+        bits = (bits ^ (bits >> 12)) * 0x297A2D39u;
+        bits ^= bits >> 15;
+        const double way = (bits / 2147483648. - 1) * pi;
+        const double steering = clamp(wrap(way - car.heading()) * 2, -1., 1.);
+
+        // Backing off, the wheel is held the other way: the nose still comes round to the way.
+        if (car.reverse_for > 0)
+        {
+            car.reverse_for -= dt;
+            return {-1, -steering, false, false};
+        }
+
+        // Standing against something with the pedal down.
+        car.wedged_for = std::abs(dot(car.body.v, forward(car.heading()))) < .6 ? car.wedged_for + dt : 0;
+
+        if (car.wedged_for > .9)
+        {
+            car.wedged_for = 0;
+            car.reverse_for = .8;
+        }
+
+        return {1, steering, false, false};
+    }
+
     void step_vehicle(Car &car, Input raw, double dt, double traction)
     {
         if (!(dt > 0 && std::isfinite(dt)))

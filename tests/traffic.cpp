@@ -123,6 +123,55 @@ void distantQueueAndSave()
     }
     check(passed, "distant traffic can finish a pass after reloading mid-merge");
 }
+// Cars that stand in traffic near the player are set on fire: their drivers do not wait.
+void burningDrivers()
+{
+    // A full city: the streets round the player have queues at their lights.
+    World base;
+    base.generate(20261105u, {}, CityLayout::districtRevision, Density::full);
+    const PlayerInput idle{};
+    for (int i = 0; i < 600; ++i)
+        base.step(idle, 1. / 120);
+    const Vec2 focus = base.position();
+    // What every car does in the next two seconds when nothing happens to it.
+    World calm = base;
+    std::vector<double> calmTop(base.cars.size()), top(base.cars.size());
+    for (int i = 0; i < 240; ++i)
+    {
+        calm.step(idle, 1. / 120);
+        for (size_t k = 0; k < calm.cars.size(); ++k)
+            calmTop[k] = std::max(calmTop[k], calm.cars[k].body.v.length());
+    }
+    std::vector<size_t> standing;
+    for (size_t k = 1; k < base.cars.size(); ++k)
+    {
+        const Car &c = base.cars[k];
+        if (int(k) != base.controlledCar && !c.destroyed && !c.falling && !c.driverless && !c.personal &&
+            !c.summoned && !c.responding && c.line < 0 && c.kind <= 2 && (c.body.p - focus).length() < 60 &&
+            calmTop[k] < .3)
+            standing.push_back(k);
+    }
+    check(standing.size() >= 2, "cars stand in traffic near the player");
+    if (standing.size() < 2)
+        return;
+    World burning = base;
+    // The last of them has nobody at the wheel.
+    const size_t deserted = standing.back();
+    burning.cars[deserted].driverless = true;
+    for (size_t k : standing)
+        burning.cars[k].fireTime = .001;
+    for (int i = 0; i < 240; ++i)
+    {
+        burning.step(idle, 1. / 120);
+        for (size_t k : standing)
+            top[k] = std::max(top[k], burning.cars[k].body.v.length());
+    }
+    bool away = true;
+    for (size_t k : standing)
+        away = away && (k == deserted || top[k] > 2);
+    check(away, "the driver of a burning car does not wait in traffic");
+    check(top[deserted] < .5, "a burning car with nobody in it stays where it is");
+}
 void laneChecks(World &w)
 {
     w.cars.resize(2);
@@ -335,6 +384,7 @@ int main()
               "local car continues through junctions instead of circling endpoint");
         check(maxError < w.layout.roadHalf(), "local car stays on carriageway");
         laneChecks(w);
+        burningDrivers();
         std::println("{} traffic/geometry checks passed", checks);
     }
     catch (const std::exception &e)

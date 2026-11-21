@@ -98,6 +98,55 @@ int main(int argc, char **argv)
         c.body.impulse({5000, 0});
         step_wreck(c, 1. / 120);
         check(c.body.v.x > 4, "wreck retains impulse and finite mass");
+        // The driver of a burning car: the pedal on the floor, towards a way of his own
+        // that he changes every few seconds, backing off whatever stops him.
+        {
+            constexpr double dt = 1. / 120;
+            std::set<int> ways;
+            int restless = 0;
+            bool floored = true;
+            double slowest = 1e9;
+            for (std::uint32_t id = 1; id <= 16; ++id)
+            {
+                auto burning = vehicle();
+                burning.id = id;
+                double top = 0;
+                std::set<int> settled;
+                for (int i = 0; i < 1200; ++i)
+                {
+                    const Input pedals = panic_drive(burning, i * dt, dt);
+                    floored = floored && std::abs(pedals.throttle) == 1 && !pedals.brake &&
+                              !pedals.handbrake && std::abs(pedals.steering) <= 1;
+                    step_vehicle(burning, pedals, dt);
+                    burning.body.p += burning.body.v * dt;
+                    burning.body.angle = wrap(burning.body.angle + burning.body.w * dt);
+                    top = std::max(top, burning.body.v.length());
+                    // Where it is going whenever it has settled on a way.
+                    if (i % 60 == 59 && std::abs(pedals.steering) < .05)
+                        settled.insert(int(std::floor((burning.heading() + pi) / (pi / 4))) % 8);
+                    if (i == 359)
+                        ways.insert(int(std::floor((burning.heading() + pi) / (pi / 4))) % 8);
+                }
+                slowest = std::min(slowest, top);
+                restless += settled.size() >= 2;
+            }
+            check(floored, "the driver of a burning car keeps the pedal on the floor");
+            check(slowest > 10, "every burning car gets away at speed");
+            check(ways.size() >= 4, "burning cars scatter: each goes its own way");
+            check(restless >= 6, "the driver changes his way every few seconds");
+            auto held = vehicle();
+            held.id = 3;
+            int backing = 0, forwardAgain = 0;
+            for (int i = 0; i < 360; ++i)
+            {
+                held.body.v = {};
+                const Input pedals = panic_drive(held, i * dt, dt);
+                backing += pedals.throttle < 0;
+                forwardAgain += backing && pedals.throttle > 0;
+            }
+            check(backing > 60 && backing < 240 && forwardAgain > 0,
+                  "a burning car that stands against something backs off it and goes again");
+        }
         c.lift = 10;
         c.verticalVelocity = -2;
         c.body.v = {5, 4};
